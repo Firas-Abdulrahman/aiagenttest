@@ -4,6 +4,7 @@ import os
 from typing import Dict, Any
 import datetime
 import logging
+import random
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -86,23 +87,25 @@ class WhatsAppWorkflow:
             if phone_number not in self.user_sessions:
                 self.user_sessions[phone_number] = {
                     'step': 'new_customer',
-                    'language': None,
+                    'language': 'auto',
                     'cart': [],
                     'service_type': None,
                     'location': None,
                     'total': 0,
-                    'conversation_history': []
+                    'order_complete': False
                 }
 
             session = self.user_sessions[phone_number]
 
-            # Add message to conversation history
-            session['conversation_history'].append({
-                'user': text,
-                'timestamp': datetime.datetime.now().isoformat()
-            })
-
             logger.info(f"📊 Current session: {session}")
+
+            # Detect and maintain language consistency
+            if any(arabic_word in text for arabic_word in
+                   ['مرحبا', 'اريد', 'منيو', 'قائمة', 'توست', 'نعم', 'لا', 'طلب']):
+                session['language'] = 'arabic'
+            elif any(english_word in text.lower() for english_word in
+                     ['hello', 'hi', 'menu', 'want', 'order', 'yes', 'no', 'proceed']):
+                session['language'] = 'english'
 
             # Use AI to understand and respond
             if self.openai_client:
@@ -115,148 +118,62 @@ class WhatsAppWorkflow:
             return self.create_response("Sorry, I couldn't process your message. Please try again.")
 
     def process_with_smart_ai(self, session, text, customer_name, phone_number):
-        """Process with smart AI that understands natural language"""
+        """Process with smart AI that maintains conversation flow"""
 
-        # Create comprehensive AI prompt
-        ai_prompt = f"""You are a friendly, professional WhatsApp chatbot assistant for Hef Cafe, interacting with {customer_name} via WhatsApp.
+        # Determine conversation state
+        conversation_context = self.get_conversation_context(session, text)
 
-You are an intelligent AI that can understand natural language orders and conversations. You don't need to follow rigid steps - you can understand when someone says "اريد واحد اسبريسو واحد لاتيه" (I want one espresso and one latte) and process their order naturally.
+        # Create AI prompt with better flow control
+        ai_prompt = f"""You are a professional Hef Cafe assistant talking to {customer_name}.
+
+CRITICAL RULES:
+1. ALWAYS respond in {session['language']} (Arabic or English) - NEVER switch languages mid-conversation
+2. COMPLETE the order process - don't get stuck in loops
+3. When customer says "proceed" or "yes" after order confirmation, FINALIZE the order
+4. Generate order ID and complete the transaction
+5. Be decisive and move the conversation forward
 
 CURRENT SITUATION:
-- Customer: {customer_name}
-- Current message: "{text}"
-- Session state: {json.dumps(session, indent=2)}
-- Conversation history: {session.get('conversation_history', [])}
+- Customer language: {session['language']}
+- Customer message: "{text}"
+- Current step: {session['step']}
+- Cart: {session['cart']}
+- Service type: {session['service_type']}
+- Location: {session['location']}
+- Order complete: {session['order_complete']}
 
-YOUR PERSONALITY:
-- Friendly and helpful
-- Can understand Arabic and English naturally
-- Smart enough to process complex orders
-- Can handle multiple items in one message
-- Don't be rigid about steps - be conversational and natural
+CONVERSATION CONTEXT: {conversation_context}
 
-MENU (memorize this):
+MENU (Hef Cafe):
+**توست / Toast (2000 IQD each):**
+- مارتديلا لحم بالجبن / Beef Mortadella with Cheese
+- مارتديلا دجاج بالجبن / Chicken Mortadella with Cheese  
+- جبن بالزعتر / Cheese with Zaatar
+
 **المشروبات الحارة / Hot Beverages:**
-- اسبريسو (Espresso) - 3000 IQD
-- قهوة تركية (Turkish Coffee) - 3000 IQD  
-- شاي عراقي (Iraqi Tea) - 1000 IQD
-- كابتشينو (Cappuccino) - 5000 IQD
-- هوت شوكليت (Hot Chocolate) - 5000 IQD
-- سبانش لاتيه (Spanish Latte) - 6000 IQD
-- لاتيه كراميل (Caramel Latte) - 5000 IQD
-- لاتيه فانيلا (Vanilla Latte) - 5000 IQD
-- لاتيه بندق (Hazelnut Latte) - 5000 IQD
-- امريكانو (Americano) - 4000 IQD
-- لاتيه الهيف (Hef Latte) - 6000 IQD
+- اسبريسو / Espresso - 3000 IQD
+- كابتشينو / Cappuccino - 5000 IQD
+- لاتيه / Latte - 5000 IQD
 
 **المشروبات الباردة / Cold Beverages:**
-- ايس كوفي (Iced Coffee) - 3000 IQD
-- ايس جوكليت (Iced Chocolate) - 3000 IQD
-- ايس لاتيه سادة (Plain Iced Latte) - 4000 IQD
-- كراميل ايس لاتيه (Caramel Iced Latte) - 5000 IQD
-- فانيلا ايس لاتيه (Vanilla Iced Latte) - 5000 IQD
-- بندق ايس لاتيه (Hazelnut Iced Latte) - 5000 IQD
-- ايس امريكانو (Iced Americano) - 4000 IQD
-- ايس موكا (Iced Mocha) - 5000 IQD
-- سبانش لاتيه (Spanish Latte) - 6000 IQD
-- مكس طاقة (Energy Mix) - 6000 IQD
-- ريد بول عادي (Regular Red Bull) - 3000 IQD
-- صودا سادة (Plain Soda) - 1000 IQD
-- ماء (Water) - 1000 IQD
+- ايس كوفي / Iced Coffee - 3000 IQD
+- ايس لاتيه / Iced Latte - 4000 IQD
 
-**قطع الكيك / Cake Slices:**
-- فانيلا كيك (Vanilla Cake) - 4000 IQD
-- لوتس كيك (Lotus Cake) - 4000 IQD
-- بستاشيو كيك (Pistachio Cake) - 4000 IQD
-- اوريو كيك (Oreo Cake) - 4000 IQD
-- سان سباستيان (San Sebastian) - 4000 IQD
-- كيك كراميل (Caramel Cake) - 4000 IQD
-- كيك شوكليت (Chocolate Cake) - 4000 IQD
+RESPONSE GUIDELINES:
+- If showing menu: Show categories clearly
+- If taking order: Add to cart and ask for more items or proceed
+- If customer wants to proceed: Ask dine-in or delivery
+- If dine-in: Ask for table number (1-7)
+- If they confirm final order: COMPLETE with order ID and payment info
+- NEVER get stuck repeating the same question
 
-**ايس تي / Iced Tea:**
-- خوخ ايس تي (Peach Iced Tea) - 5000 IQD
-- باشن فروت ايس تي (Passion Fruit Iced Tea) - 5000 IQD
+IMPORTANT: If customer has confirmed their order and said "proceed" or "yes", COMPLETE THE ORDER with:
+1. Final order summary
+2. Generate order ID (like HEF1234 or HEF5678 - use any 4 digit number)
+3. Payment instructions (pay at cashier)
+4. Thank them and mark order as complete
 
-**فرابتشينو / Frappuccino:**
-- فرابتشينو كراميل (Caramel Frappuccino) - 5000 IQD
-- فرابتشينو فانيلا (Vanilla Frappuccino) - 5000 IQD
-- فرابتشينو بندق (Hazelnut Frappuccino) - 5000 IQD
-- فرابتشينو شوكليت (Chocolate Frappuccino) - 5000 IQD
-
-**العصائر الطبيعية / Natural Juices:**
-- برتقال (Orange) - 4000 IQD
-- ليمون (Lemon) - 4000 IQD
-- ليمون ونعناع (Lemon & Mint) - 5000 IQD
-- بطيخ (Watermelon) - 5000 IQD
-- كيوي (Kiwi) - 5000 IQD
-- اناناس (Pineapple) - 5000 IQD
-- موز وحليب (Banana & Milk) - 5000 IQD
-- موز وفراولة (Banana & Strawberry) - 6000 IQD
-- موز وشوكليت (Banana & Chocolate) - 6000 IQD
-- فراولة (Strawberry) - 5000 IQD
-
-**موهيتو / Mojito:**
-- بلو موهيتو (Blue Mojito) - 5000 IQD
-- باشن فروت (Passion Fruit) - 5000 IQD
-- بلو بيري (Blueberry) - 5000 IQD
-- روز بيري (Raspberry) - 5000 IQD
-- موهيتو فراولة (Strawberry Mojito) - 5000 IQD
-- موهيتو بيتا كولادا (Pina Colada Mojito) - 5000 IQD
-- موهيتو علك (Gum Mojito) - 5000 IQD
-- موهيتو دراجون (Dragon Mojito) - 5000 IQD
-- موهيتو الهيف (Hef Mojito) - 5000 IQD
-- موهيتو رمان (Pomegranate Mojito) - 5000 IQD
-- خوخ موهيتو (Peach Mojito) - 5000 IQD
-
-**ميلك شيك / Milkshake:**
-- فانيلا (Vanilla) - 6000 IQD
-- جوكليت (Chocolate) - 6000 IQD
-- اوريو (Oreo) - 6000 IQD
-- فراولة (Strawberry) - 6000 IQD
-
-**توست / Toast:**
-- مارتديلا لحم بالجبن (Beef Mortadella with Cheese) - 2000 IQD
-- مارتديلا دجاج بالجبن (Chicken Mortadella with Cheese) - 2000 IQD
-- جبن بالزعتر (Cheese with Zaatar) - 2000 IQD
-
-**السندويشات / Sandwiches:**
-- سندويش روست لحم (Roast Beef Sandwich) - 3000 IQD
-- مارتديلا دجاج (Chicken Mortadella) - 3000 IQD
-- جبنة حلوم (Halloumi Cheese) - 3000 IQD
-- دجاج بالخضار دايت (Diet Chicken with Vegetables) - 3000 IQD
-- ديك رومي (Turkey) - 3000 IQD
-- فاهيتا دجاج (Chicken Fajita) - 3000 IQD
-
-**كرواسون / Croissants:**
-- كرواسون سادة (Plain Croissant) - 2000 IQD
-- كرواسون جبن (Cheese Croissant) - 2000 IQD
-- كرواسون شوكليت (Chocolate Croissant) - 2000 IQD
-
-**فطائر / Savory Pies:**
-- فطيرة دجاج (Chicken Pie) - 2000 IQD
-- فطيرة جبن (Cheese Pie) - 2000 IQD
-- فطيرة زعتر (Zaatar Pie) - 2000 IQD
-
-HOW TO RESPOND:
-1. If this is their first message or they're greeting you, welcome them warmly to Hef Cafe and ask what they'd like to order
-2. If they're making an order (like "اريد واحد اسبريسو واحد لاتيه"), process it naturally:
-   - Recognize the items they want
-   - Calculate quantities and prices
-   - Add to their cart
-   - Ask if they want anything else
-3. Be conversational and natural - don't be robotic
-4. If they ask for the menu, show categories or specific items
-5. When they're ready, ask about dine-in/delivery and location
-6. Complete the order naturally
-
-IMPORTANT:
-- Understand natural language - don't force rigid steps
-- Be smart about quantities ("واحد" = 1, "اثنين" = 2, etc.)
-- Mix Arabic and English naturally
-- Calculate totals automatically
-- Be helpful and friendly
-
-Generate a natural, intelligent response that shows you understand what they want."""
+Be natural, helpful, and COMPLETE the transaction properly."""
 
         try:
             response = self.openai_client.chat.completions.create(
@@ -265,44 +182,73 @@ Generate a natural, intelligent response that shows you understand what they wan
                     {"role": "system", "content": ai_prompt},
                     {"role": "user", "content": text}
                 ],
-                max_tokens=1000,
-                temperature=0.3
+                max_tokens=800,
+                temperature=0.2  # Lower temperature for more consistent responses
             )
 
             ai_response = response.choices[0].message.content
 
-            # Add AI response to conversation history
-            session['conversation_history'].append({
-                'bot': ai_response,
-                'timestamp': datetime.datetime.now().isoformat()
-            })
+            # Update session based on the interaction
+            self.update_session_intelligently(session, text, ai_response)
 
-            # Update session based on AI understanding
-            self.update_session_from_ai_response(session, text, ai_response)
+            # If order should be complete, mark it
+            if any(completion_word in text.lower() for completion_word in
+                   ['proceed', 'yes', 'نعم', 'موافق']) and session.get('service_type') and session.get('location'):
+                if 'order id' in ai_response.lower() or 'HEF' in ai_response:
+                    session['order_complete'] = True
+                    session['step'] = 'completed'
 
             return self.create_response(ai_response)
 
         except Exception as e:
             logger.error(f"AI Error: {e}")
-            return self.create_response(
-                "Sorry, I'm having trouble right now. Please try again or say 'menu' to see our options.")
+            return self.create_response("Sorry, I'm having trouble right now. Please try again.")
 
-    def update_session_from_ai_response(self, session, user_text, ai_response):
-        """Update session based on AI understanding"""
+    def get_conversation_context(self, session, text):
+        """Get context about where we are in the conversation"""
 
-        # Detect language from user input
-        if any(arabic_word in user_text for arabic_word in ['اريد', 'منيو', 'طلب', 'مرحبا', 'السلام']):
-            session['language'] = 'arabic'
-        elif any(english_word in user_text.lower() for english_word in ['want', 'order', 'menu', 'hello', 'hi']):
-            session['language'] = 'english'
+        if session['order_complete']:
+            return "Order is already complete"
 
-        # Update step based on conversation progress
-        if any(greeting in user_text.lower() for greeting in ['hi', 'hello', 'مرحبا', 'السلام']):
-            session['step'] = 'greeting'
-        elif any(order_word in user_text for order_word in ['اريد', 'want', 'order', 'طلب']):
-            session['step'] = 'ordering'
-        elif 'menu' in user_text.lower() or 'منيو' in user_text:
-            session['step'] = 'viewing_menu'
+        if not session['cart']:
+            return "Customer hasn't ordered anything yet"
+
+        if session['cart'] and not session['service_type']:
+            return "Customer has items in cart, need to ask dine-in or delivery"
+
+        if session['service_type'] and not session['location']:
+            return "Need to get table number or delivery address"
+
+        if session['cart'] and session['service_type'] and session['location']:
+            if any(proceed_word in text.lower() for proceed_word in ['proceed', 'yes', 'نعم', 'موافق']):
+                return "Customer wants to complete order - FINALIZE IT NOW"
+            return "Ready to finalize order"
+
+        return "Normal conversation flow"
+
+    def update_session_intelligently(self, session, user_text, ai_response):
+        """Update session based on conversation progress"""
+
+        # Detect if items were added to cart
+        if any(item_word in user_text.lower() for item_word in
+               ['توست', 'toast', 'اسبريسو', 'espresso', 'قهوة', 'coffee']):
+            if not session['cart']:  # First item
+                session['cart'] = [{'item': 'toast', 'price': 2000}]  # Simplified
+                session['total'] = 2000
+                session['step'] = 'has_items'
+
+        # Detect service type
+        if 'dine' in user_text.lower() or 'في المقهى' in user_text:
+            session['service_type'] = 'dine-in'
+            session['step'] = 'need_location'
+        elif 'delivery' in user_text.lower() or 'توصيل' in user_text:
+            session['service_type'] = 'delivery'
+            session['step'] = 'need_location'
+
+        # Detect location/table
+        if 'table' in user_text.lower() or 'طاولة' in user_text or any(str(i) in user_text for i in range(1, 8)):
+            session['location'] = user_text
+            session['step'] = 'ready_to_complete'
 
     def create_response(self, text: str) -> Dict[str, Any]:
         """Create text response"""
