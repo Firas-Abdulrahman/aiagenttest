@@ -4,6 +4,7 @@ import os
 from typing import Dict, Any
 import datetime
 import logging
+import re
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -19,12 +20,12 @@ except ImportError:
     logger.warning("OpenAI not installed. AI features will be disabled.")
 
 
-class WhatsAppWorkflow:
+class AIWhatsAppWorkflow:
     def __init__(self, config: Dict[str, str]):
-        """Initialize the WhatsApp workflow with configuration"""
+        """Initialize the AI-powered WhatsApp workflow"""
         self.config = config
 
-        # Initialize OpenAI client if available
+        # Initialize OpenAI client
         if OPENAI_AVAILABLE and config.get('openai_api_key'):
             try:
                 self.openai_client = openai.OpenAI(api_key=config.get('openai_api_key'))
@@ -34,12 +35,12 @@ class WhatsAppWorkflow:
                 self.openai_client = None
         else:
             self.openai_client = None
-            logger.info("ℹ️ OpenAI not available or API key not provided.")
+            logger.info("ℹ️ OpenAI not available - falling back to rule-based responses")
 
-        # User sessions for cafe ordering
+        # User sessions for AI conversation and ordering
         self.user_sessions = {}
 
-        # Menu data
+        # Menu data - Complete menu
         self.menu_data = {
             1: {  # Hot Beverages
                 "name_ar": "المشروبات الحارة",
@@ -73,6 +74,22 @@ class WhatsAppWorkflow:
                     {"name_ar": "كيك فانيلا", "name_en": "Vanilla Cake", "price": 4000, "unit": "pieces"}
                 ]
             },
+            4: {  # Iced Tea
+                "name_ar": "ايس تي",
+                "name_en": "Iced Tea",
+                "items": [
+                    {"name_ar": "ايس تي ليمون", "name_en": "Lemon Iced Tea", "price": 3500, "unit": "cups"},
+                    {"name_ar": "ايس تي خوخ", "name_en": "Peach Iced Tea", "price": 3500, "unit": "cups"}
+                ]
+            },
+            5: {  # Frappuccino
+                "name_ar": "فرابتشينو",
+                "name_en": "Frappuccino",
+                "items": [
+                    {"name_ar": "فرابتشينو كراميل", "name_en": "Caramel Frappuccino", "price": 6000, "unit": "cups"},
+                    {"name_ar": "فرابتشينو موكا", "name_en": "Mocha Frappuccino", "price": 6000, "unit": "cups"}
+                ]
+            },
             9: {  # Toast
                 "name_ar": "توست",
                 "name_en": "Toast",
@@ -95,6 +112,64 @@ class WhatsAppWorkflow:
             }
         }
 
+        # AI System Prompt
+        self.system_prompt = """You are an AI assistant for Hef Cafe, a cozy Iraqi cafe. You help customers place orders through WhatsApp in a friendly, conversational way.
+
+PERSONALITY:
+- Warm, friendly, and helpful
+- Understand different Arabic dialects (Iraqi, Gulf, Levantine, Egyptian, etc.)
+- Can communicate in Arabic and English naturally
+- Use appropriate emojis and casual language
+- Be patient and understanding with customers
+
+MENU KNOWLEDGE:
+You have access to the complete menu with categories:
+1. Hot Beverages (المشروبات الحارة) - Espresso, Turkish Coffee, Iraqi Tea, Cappuccino, Hot Chocolate, Caramel Latte, Vanilla Latte, Americano
+2. Cold Beverages (المشروبات الباردة) - Iced Coffee, Iced Latte, Caramel Iced Latte, Iced Americano  
+3. Sweets (الحلويات) - Chocolate Cake, Vanilla Cake
+4. Iced Tea (ايس تي) - Lemon Iced Tea, Peach Iced Tea
+5. Frappuccino (فرابتشينو) - Caramel Frappuccino, Mocha Frappuccino
+9. Toast (توست) - Beef Mortadella with Cheese, Chicken Mortadella with Cheese, Cheese with Zaatar
+11. Cake Slices (قطع الكيك) - Vanilla Cake, Lotus Cake, Chocolate Cake
+
+ORDERING PROCESS:
+1. Greet customers warmly and ask how you can help
+2. Help them browse the menu naturally through conversation
+3. When they mention items, confirm details (quantity, customizations)
+4. Keep track of their order in a conversational way
+5. Ask about service type (dine-in or delivery)
+6. Collect location/table number
+7. Confirm the final order with total price
+8. Generate order ID and thank them
+
+CONVERSATION RULES:
+- Always respond naturally, not with rigid menu lists unless requested
+- Understand various ways customers might ask for items (slang, dialects, abbreviations)
+- If they ask about unavailable items, suggest similar alternatives
+- Handle pricing questions naturally
+- Be flexible with how they want to order (one item at a time vs. multiple items)
+- If they seem confused, offer to show the full menu
+- Handle small talk and questions about the cafe
+
+IMPORTANT:
+- Always extract and track: items ordered, quantities, special requests, service type, location
+- Calculate totals accurately
+- Generate realistic order IDs (HEF + 4 digits)
+- Handle both Arabic and English seamlessly
+- Understand context from previous messages in the conversation"""
+
+    def get_menu_context(self) -> str:
+        """Generate menu context for AI"""
+        menu_text = "CURRENT MENU WITH PRICES:\n\n"
+
+        for category_id, category in self.menu_data.items():
+            menu_text += f"{category_id}. {category['name_en']} ({category['name_ar']}):\n"
+            for item in category['items']:
+                menu_text += f"   - {item['name_en']} ({item['name_ar']}) - {item['price']} IQD\n"
+            menu_text += "\n"
+
+        return menu_text
+
     def handle_whatsapp_message(self, message_data: Dict[str, Any]) -> Dict[str, Any]:
         """Main handler for incoming WhatsApp messages"""
         try:
@@ -106,12 +181,17 @@ class WhatsAppWorkflow:
             if message_type == 'text':
                 return self.handle_text_message(message_data)
             else:
-                return self.create_response(
-                    "I only handle text messages. Please send a text message to start ordering!")
+                return self.create_ai_response(
+                    "I can help you with text messages. Please send me a message to start ordering! 😊",
+                    message_data.get('from', ''), {}
+                )
 
         except Exception as e:
             logger.error(f"❌ Error handling message: {str(e)}")
-            return self.create_response("Sorry, something went wrong. Please try again.")
+            return self.create_ai_response(
+                "Sorry, something went wrong. Please try again! 🙏",
+                message_data.get('from', ''), {}
+            )
 
     def get_message_type(self, message_data: Dict[str, Any]) -> str:
         """Determine the type of incoming message"""
@@ -120,7 +200,7 @@ class WhatsAppWorkflow:
         return 'unknown'
 
     def handle_text_message(self, message_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Process text messages following EXACT prompt structure"""
+        """Process text messages using AI"""
         try:
             text = message_data.get('text', {}).get('body', '').strip()
             phone_number = message_data.get('from')
@@ -134,488 +214,210 @@ class WhatsAppWorkflow:
                     customer_name = profile.get('name', 'Customer')
 
             if not text:
-                return self.create_response("Please send a text message.")
+                return self.create_ai_response(
+                    "Please send me a message! 😊",
+                    phone_number, {}
+                )
 
             logger.info(f"💬 Processing text: {text} from {phone_number}")
 
             # Get or create user session
             if phone_number not in self.user_sessions:
                 self.user_sessions[phone_number] = {
-                    'step': 'waiting_for_language',
-                    'language': None,
-                    'cart': [],
-                    'current_category': None,
-                    'current_item': None,
-                    'service_type': None,
-                    'location': None,
-                    'total': 0
+                    'conversation_history': [],
+                    'current_order': {
+                        'items': [],
+                        'total': 0,
+                        'service_type': None,
+                        'location': None,
+                        'customer_name': customer_name
+                    },
+                    'language_preference': 'auto'  # Auto-detect from conversation
                 }
 
             session = self.user_sessions[phone_number]
-            current_step = session['step']
 
-            logger.info(f"📊 Current step: {current_step}")
+            # Add user message to conversation history
+            session['conversation_history'].append({
+                'role': 'user',
+                'content': text,
+                'timestamp': datetime.datetime.now().isoformat()
+            })
 
-            # Follow EXACT step-by-step process from your prompt
-            if current_step == 'waiting_for_language':
-                return self.handle_language_selection(session, text, customer_name)
+            # Generate AI response
+            ai_response = self.generate_ai_response(session, text, customer_name)
 
-            elif current_step == 'waiting_for_category':
-                return self.handle_category_selection(session, text)
+            # Add AI response to conversation history
+            session['conversation_history'].append({
+                'role': 'assistant',
+                'content': ai_response,
+                'timestamp': datetime.datetime.now().isoformat()
+            })
 
-            elif current_step == 'waiting_for_item':
-                return self.handle_item_selection(session, text)
+            # Keep conversation history manageable (last 20 messages)
+            if len(session['conversation_history']) > 20:
+                session['conversation_history'] = session['conversation_history'][-20:]
 
-            elif current_step == 'waiting_for_quantity':
-                return self.handle_quantity_selection(session, text)
-
-            elif current_step == 'waiting_for_additional':
-                return self.handle_additional_items(session, text)
-
-            elif current_step == 'waiting_for_cart_review':
-                return self.handle_cart_review(session, text)
-
-            elif current_step == 'waiting_for_upsell':
-                return self.handle_upsell(session, text)
-
-            elif current_step == 'waiting_for_customization':
-                return self.handle_customization(session, text)
-
-            elif current_step == 'waiting_for_service_type':
-                return self.handle_service_type(session, text)
-
-            elif current_step == 'waiting_for_location':
-                return self.handle_location(session, text)
-
-            elif current_step == 'waiting_for_confirmation':
-                return self.handle_order_confirmation(session, text)
-
-            elif current_step == 'waiting_for_payment':
-                return self.handle_payment(session, text)
-
-            else:
-                # Reset to start
-                session['step'] = 'waiting_for_language'
-                return self.handle_language_selection(session, text, customer_name)
+            return self.create_ai_response(ai_response, phone_number, session)
 
         except Exception as e:
             logger.error(f"❌ Error processing text: {str(e)}")
-            return self.create_response("Sorry, I couldn't process your message. Please try again.")
+            return self.create_ai_response(
+                "Sorry, I couldn't understand that. Can you try again? 🤔",
+                phone_number, {}
+            )
 
-    def handle_language_selection(self, session, text, customer_name):
-        """Step 1: Language Selection - EXACTLY as in your prompt"""
-        if text in ['1', 'العربية', 'Arabic']:
-            session['language'] = 'arabic'
-            session['step'] = 'waiting_for_category'
-            return self.create_response("""ماذا تريد أن تطلب؟ يرجى اختيار فئة عن طريق الرد برقم:
+    def generate_ai_response(self, session: Dict, user_message: str, customer_name: str) -> str:
+        """Generate AI response using OpenAI"""
+        if not self.openai_client:
+            return self.fallback_response(user_message, session)
 
-1: المشروبات الحارة
-2: المشروبات الباردة
-3: الحلويات
-4: ايس تي
-5: فرابتشينو
-6: العصائر الطبيعية
-7: موهيتو
-8: ميلك شيك
-9: توست
-10: السندويشات
-11: قطع الكيك
-12: كرواسون
-13: فطائر مالحة""")
-
-        elif text in ['2', 'English']:
-            session['language'] = 'english'
-            session['step'] = 'waiting_for_category'
-            return self.create_response("""What would you like to order? Please select a category by replying with the number:
-
-1: Hot Beverages
-2: Cold Beverages
-3: Sweets
-4: Iced Tea
-5: Frappuccino
-6: Natural Juices
-7: Mojito
-8: Milkshake
-9: Toast
-10: Sandwiches
-11: Cake Slices
-12: Croissants
-13: Savory Pies""")
-
-        else:
-            # EXACTLY as in your prompt
-            return self.create_response(
-                f"Welcome to Hef Cafe!\n\nPlease select your preferred language:\n1: العربية (Arabic)\n2: English")
-
-    def handle_category_selection(self, session, text):
-        """Step 2: Category Selection"""
         try:
-            category_num = int(text)
-            if 1 <= category_num <= 13:
-                session['current_category'] = category_num
-                session['step'] = 'waiting_for_item'
+            # Build conversation context
+            messages = [
+                {"role": "system", "content": self.system_prompt + "\n\n" + self.get_menu_context()}
+            ]
 
-                # Only show items if we have them in menu
-                if category_num in self.menu_data:
-                    return self.show_category_items(session, category_num)
-                else:
-                    return self.create_response(
-                        "Sorry, this category is not available yet. Please select another category (1-13).")
-            else:
-                return self.create_response("Please select a valid category number (1-13).")
-        except:
-            return self.create_response("Please enter a valid number (1-13).")
+            # Add recent conversation history (last 10 messages)
+            recent_history = session['conversation_history'][-10:] if session['conversation_history'] else []
 
-    def show_category_items(self, session, category_num):
-        """Display items from selected category"""
-        category = self.menu_data[category_num]
-        items = category['items']
+            for msg in recent_history:
+                messages.append({
+                    "role": msg['role'],
+                    "content": msg['content']
+                })
 
-        if session['language'] == 'arabic':
-            response = f"إليك خيارات {category['name_ar']}:\n\n"
-            for i, item in enumerate(items, 1):
-                response += f"{i}: {item['name_ar']} – {item['price']} دينار عراقي\n"
-            response += "\nيرجى الرد برقم العنصر لاختياره."
-        else:
-            response = f"Here are our {category['name_en']} options:\n\n"
-            for i, item in enumerate(items, 1):
-                response += f"{i}: {item['name_en']} – {item['price']} IQD\n"
-            response += "\nPlease reply with the item number to make your selection."
+            # Add current order context if exists
+            current_order = session['current_order']
+            if current_order['items']:
+                order_context = f"\nCURRENT ORDER STATE:\n"
+                order_context += f"Customer: {customer_name}\n"
+                order_context += f"Items: {json.dumps(current_order['items'], ensure_ascii=False)}\n"
+                order_context += f"Total: {current_order['total']} IQD\n"
+                order_context += f"Service: {current_order['service_type']}\n"
+                order_context += f"Location: {current_order['location']}\n"
 
-        return self.create_response(response)
+                messages[0]["content"] += order_context
 
-    def handle_item_selection(self, session, text):
-        """Step 3: Item Selection"""
+            # Add user's current message
+            messages.append({"role": "user", "content": user_message})
+
+            # Generate response
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4",
+                messages=messages,
+                max_tokens=500,
+                temperature=0.7,
+            )
+
+            ai_response = response.choices[0].message.content.strip()
+
+            # Extract order information from the AI response if present
+            self.extract_order_info(ai_response, session, user_message)
+
+            return ai_response
+
+        except Exception as e:
+            logger.error(f"❌ OpenAI API error: {str(e)}")
+            return self.fallback_response(user_message, session)
+
+    def extract_order_info(self, ai_response: str, session: Dict, user_message: str):
+        """Extract order information from AI response and user message"""
         try:
-            item_num = int(text)
-            category = self.menu_data[session['current_category']]
-            items = category['items']
+            current_order = session['current_order']
 
-            if 1 <= item_num <= len(items):
-                session['current_item'] = items[item_num - 1]
-                session['step'] = 'waiting_for_quantity'
+            # Simple extraction logic - you can make this more sophisticated
+            # Look for mentions of menu items in user message
+            user_lower = user_message.lower()
 
-                # Ask for quantity with correct unit
-                item = session['current_item']
-                unit = item['unit']
+            for category_id, category in self.menu_data.items():
+                for item in category['items']:
+                    # Check if item is mentioned in Arabic or English
+                    if (item['name_ar'].lower() in user_lower or
+                            item['name_en'].lower() in user_lower):
 
-                if session['language'] == 'arabic':
-                    if unit == 'cups':
-                        question = "كم عدد الأكواب التي ترغب بطلبها؟"
-                    elif unit == 'slices':
-                        question = "كم شريحة كيك ترغب بطلبها؟"
-                    else:
-                        question = "كم قطعة ترغب بطلبها؟"
-                else:
-                    if unit == 'cups':
-                        question = "How many cups would you like to order?"
-                    elif unit == 'slices':
-                        question = "How many slices would you like to order?"
-                    else:
-                        question = "How many pieces would you like to order?"
+                        # Extract quantity (look for numbers)
+                        quantity = 1  # default
+                        numbers = re.findall(r'\d+', user_message)
+                        if numbers:
+                            quantity = int(numbers[0])
 
-                return self.create_response(question)
-            else:
-                return self.create_response(f"Please select a valid item number (1-{len(items)}).")
-        except:
-            return self.create_response("Please enter a valid item number.")
+                        # Check if item already in order
+                        existing_item = None
+                        for order_item in current_order['items']:
+                            if order_item['name_ar'] == item['name_ar']:
+                                existing_item = order_item
+                                break
 
-    def handle_quantity_selection(self, session, text):
-        """Step 4: Quantity Selection"""
-        try:
-            quantity = int(text)
-            if quantity > 0:
-                item = session['current_item']
-                cart_item = {
-                    'item': item,
-                    'quantity': quantity,
-                    'subtotal': item['price'] * quantity
-                }
-                session['cart'].append(cart_item)
-                session['step'] = 'waiting_for_additional'
+                        if existing_item:
+                            existing_item['quantity'] += quantity
+                            existing_item['subtotal'] = existing_item['quantity'] * item['price']
+                        else:
+                            current_order['items'].append({
+                                'name_ar': item['name_ar'],
+                                'name_en': item['name_en'],
+                                'price': item['price'],
+                                'quantity': quantity,
+                                'subtotal': item['price'] * quantity
+                            })
 
-                if session['language'] == 'arabic':
-                    return self.create_response("""هل تريد إضافة المزيد من العناصر من فئة أخرى؟
-1: نعم (العودة لاختيار الفئة)
-2: لا (متابعة مراجعة السلة)""")
-                else:
-                    return self.create_response("""Would you like to add more items from another category?
-1: Yes (Return to category selection)
-2: No (Proceed to cart review)""")
-            else:
-                return self.create_response("Please enter a valid quantity (greater than 0).")
-        except:
-            return self.create_response("Please enter a valid number.")
+                        # Recalculate total
+                        current_order['total'] = sum(item['subtotal'] for item in current_order['items'])
 
-    def handle_additional_items(self, session, text):
-        """Step 5: Additional Items"""
-        if text == '1':
-            session['step'] = 'waiting_for_category'
-            if session['language'] == 'arabic':
-                return self.create_response("""اختر فئة أخرى:
+                        logger.info(f"📝 Added to order: {item['name_ar']} x{quantity}")
+                        break
 
-1: المشروبات الحارة
-2: المشروبات الباردة
-3: الحلويات
-4: ايس تي
-5: فرابتشينو
-6: العصائر الطبيعية
-7: موهيتو
-8: ميلك شيك
-9: توست
-10: السندويشات
-11: قطع الكيك
-12: كرواسون
-13: فطائر مالحة""")
-            else:
-                return self.create_response("""Select another category:
+            # Extract service type
+            if any(word in user_lower for word in ['توصيل', 'delivery', 'deliver']):
+                current_order['service_type'] = 'delivery'
+            elif any(word in user_lower for word in ['تناول', 'dine', 'table']):
+                current_order['service_type'] = 'dine-in'
 
-1: Hot Beverages
-2: Cold Beverages
-3: Sweets
-4: Iced Tea
-5: Frappuccino
-6: Natural Juices
-7: Mojito
-8: Milkshake
-9: Toast
-10: Sandwiches
-11: Cake Slices
-12: Croissants
-13: Savory Pies""")
-        elif text == '2':
-            session['step'] = 'waiting_for_cart_review'
-            return self.show_cart_review(session)
+            # Extract location/table number
+            table_numbers = re.findall(r'(?:table|طاولة|رقم)\s*(\d+)', user_lower)
+            if table_numbers:
+                current_order['location'] = f"Table {table_numbers[0]}"
+
+        except Exception as e:
+            logger.error(f"❌ Error extracting order info: {str(e)}")
+
+    def fallback_response(self, user_message: str, session: Dict) -> str:
+        """Fallback response when OpenAI is not available"""
+        user_lower = user_message.lower()
+
+        # Simple rule-based responses
+        if any(word in user_lower for word in ['مرحبا', 'hello', 'hi', 'hey', 'سلام']):
+            return "مرحباً بك في مقهى هيف! 😊 كيف يمكنني مساعدتك اليوم؟\n\nWelcome to Hef Cafe! How can I help you today?"
+
+        elif any(word in user_lower for word in ['menu', 'قائمة', 'منيو']):
+            return self.show_full_menu()
+
+        elif any(word in user_lower for word in ['price', 'سعر', 'كم']):
+            return "يمكنني مساعدتك في الأسعار! ما هو المشروب أو الطعام الذي تريد معرفة سعره؟\n\nI can help you with prices! What drink or food would you like to know the price of?"
+
         else:
-            if session['language'] == 'arabic':
-                return self.create_response("يرجى اختيار 1 أو 2.")
-            else:
-                return self.create_response("Please select 1 or 2.")
+            return "أعتذر، أحتاج لفهمك بشكل أفضل. هل يمكنك إعادة صياغة طلبك؟ 🤔\n\nSorry, I need to understand you better. Can you rephrase your request?"
 
-    def show_cart_review(self, session):
-        """Step 6: Cart Review"""
-        cart = session['cart']
-        total = sum(item['subtotal'] for item in cart)
-        session['total'] = total
+    def show_full_menu(self) -> str:
+        """Show the complete menu"""
+        menu_text = "🍽️ قائمة مقهى هيف / Hef Cafe Menu\n\n"
 
-        if session['language'] == 'arabic':
-            response = "ملخص الطلب:\n\n"
-            for item in cart:
-                response += f"• {item['item']['name_ar']} x{item['quantity']} - {item['subtotal']} دينار\n"
-            response += f"\nالمجموع: {total} دينار عراقي\n\n"
-            response += "هل تريد مراجعة وتعديل سلتك؟\n1: نعم (السماح بالتعديلات)\n2: لا (متابعة للتخصيص)"
-        else:
-            response = "Order Summary:\n\n"
-            for item in cart:
-                response += f"• {item['item']['name_en']} x{item['quantity']} - {item['subtotal']} IQD\n"
-            response += f"\nTotal: {total} IQD\n\n"
-            response += "Would you like to review and modify your cart?\n1: Yes (Allow modifications)\n2: No (Continue to customization)"
+        for category_id, category in self.menu_data.items():
+            menu_text += f"📂 {category['name_ar']} / {category['name_en']}\n"
+            for item in category['items']:
+                menu_text += f"   • {item['name_ar']} / {item['name_en']} - {item['price']} IQD\n"
+            menu_text += "\n"
 
-        return self.create_response(response)
+        menu_text += "💬 احكيلي شنو تريد تطلب! / Tell me what you'd like to order!"
+        return menu_text
 
-    def handle_cart_review(self, session, text):
-        """Step 6: Handle Cart Review Response"""
-        if text == '1':
-            if session['language'] == 'arabic':
-                return self.create_response("ميزة التعديل ستكون متاحة قريباً. متابعة للخطوة التالية...")
-            else:
-                return self.create_response("Modification feature coming soon. Continuing to next step...")
-        elif text == '2':
-            session['step'] = 'waiting_for_upsell'
-            return self.handle_upsell_offer(session)
-        else:
-            if session['language'] == 'arabic':
-                return self.create_response("يرجى اختيار 1 أو 2.")
-            else:
-                return self.create_response("Please select 1 or 2.")
-
-    def handle_upsell_offer(self, session):
-        """Step 7: Upsell Offer"""
-        session['step'] = 'waiting_for_customization'
-        if session['language'] == 'arabic':
-            return self.create_response("لا توجد عروض إضافية متاحة في هذا الوقت.\n\nهل تريد تخصيص طلبك؟\n1: نعم\n2: لا")
-        else:
-            return self.create_response(
-                "No additional offers available at this time.\n\nWould you like to customize your order?\n1: Yes\n2: No")
-
-    def handle_upsell(self, session, text):
-        """Handle upsell response - go directly to customization"""
-        return self.handle_customization(session, text)
-
-    def handle_customization(self, session, text):
-        """Step 8: Customization"""
-        if text == '1':
-            if session['language'] == 'arabic':
-                response = "يرجى تحديد مستوى السكر (إذا كان قابلاً للتطبيق):\n1: بدون سكر\n2: سكر قليل\n3: سكر عادي\n4: سكر زيادة"
-            else:
-                response = "Please specify sugar level (if applicable):\n1: No sugar\n2: Light sugar\n3: Normal sugar\n4: Extra sugar"
-
-            session['customization'] = text
-            session['step'] = 'waiting_for_service_type'
-            # For simplicity, go directly to service type
-            return self.ask_service_type(session)
-        elif text == '2':
-            if session['language'] == 'arabic':
-                session['customization'] = "لا توجد تخصيصات"
-                response = "لا توجد تخصيصات متاحة لهذا العنصر. الانتقال للخطوة التالية."
-            else:
-                session['customization'] = "No customizations"
-                response = "No customization available for this item. Moving to the next step."
-
-            session['step'] = 'waiting_for_service_type'
-            return self.create_response(response + "\n\n" + self.ask_service_type(session)['content'])
-        else:
-            if session['language'] == 'arabic':
-                return self.create_response("يرجى اختيار 1 أو 2.")
-            else:
-                return self.create_response("Please select 1 or 2.")
-
-    def ask_service_type(self, session):
-        """Ask for service type"""
-        if session['language'] == 'arabic':
-            return self.create_response("هل تريد طلبك للتناول في المطعم أم للتوصيل؟\n1: تناول في المطعم\n2: توصيل")
-        else:
-            return self.create_response("Do you want your order for dine-in or delivery?\n1: Dine-in\n2: Delivery")
-
-    def handle_service_type(self, session, text):
-        """Step 9: Service Type"""
-        if text == '1':
-            session['service_type'] = 'dine-in'
-            session['step'] = 'waiting_for_location'
-            if session['language'] == 'arabic':
-                return self.create_response("يرجى تقديم رقم طاولتك (1-7) لإكمال طلبك.")
-            else:
-                return self.create_response("Please provide your table number (1-7) to complete your order.")
-        elif text == '2':
-            session['service_type'] = 'delivery'
-            session['step'] = 'waiting_for_location'
-            if session['language'] == 'arabic':
-                return self.create_response("يرجى مشاركة موقعك عبر واتساب، وأخبرنا إذا كان لديك تعليمات توصيل خاصة.")
-            else:
-                return self.create_response(
-                    "Please share your location via WhatsApp, and let us know if you have special delivery instructions.")
-        else:
-            if session['language'] == 'arabic':
-                return self.create_response("يرجى اختيار 1 أو 2.")
-            else:
-                return self.create_response("Please select 1 or 2.")
-
-    def handle_location(self, session, text):
-        """Step 10: Location Collection"""
-        session['location'] = text
-        session['step'] = 'waiting_for_confirmation'
-
-        # Show order confirmation
-        cart = session['cart']
-        total = session['total']
-        service = session['service_type']
-        location = session['location']
-
-        if session['language'] == 'arabic':
-            response = f"""إليك ملخص طلبك:
-
-العناصر:
-"""
-            for item in cart:
-                response += f"• {item['item']['name_ar']} x{item['quantity']}\n"
-
-            response += f"""
-التخصيصات: {session.get('customization', 'لا توجد')}
-الخدمة: {service}
-الموقع: {location}
-السعر الإجمالي: {total} دينار عراقي
-
-هل تريد تأكيد هذا الطلب؟
-1: نعم
-2: لا (إعادة البدء)"""
-        else:
-            response = f"""Here is your order summary:
-
-Items:
-"""
-            for item in cart:
-                response += f"• {item['item']['name_en']} x{item['quantity']}\n"
-
-            response += f"""
-Customizations: {session.get('customization', 'None')}
-Service: {service}
-Location: {location}
-Total Price: {total} IQD
-
-Would you like to confirm this order?
-1: Yes
-2: No (Restart)"""
-
-        return self.create_response(response)
-
-    def handle_order_confirmation(self, session, text):
-        """Step 11: Order Confirmation"""
-        if text == '1':
-            session['step'] = 'waiting_for_payment'
-            total = session['total']
-
-            if session['language'] == 'arabic':
-                return self.create_response(f"إجماليك هو {total} دينار عراقي. يرجى دفع هذا المبلغ للكاشير في المنضدة.")
-            else:
-                return self.create_response(
-                    f"Your total is {total} IQD. Please pay this amount to the cashier at the counter.")
-        elif text == '2':
-            # Restart
-            session.clear()
-            session['step'] = 'waiting_for_language'
-            return self.create_response(
-                "Welcome to Hef Cafe!\n\nPlease select your preferred language:\n1: العربية (Arabic)\n2: English")
-        else:
-            if session['language'] == 'arabic':
-                return self.create_response("يرجى اختيار 1 أو 2.")
-            else:
-                return self.create_response("Please select 1 or 2.")
-
-    def handle_payment(self, session, text):
-        """Step 12: Final Confirmation"""
-        import random
-        order_id = f"HEF{random.randint(1000, 9999)}"
-        cart = session['cart']
-        total = session['total']
-        location = session['location']
-
-        if session['language'] == 'arabic':
-            response = f"""شكراً لك! تم تقديم طلبك بنجاح. سنقوم بإشعارك عندما يكون جاهزاً.
-
-تفاصيل الطلب:
-رقم الطلب: {order_id}
-الموقع: {location}
-السعر الإجمالي: {total} دينار عراقي
-
-العناصر:
-"""
-            for item in cart:
-                response += f"• {item['item']['name_ar']} x{item['quantity']}\n"
-        else:
-            response = f"""Thank you! Your order has been placed successfully. We'll notify you once it's ready.
-
-Order Details:
-Order ID: {order_id}
-Location: {location}
-Total Price: {total} IQD
-
-Items:
-"""
-            for item in cart:
-                response += f"• {item['item']['name_en']} x{item['quantity']}\n"
-
-        # Reset session
-        session.clear()
-        session['step'] = 'waiting_for_language'
-
-        return self.create_response(response)
-
-    def create_response(self, text: str) -> Dict[str, Any]:
-        """Create text response"""
+    def create_ai_response(self, text: str, phone_number: str, session: Dict) -> Dict[str, Any]:
+        """Create AI response with metadata"""
         return {
             'type': 'text',
             'content': text,
-            'timestamp': datetime.datetime.now().isoformat()
+            'timestamp': datetime.datetime.now().isoformat(),
+            'session_data': session.get('current_order', {}) if session else {}
         }
 
     def send_whatsapp_message(self, phone_number: str, response_data: Dict[str, Any]) -> bool:
@@ -633,17 +435,22 @@ Items:
                 'text': {'body': response_data['content']}
             }
 
-            logger.info(f"📤 Sending message to {phone_number}")
+            logger.info(f"📤 Sending AI message to {phone_number}")
 
             response = requests.post(url, headers=headers, json=payload)
 
             if response.status_code == 200:
-                logger.info(f"✅ Message sent successfully")
+                logger.info(f"✅ AI message sent successfully")
                 return True
             else:
-                logger.error(f"❌ Failed to send message: {response.status_code}")
+                logger.error(f"❌ Failed to send AI message: {response.status_code}")
+                logger.error(f"Response: {response.text}")
                 return False
 
         except Exception as e:
             logger.error(f"❌ Error sending WhatsApp message: {str(e)}")
             return False
+
+
+# For backward compatibility - create alias
+WhatsAppWorkflow = AIWhatsAppWorkflow
