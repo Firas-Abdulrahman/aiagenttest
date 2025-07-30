@@ -1,5 +1,6 @@
 import requests
 import json
+import base64
 import os
 from typing import Dict, Any
 import datetime
@@ -85,7 +86,7 @@ class WhatsAppWorkflow:
             if not text:
                 return self.create_response("Please send a text message.")
 
-            logger.info(f"💬 Processing text: {text}")
+            logger.info(f"💬 Processing text: {text} from {phone_number}")
 
             # Get or create user session
             if phone_number not in self.user_sessions:
@@ -102,285 +103,219 @@ class WhatsAppWorkflow:
 
             session = self.user_sessions[phone_number]
 
-            # Create the AI prompt with your exact requirements
-            ai_prompt = f"""You are a friendly, professional WhatsApp chatbot assistant for Hef Cafe, interacting with {customer_name} via WhatsApp.
+            logger.info(f"📊 Current session: {session}")
 
-Your job is to guide customers to place their orders smoothly and interactively, following a strict, step-by-step process.
-Never skip steps. Never show menu items before the customer selects a category.
+            # UPDATE SESSION FIRST, then generate response
+            old_step = session['step']
+            self.update_session_step(session, text)
+            new_step = session['step']
 
-Current Step: {session['step']}
-User Message: {text}
-User Session State: {json.dumps(session, indent=2)}
+            logger.info(f"🔄 Step changed from {old_step} to {new_step}")
 
-CRITICAL STEP-BY-STEP ENFORCEMENT:
-You must go through every one of the following steps for every order, in this order:
-1. Language selection
-2. Category selection  
-3. Item selection
-4. Quantity selection (with correct unit)
-5. Additional items (ask if the customer wants more items)
-6. Cart review (display all items and quantities, ask if user wants to modify)
-7. Upsell offer (suggest a relevant add-on if possible, or politely skip if not)
-8. Customization (ask if user wants to customize; if not relevant, clearly state "No customization available for this item.")
-9. Service type (dine-in or delivery); always collect table number or address, never assume
-10. Order confirmation (with full summary)
-11. Payment instructions
-12. Final confirmation
+            # Handle specific steps manually for better control
+            if old_step == 'waiting_for_language':
+                if text.strip() in ['1', 'العربية']:
+                    session['language'] = 'arabic'
+                    session['step'] = 'waiting_for_category'
+                    return self.create_response("""🍽️ **ماذا تريد أن تطلب؟**
 
-CRITICAL CORE RULES:
-- Step-by-step only: Guide customers through each step, one at a time. Never skip steps or combine them.
-- Strict menu enforcement: Accept only orders from the provided menu. Never accept or mention items not in the menu.
-- No recommendations: Do not offer recommendations or suggestions unless specifically enabled in future updates.
-- Wait for input: After asking a question, STOP and wait for the customer's reply before moving on.
-- Never show the full menu at once. Never show items before a category is selected.
-- Confirm all details before finalizing the order.
-- Never assume service type, table number, or address from context or previous orders. Always collect this information every time.
+يرجى اختيار فئة عن طريق الرد برقم:
 
-QUANTITY SELECTION WORDING:
-When asking the customer how many they want to order, always use the correct unit for the item:
-- For drinks, ask: "How many cups would you like to order?" (Arabic: "كم عدد الأكواب التي ترغب بطلبها؟")
-- For food or pastries, ask: "How many pieces would you like to order?" (Arabic: "كم قطعة ترغب بطلبها؟")
-- For cake slices, ask: "How many slices would you like to order?" (Arabic: "كم شريحة كيك ترغب بطلبها؟")
+**1**: المشروبات الحارة ☕
+**2**: المشروبات الباردة 🧊
+**3**: قطع الكيك 🍰
+**4**: ايس تي 🧊🍃
+**5**: فرابتشينو ❄️☕
+**6**: العصائر الطبيعية 🍊
+**7**: موهيتو 🌿
+**8**: ميلك شيك 🥤
+**9**: توست 🍞
+**10**: السندويشات 🥪
+**11**: قطع الكيك 🍰
+**12**: كرواسون 🥐
+**13**: فطائر 🥧
 
-You must always strictly follow the step provided in the input (step = {session['step']}).
-Only reply and ask the question for the current step.
-Do NOT answer or mention any next step until the user completes the current step.
+رد برقم الفئة (1-13).""")
 
-CONVERSATION FLOW:
-1. Language Selection: Greet: "Welcome to Hef Cafe!" Ask: "Please select your preferred language: 1: العربية (Arabic) 2: English"
+                elif text.strip() in ['2', 'English']:
+                    session['language'] = 'english'
+                    session['step'] = 'waiting_for_category'
+                    return self.create_response("""🍽️ **What would you like to order?**
 
-2. Category Selection: Once language is selected, say: "What would you like to order? Please select a category by replying with the number:"
-1: Hot Beverages
-2: Cold Beverages  
-3: Sweets
-4: Iced Tea
-5: Frappuccino
-6: Natural Juices
-7: Mojito
-8: Milkshake
-9: Toast
-10: Sandwiches
-11: Cake Slices
-12: Croissants
-13: Savory Pies
-DO NOT display any menu items, descriptions, or prices at this stage. WAIT for the customer to reply with a category number before proceeding.
+Please select a category by replying with the number:
 
-3. Display Category Items: Only after the customer replies with a valid category number:
-Present items from the MENU DATA below for that category only as:
-- Number for selection
-- Full item name
-- Price
-- Brief description (if available)
-Example: "Here are our [Category Name] options:
-1. [Item Name] – [Price] IQD
-[Short description]"
-"Please reply with the item number to make your selection."
+**1**: Hot Beverages ☕
+**2**: Cold Beverages 🧊
+**3**: Cake Slices 🍰
+**4**: Iced Tea 🧊🍃
+**5**: Frappuccino ❄️☕
+**6**: Natural Juices 🍊
+**7**: Mojito 🌿
+**8**: Milkshake 🥤
+**9**: Toast 🍞
+**10**: Sandwiches 🥪
+**11**: Cake Slices 🍰
+**12**: Croissants 🥐
+**13**: Savory Pies 🥧
 
-MENU DATA:
-Hot Beverages (Category 1):
-1. اسبريسو (Espresso) – 3000 IQD
-2. قهوة تركية (Turkish Coffee) – 3000 IQD  
-3. شاي عراقي (Iraqi Tea) – 1000 IQD
-4. كابتشينو (Cappuccino) – 5000 IQD
-5. هوت شوكليت (Hot Chocolate) – 5000 IQD
-6. سبانش لاتيه (Spanish Latte) – 6000 IQD
-7. لاتيه كراميل (Caramel Latte) – 5000 IQD
-8. لاتيه فانيلا (Vanilla Latte) – 5000 IQD
-9. لاتيه بندق (Hazelnut Latte) – 5000 IQD
-10. امريكانو (Americano) – 4000 IQD
-11. لاتيه الهيف (Hef Latte) – 6000 IQD
+Reply with the category number (1-13).""")
+                else:
+                    return self.create_response(
+                        "☕ **Welcome to Hef Cafe!**\n\nPlease select your preferred language:\n\n**1**: العربية (Arabic)\n**2**: English\n\nReply with 1 or 2.")
 
-Cold Beverages (Category 2):
-1. ايس كوفي (Iced Coffee) – 3000 IQD
-2. ايس جوكليت (Iced Chocolate) – 3000 IQD
-3. ايس لاتيه سادة (Plain Iced Latte) – 4000 IQD
-4. كراميل ايس لاتيه (Caramel Iced Latte) – 5000 IQD
-5. فانيلا ايس لاتيه (Vanilla Iced Latte) – 5000 IQD
-6. بندق ايس لاتيه (Hazelnut Iced Latte) – 5000 IQD
-7. ايس امريكانو (Iced Americano) – 4000 IQD
-8. ايس موكا (Iced Mocha) – 5000 IQD
-9. سبانش لاتيه (Spanish Latte) – 6000 IQD
-10. مكس طاقة (Energy Mix) – 6000 IQD
-11. ريد بول عادي (Regular Red Bull) – 3000 IQD
-12. صودا سادة (Plain Soda) – 1000 IQD
-13. ماء (Water) – 1000 IQD
-
-Cake Slices (Category 3):
-1. فانيلا كيك (Vanilla Cake) – 4000 IQD
-2. لوتس كيك (Lotus Cake) – 4000 IQD
-3. بستاشيو كيك (Pistachio Cake) – 4000 IQD
-4. اوريو كيك (Oreo Cake) – 4000 IQD
-5. سان سباستيان (San Sebastian) – 4000 IQD
-6. كيك كراميل (Caramel Cake) – 4000 IQD
-7. كيك شوكليت (Chocolate Cake) – 4000 IQD
-
-Iced Tea (Category 4):
-1. خوخ ايس تي (Peach Iced Tea) – 5000 IQD
-2. باشن فروت ايس تي (Passion Fruit Iced Tea) – 5000 IQD
-
-Frappuccino (Category 5):
-1. فرابتشينو كراميل (Caramel Frappuccino) – 5000 IQD
-2. فرابتشينو فانيلا (Vanilla Frappuccino) – 5000 IQD
-3. فرابتشينو بندق (Hazelnut Frappuccino) – 5000 IQD
-4. فرابتشينو شوكليت (Chocolate Frappuccino) – 5000 IQD
-
-Natural Juices (Category 6):
-1. برتقال (Orange) – 4000 IQD
-2. ليمون (Lemon) – 4000 IQD
-3. ليمون ونعناع (Lemon & Mint) – 5000 IQD
-4. بطيخ (Watermelon) – 5000 IQD
-5. كيوي (Kiwi) – 5000 IQD
-6. اناناس (Pineapple) – 5000 IQD
-7. موز وحليب (Banana & Milk) – 5000 IQD
-8. موز وفراولة (Banana & Strawberry) – 6000 IQD
-9. موز وشوكليت (Banana & Chocolate) – 6000 IQD
-10. فراولة (Strawberry) – 5000 IQD
-
-Mojito (Category 7):
-1. بلو موهيتو (Blue Mojito) – 5000 IQD
-2. باشن فروت (Passion Fruit) – 5000 IQD
-3. بلو بيري (Blueberry) – 5000 IQD
-4. روز بيري (Raspberry) – 5000 IQD
-5. موهيتو فراولة (Strawberry Mojito) – 5000 IQD
-6. موهيتو بيتا كولادا (Pina Colada Mojito) – 5000 IQD
-7. موهيتو علك (Gum Mojito) – 5000 IQD
-8. موهيتو دراجون (Dragon Mojito) – 5000 IQD
-9. موهيتو الهيف (Hef Mojito) – 5000 IQD
-10. موهيتو رمان (Pomegranate Mojito) – 5000 IQD
-11. خوخ موهيتو (Peach Mojito) – 5000 IQD
-
-Milkshake (Category 8):
-1. فانيلا (Vanilla) – 6000 IQD
-2. جوكليت (Chocolate) – 6000 IQD
-3. اوريو (Oreo) – 6000 IQD
-4. فراولة (Strawberry) – 6000 IQD
-
-Toast (Category 9):
-1. مارتديلا لحم بالجبن (Beef Mortadella with Cheese) – 2000 IQD
-2. مارتديلا دجاج بالجبن (Chicken Mortadella with Cheese) – 2000 IQD
-3. جبن بالزعتر (Cheese with Zaatar) – 2000 IQD
-
-Sandwiches (Category 10):
-1. سندويش روست لحم (Roast Beef Sandwich) – 3000 IQD
-2. مارتديلا دجاج (Chicken Mortadella) – 3000 IQD
-3. جبنة حلوم (Halloumi Cheese) – 3000 IQD
-4. دجاج بالخضار دايت (Diet Chicken with Vegetables) – 3000 IQD
-5. ديك رومي (Turkey) – 3000 IQD
-6. فاهيتا دجاج (Chicken Fajita) – 3000 IQD
-
-Croissants (Category 12):
-1. كرواسون سادة (Plain Croissant) – 2000 IQD
-2. كرواسون جبن (Cheese Croissant) – 2000 IQD
-3. كرواسون شوكليت (Chocolate Croissant) – 2000 IQD
-
-Savory Pies (Category 13):
-1. فطيرة دجاج (Chicken Pie) – 2000 IQD
-2. فطيرة جبن (Cheese Pie) – 2000 IQD
-3. فطيرة زعتر (Zaatar Pie) – 2000 IQD
-
-Continue with the rest of the steps exactly as outlined. Always wait for user input at each step.
-
-Generate the appropriate response for the current step only. Be concise and follow the exact format."""
-
-            # Process with AI
-            if self.openai_client:
+            elif old_step == 'waiting_for_category':
                 try:
-                    response = self.openai_client.chat.completions.create(
-                        model="gpt-3.5-turbo",
-                        messages=[
-                            {"role": "system", "content": ai_prompt},
-                            {"role": "user", "content": text}
-                        ],
-                        max_tokens=1000,
-                        temperature=0.3
-                    )
+                    category_num = int(text.strip())
+                    if 1 <= category_num <= 13:
+                        session['current_category'] = category_num
+                        session['step'] = 'waiting_for_item'
+                        return self.show_category_items(session, category_num)
+                    else:
+                        return self.create_response("Please select a valid category number (1-13).")
+                except:
+                    return self.create_response("Please enter a valid number (1-13).")
 
-                    ai_response = response.choices[0].message.content
+            elif old_step == 'waiting_for_item':
+                try:
+                    item_num = int(text.strip())
+                    if item_num > 0:
+                        session['current_item'] = item_num
+                        session['step'] = 'waiting_for_quantity'
+                        return self.ask_quantity(session)
+                    else:
+                        return self.create_response("Please select a valid item number.")
+                except:
+                    return self.create_response("Please enter a valid item number.")
 
-                    # Update session step based on user input
-                    self.update_session_step(session, text)
-
-                    return self.create_response(ai_response)
-
-                except Exception as e:
-                    logger.error(f"AI Error: {e}")
-                    return self.create_response("Sorry, I'm having trouble right now. Please try again.")
-            else:
-                return self.create_response("AI features are not available. Please contact support.")
+            # If we get here, use AI for complex responses
+            return self.process_with_ai(session, text, customer_name)
 
         except Exception as e:
             logger.error(f"❌ Error processing text: {str(e)}")
             return self.create_response("Sorry, I couldn't process your message. Please try again.")
+
+    def show_category_items(self, session, category_num):
+        """Show items for selected category"""
+
+        # Menu data
+        menu_items = {
+            1: [  # Hot Beverages
+                ("اسبريسو (Espresso)", 3000),
+                ("قهوة تركية (Turkish Coffee)", 3000),
+                ("شاي عراقي (Iraqi Tea)", 1000),
+                ("كابتشينو (Cappuccino)", 5000),
+                ("هوت شوكليت (Hot Chocolate)", 5000),
+                ("سبانش لاتيه (Spanish Latte)", 6000),
+                ("لاتيه كراميل (Caramel Latte)", 5000),
+                ("لاتيه فانيلا (Vanilla Latte)", 5000),
+                ("لاتيه بندق (Hazelnut Latte)", 5000),
+                ("امريكانو (Americano)", 4000),
+                ("لاتيه الهيف (Hef Latte)", 6000)
+            ],
+            2: [  # Cold Beverages
+                ("ايس كوفي (Iced Coffee)", 3000),
+                ("ايس جوكليت (Iced Chocolate)", 3000),
+                ("ايس لاتيه سادة (Plain Iced Latte)", 4000),
+                ("كراميل ايس لاتيه (Caramel Iced Latte)", 5000),
+                ("فانيلا ايس لاتيه (Vanilla Iced Latte)", 5000),
+                ("بندق ايس لاتيه (Hazelnut Iced Latte)", 5000),
+                ("ايس امريكانو (Iced Americano)", 4000),
+                ("ايس موكا (Iced Mocha)", 5000),
+                ("سبانش لاتيه (Spanish Latte)", 6000),
+                ("مكس طاقة (Energy Mix)", 6000),
+                ("ريد بول عادي (Regular Red Bull)", 3000),
+                ("صودا سادة (Plain Soda)", 1000),
+                ("ماء (Water)", 1000)
+            ],
+            3: [  # Cake Slices
+                ("فانيلا كيك (Vanilla Cake)", 4000),
+                ("لوتس كيك (Lotus Cake)", 4000),
+                ("بستاشيو كيك (Pistachio Cake)", 4000),
+                ("اوريو كيك (Oreo Cake)", 4000),
+                ("سان سباستيان (San Sebastian)", 4000),
+                ("كيك كراميل (Caramel Cake)", 4000),
+                ("كيك شوكليت (Chocolate Cake)", 4000)
+            ]
+            # Add more categories as needed
+        }
+
+        category_names = {
+            1: "Hot Beverages / المشروبات الحارة",
+            2: "Cold Beverages / المشروبات الباردة",
+            3: "Cake Slices / قطع الكيك"
+        }
+
+        items = menu_items.get(category_num, [])
+        category_name = category_names.get(category_num, f"Category {category_num}")
+
+        if not items:
+            return self.create_response("Sorry, this category is not available yet. Please select another category.")
+
+        response = f"🍽️ **{category_name} Options:**\n\n"
+
+        for i, (name, price) in enumerate(items, 1):
+            response += f"**{i}**: {name} - {price} IQD\n"
+
+        response += f"\nPlease reply with the item number (1-{len(items)}) to make your selection."
+
+        return self.create_response(response)
+
+    def ask_quantity(self, session):
+        """Ask for quantity with correct unit"""
+        category = session.get('current_category')
+
+        if category in [1, 2, 4, 5, 6, 7, 8]:  # Beverages
+            if session.get('language') == 'arabic':
+                return self.create_response("كم عدد الأكواب التي ترغب بطلبها؟")
+            else:
+                return self.create_response("How many cups would you like to order?")
+        elif category == 3:  # Cake slices
+            if session.get('language') == 'arabic':
+                return self.create_response("كم شريحة كيك ترغب بطلبها؟")
+            else:
+                return self.create_response("How many slices would you like to order?")
+        else:  # Food items
+            if session.get('language') == 'arabic':
+                return self.create_response("كم قطعة ترغب بطلبها؟")
+            else:
+                return self.create_response("How many pieces would you like to order?")
+
+    def process_with_ai(self, session, text, customer_name):
+        """Process with AI for complex responses"""
+        if not self.openai_client:
+            return self.create_response("AI features are not available. Please restart your order by sending 'hi'.")
+
+        ai_prompt = f"""You are Hef Cafe assistant. Current step: {session['step']}. User said: {text}. 
+
+        Continue the conversation based on the current step. Keep responses short and focused on the current step only."""
+
+        try:
+            response = self.openai_client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": ai_prompt},
+                    {"role": "user", "content": text}
+                ],
+                max_tokens=500,
+                temperature=0.3
+            )
+
+            return self.create_response(response.choices[0].message.content)
+
+        except Exception as e:
+            logger.error(f"AI Error: {e}")
+            return self.create_response("Please continue with your order or restart by sending 'hi'.")
 
     def update_session_step(self, session, message_text):
         """Update session step based on user input"""
         current_step = session['step']
         text = message_text.strip()
 
-        if current_step == 'waiting_for_language' and text in ['1', '2']:
-            session['language'] = 'arabic' if text == '1' else 'english'
-            session['step'] = 'waiting_for_category'
+        logger.info(f"🔄 Updating step from {current_step} with input: {text}")
 
-        elif current_step == 'waiting_for_category':
-            try:
-                category_num = int(text)
-                if 1 <= category_num <= 13:
-                    session['current_category'] = category_num
-                    session['step'] = 'waiting_for_item'
-            except:
-                pass
-
-        elif current_step == 'waiting_for_item':
-            try:
-                item_num = int(text)
-                if item_num > 0:
-                    session['current_item'] = item_num
-                    session['step'] = 'waiting_for_quantity'
-            except:
-                pass
-
-        elif current_step == 'waiting_for_quantity':
-            try:
-                quantity = int(text)
-                if quantity > 0:
-                    session['quantity'] = quantity
-                    session['step'] = 'waiting_for_additional'
-            except:
-                pass
-
-        elif current_step == 'waiting_for_additional' and text in ['1', '2']:
-            if text == '1':
-                session['step'] = 'waiting_for_category'  # Add more items
-            else:
-                session['step'] = 'waiting_for_cart_review'
-
-        elif current_step == 'waiting_for_cart_review' and text in ['1', '2']:
-            session['step'] = 'waiting_for_upsell'
-
-        elif current_step == 'waiting_for_upsell':
-            session['step'] = 'waiting_for_customization'
-
-        elif current_step == 'waiting_for_customization' and text in ['1', '2']:
-            session['step'] = 'waiting_for_service_type'
-
-        elif current_step == 'waiting_for_service_type' and text in ['1', '2']:
-            session['service_type'] = 'dine-in' if text == '1' else 'delivery'
-            session['step'] = 'waiting_for_location'
-
-        elif current_step == 'waiting_for_location':
-            session['location'] = text
-            session['step'] = 'waiting_for_confirmation'
-
-        elif current_step == 'waiting_for_confirmation' and text in ['1', '2']:
-            if text == '1':
-                session['step'] = 'waiting_for_payment'
-            else:
-                # Restart order
-                session.clear()
-                session['step'] = 'waiting_for_language'
-
-        elif current_step == 'waiting_for_payment':
-            session['step'] = 'order_complete'
+        # Don't change step here - let the main handler do it
+        # This function is now just for logging
+        pass
 
     def create_response(self, text: str) -> Dict[str, Any]:
         """Create text response"""
