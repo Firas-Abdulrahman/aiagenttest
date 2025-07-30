@@ -175,35 +175,53 @@ def create_flask_app():
         print(f"❌ Failed to initialize workflow: {str(e)}")
         return None
 
+    # Replace the home() function in your app.py with this:
+
     @app.route('/')
     def home():
         """Home page with useful links"""
         return f'''
         <html>
         <head>
-            <title>WhatsApp Bot Server</title>
+            <title>Hef Cafe WhatsApp Bot</title>
             <style>
                 body {{ font-family: Arial, sans-serif; margin: 40px; background-color: #f5f5f5; }}
                 .container {{ background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
-                h1 {{ color: #25D366; }}
+                h1 {{ color: #8B4513; }}
                 .status {{ padding: 10px; margin: 10px 0; border-radius: 5px; }}
                 .success {{ background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }}
                 .info {{ background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }}
-                a {{ color: #25D366; text-decoration: none; font-weight: bold; }}
+                a {{ color: #8B4513; text-decoration: none; font-weight: bold; }}
                 a:hover {{ text-decoration: underline; }}
-                .endpoint {{ background-color: #f8f9fa; padding: 15px; margin: 10px 0; border-left: 4px solid #25D366; }}
+                .endpoint {{ background-color: #f8f9fa; padding: 15px; margin: 10px 0; border-left: 4px solid #8B4513; }}
             </style>
         </head>
         <body>
             <div class="container">
-                <h1>🤖 WhatsApp Bot Server</h1>
+                <h1>☕ Hef Cafe WhatsApp Bot</h1>
 
                 <div class="status success">
-                    ✅ Server is running successfully!
+                    ✅ Hef Cafe Ordering Bot is running successfully!
                 </div>
 
                 <div class="status info">
-                    📱 Phone Number ID: {config.get('phone_number_id', 'Not configured')}
+                    📱 Phone Number: {config.get('phone_number_id', 'Not configured')}
+                </div>
+
+                <h2>🍽️ Bot Features:</h2>
+                <div class="endpoint">
+                    <strong>☕ Hef Cafe Ordering</strong><br>
+                    Step-by-step AI-powered ordering system with bilingual support (Arabic/English)
+                </div>
+
+                <div class="endpoint">
+                    <strong>🤖 AI-Powered Responses</strong><br>
+                    Smart text processing following exact ordering workflow
+                </div>
+
+                <div class="endpoint">
+                    <strong>📱 Session Management</strong><br>
+                    Remembers each customer's ordering progress
                 </div>
 
                 <h2>🔧 Available Endpoints:</h2>
@@ -234,15 +252,36 @@ def create_flask_app():
                     <code>GET /webhook</code> - For webhook verification
                 </div>
 
-                <h2>📋 Setup Instructions:</h2>
+                <h2>📋 How to Use:</h2>
                 <ol>
-                    <li>Configure your webhook URL in Meta Developer Console: <code>https://yourdomain.com/webhook</code></li>
-                    <li>Set verify token to: <code>{config.get('verify_token')}</code></li>
-                    <li>Subscribe to webhook events: <code>messages</code></li>
-                    <li>Test your bot by sending a WhatsApp message!</li>
+                    <li><strong>Send any message</strong> to +964 771 111 7646 to start ordering</li>
+                    <li><strong>Follow the steps</strong> - the AI will guide you through the process</li>
+                    <li><strong>Choose language</strong> - Arabic or English support</li>
+                    <li><strong>Select category</strong> - from 13 available menu categories</li>
+                    <li><strong>Complete order</strong> - step by step until final confirmation</li>
                 </ol>
 
+                <h2>🍽️ Menu Categories:</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                    <div>• Hot Beverages ☕</div>
+                    <div>• Cold Beverages 🧊</div>
+                    <div>• Cake Slices 🍰</div>
+                    <div>• Iced Tea 🧊🍃</div>
+                    <div>• Frappuccino ❄️☕</div>
+                    <div>• Natural Juices 🍊</div>
+                    <div>• Mojito 🌿</div>
+                    <div>• Milkshake 🥤</div>
+                    <div>• Toast 🍞</div>
+                    <div>• Sandwiches 🥪</div>
+                    <div>• Croissants 🥐</div>
+                    <div>• Savory Pies 🥧</div>
+                </div>
+
                 <p><em>Server time: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</em></p>
+
+                <p style="text-align: center; color: #8B4513; font-weight: bold;">
+                    🎉 Welcome to Hef Cafe Digital Ordering! 🎉
+                </p>
             </div>
         </body>
         </html>
