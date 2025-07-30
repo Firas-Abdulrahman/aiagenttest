@@ -5,24 +5,27 @@ import os
 from typing import Dict, Any, Optional
 import io
 import datetime
+import logging
+
+# Configure logging for production
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Try to import OpenAI, but make it optional
 try:
     import openai
-
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
-    print("Warning: OpenAI not installed. AI features will be disabled.")
+    logger.warning("OpenAI not installed. AI features will be disabled.")
 
 # Try to import PIL, but make it optional
 try:
     from PIL import Image
-
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
-    print("Warning: PIL not installed. Image processing will be limited.")
+    logger.warning("PIL not installed. Image processing will be limited.")
 
 
 class WhatsAppWorkflow:
@@ -42,16 +45,16 @@ class WhatsAppWorkflow:
         if OPENAI_AVAILABLE and config.get('openai_api_key'):
             try:
                 self.openai_client = openai.OpenAI(api_key=config.get('openai_api_key'))
-                print("✅ OpenAI client initialized")
+                logger.info("✅ OpenAI client initialized")
             except Exception as e:
-                print(f"⚠️ OpenAI initialization failed: {e}")
+                logger.error(f"⚠️ OpenAI initialization failed: {e}")
                 self.openai_client = None
         else:
             self.openai_client = None
             if not OPENAI_AVAILABLE:
-                print("ℹ️ OpenAI not available. Install with: pip install openai")
+                logger.info("ℹ️ OpenAI not available. Install with: pip install openai")
             else:
-                print("ℹ️ OpenAI API key not provided. AI features disabled.")
+                logger.info("ℹ️ OpenAI API key not provided. AI features disabled.")
 
     def handle_whatsapp_message(self, message_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -64,10 +67,10 @@ class WhatsAppWorkflow:
             Response data with appropriate action
         """
         try:
-            print(f"📨 Processing message: {json.dumps(message_data, indent=2)}")
+            logger.info(f"📨 Processing message: {json.dumps(message_data, indent=2)}")
 
             message_type = self.get_message_type(message_data)
-            print(f"📋 Message type detected: {message_type}")
+            logger.info(f"📋 Message type detected: {message_type}")
 
             if message_type == 'location':
                 return self.handle_location_message(message_data)
@@ -84,7 +87,7 @@ class WhatsAppWorkflow:
                     f"Sorry, I don't support '{message_type}' message type yet. I can handle text, images, audio, location, and documents.")
 
         except Exception as e:
-            print(f"❌ Error handling message: {str(e)}")
+            logger.error(f"❌ Error handling message: {str(e)}")
             return self.create_response("Sorry, something went wrong processing your message. Please try again.")
 
     def get_message_type(self, message_data: Dict[str, Any]) -> str:
@@ -138,7 +141,7 @@ Thank you for sharing your location! 🗺️"""
             return self.create_response(response_text)
 
         except Exception as e:
-            print(f"❌ Error processing location: {str(e)}")
+            logger.error(f"❌ Error processing location: {str(e)}")
             return self.create_response("Sorry, I couldn't process your location. Please try again.")
 
     def handle_audio_message(self, message_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -155,7 +158,7 @@ Thank you for sharing your location! 🗺️"""
             if not audio_id:
                 return self.create_response("❌ No audio ID found in message.")
 
-            print(f"🎵 Processing audio with ID: {audio_id}")
+            logger.info(f"🎵 Processing audio with ID: {audio_id}")
 
             # Download audio file
             audio_data = self.download_media(audio_id)
@@ -170,7 +173,7 @@ Thank you for sharing your location! 🗺️"""
                 return self.create_response(
                     "🎵 I received your voice message but couldn't understand the audio. Could you please send it as text instead?")
 
-            print(f"📝 Transcription: {transcription}")
+            logger.info(f"📝 Transcription: {transcription}")
 
             # Process transcription with AI
             ai_response = self.process_with_ai(
@@ -182,7 +185,7 @@ Thank you for sharing your location! 🗺️"""
             return self.create_response(response_text)
 
         except Exception as e:
-            print(f"❌ Error processing audio: {str(e)}")
+            logger.error(f"❌ Error processing audio: {str(e)}")
             return self.create_response(
                 "🎵 I received your voice message but couldn't process it. Please try sending a text message instead.")
 
@@ -197,7 +200,7 @@ Thank you for sharing your location! 🗺️"""
             if not image_id:
                 return self.create_response("❌ No image ID found in message.")
 
-            print(f"🖼️ Processing image with ID: {image_id}")
+            logger.info(f"🖼️ Processing image with ID: {image_id}")
 
             # Download image
             image_data = self.download_media(image_id)
@@ -225,7 +228,7 @@ Thank you for sharing your location! 🗺️"""
             return self.create_response(response_text)
 
         except Exception as e:
-            print(f"❌ Error processing image: {str(e)}")
+            logger.error(f"❌ Error processing image: {str(e)}")
             return self.create_response(
                 "🖼️ I received your image but couldn't process it. Please try describing what you need help with!")
 
@@ -241,7 +244,7 @@ Thank you for sharing your location! 🗺️"""
             return self.create_response(response_text)
 
         except Exception as e:
-            print(f"❌ Error processing document: {str(e)}")
+            logger.error(f"❌ Error processing document: {str(e)}")
             return self.create_response(
                 "📄 I received your document but couldn't process it. Please let me know how I can help!")
 
@@ -253,7 +256,7 @@ Thank you for sharing your location! 🗺️"""
             if not text:
                 return self.create_response("❌ Empty message received.")
 
-            print(f"💬 Processing text: {text}")
+            logger.info(f"💬 Processing text: {text}")
 
             # Check for special commands
             text_lower = text.lower().strip()
@@ -298,7 +301,7 @@ Thank you for sharing your location! 🗺️"""
                 return self.create_simple_response(text)
 
         except Exception as e:
-            print(f"❌ Error processing text: {str(e)}")
+            logger.error(f"❌ Error processing text: {str(e)}")
             return self.create_response("Sorry, I couldn't process your message. Please try again.")
 
     def create_simple_response(self, text: str) -> Dict[str, Any]:
@@ -327,7 +330,7 @@ Thank you for sharing your location! 🗺️"""
                 'Authorization': f'Bearer {self.config.get("whatsapp_token")}'
             }
 
-            print(f"📡 Getting media URL for ID: {media_id}")
+            logger.info(f"📡 Getting media URL for ID: {media_id}")
             response = requests.get(url, headers=headers)
             response.raise_for_status()
 
@@ -335,20 +338,20 @@ Thank you for sharing your location! 🗺️"""
             media_url = media_info.get('url')
 
             if not media_url:
-                print("❌ No media URL found")
+                logger.error("❌ No media URL found")
                 return None
 
-            print(f"📡 Downloading media from: {media_url}")
+            logger.info(f"📡 Downloading media from: {media_url}")
 
             # Download the actual media file
             media_response = requests.get(media_url, headers=headers)
             media_response.raise_for_status()
 
-            print(f"✅ Media downloaded successfully, size: {len(media_response.content)} bytes")
+            logger.info(f"✅ Media downloaded successfully, size: {len(media_response.content)} bytes")
             return media_response.content
 
         except Exception as e:
-            print(f"❌ Error downloading media: {str(e)}")
+            logger.error(f"❌ Error downloading media: {str(e)}")
             return None
 
     def transcribe_audio(self, audio_data: bytes) -> str:
@@ -357,7 +360,7 @@ Thank you for sharing your location! 🗺️"""
             if not self.openai_client:
                 return ""
 
-            print("🎵 Transcribing audio with Whisper...")
+            logger.info("🎵 Transcribing audio with Whisper...")
 
             # Create audio file object
             audio_file = io.BytesIO(audio_data)
@@ -369,11 +372,11 @@ Thank you for sharing your location! 🗺️"""
                 language="auto"  # Auto-detect language
             )
 
-            print(f"✅ Transcription successful: {transcript.text}")
+            logger.info(f"✅ Transcription successful: {transcript.text}")
             return transcript.text
 
         except Exception as e:
-            print(f"❌ Transcription error: {str(e)}")
+            logger.error(f"❌ Transcription error: {str(e)}")
             return ""
 
     def analyze_image(self, image_data: bytes) -> str:
@@ -382,7 +385,7 @@ Thank you for sharing your location! 🗺️"""
             if not self.openai_client:
                 return "Image analysis not available"
 
-            print("🖼️ Analyzing image with GPT-4 Vision...")
+            logger.info("🖼️ Analyzing image with GPT-4 Vision...")
 
             # Convert image to base64
             base64_image = base64.b64encode(image_data).decode('utf-8')
@@ -403,11 +406,11 @@ Thank you for sharing your location! 🗺️"""
             )
 
             analysis = response.choices[0].message.content
-            print(f"✅ Image analysis successful")
+            logger.info(f"✅ Image analysis successful")
             return analysis
 
         except Exception as e:
-            print(f"❌ Image analysis error: {str(e)}")
+            logger.error(f"❌ Image analysis error: {str(e)}")
             return "I can see the image but couldn't analyze it properly. Please describe what you'd like me to help you with!"
 
     def process_with_ai(self, text: str) -> str:
@@ -416,7 +419,7 @@ Thank you for sharing your location! 🗺️"""
             if not self.openai_client:
                 return f"You said: {text}"
 
-            print("🤖 Processing with GPT...")
+            logger.info("🤖 Processing with GPT...")
 
             response = self.openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
@@ -430,11 +433,11 @@ Thank you for sharing your location! 🗺️"""
             )
 
             ai_response = response.choices[0].message.content
-            print(f"✅ AI response generated")
+            logger.info(f"✅ AI response generated")
             return ai_response
 
         except Exception as e:
-            print(f"❌ AI processing error: {str(e)}")
+            logger.error(f"❌ AI processing error: {str(e)}")
             return "I'm having trouble processing your request right now. Please try again in a moment!"
 
     def handle_coffee_order(self, text: str) -> Dict[str, Any]:
@@ -478,7 +481,7 @@ Thank you for your order! We'll prepare it right away! 🚀
             return self.create_response(response)
 
         except Exception as e:
-            print(f"❌ Error processing coffee order: {str(e)}")
+            logger.error(f"❌ Error processing coffee order: {str(e)}")
             return self.create_response("☕ Sorry, there was an issue with your coffee order. Please try again!")
 
     def get_bot_status(self) -> Dict[str, Any]:
@@ -507,7 +510,7 @@ Thank you for your order! We'll prepare it right away! 🚀
             return self.create_response(status_text)
 
         except Exception as e:
-            print(f"❌ Error getting status: {str(e)}")
+            logger.error(f"❌ Error getting status: {str(e)}")
             return self.create_response("❌ Could not get status information.")
 
     def create_response(self, text: str) -> Dict[str, Any]:
@@ -555,20 +558,20 @@ Thank you for your order! We'll prepare it right away! 🚀
                     'text': {'body': 'Audio response (upload feature not implemented yet)'}
                 }
 
-            print(f"📤 Sending message to {phone_number}")
-            print(f"📋 Payload: {json.dumps(payload, indent=2)}")
+            logger.info(f"📤 Sending message to {phone_number}")
+            logger.info(f"📋 Payload: {json.dumps(payload, indent=2)}")
 
             response = requests.post(url, headers=headers, json=payload)
 
             if response.status_code == 200:
-                print(f"✅ Message sent successfully")
-                print(f"📋 Response: {response.json()}")
+                logger.info(f"✅ Message sent successfully")
+                logger.info(f"📋 Response: {response.json()}")
                 return True
             else:
-                print(f"❌ Failed to send message: {response.status_code}")
-                print(f"📋 Error response: {response.text}")
+                logger.error(f"❌ Failed to send message: {response.status_code}")
+                logger.error(f"📋 Error response: {response.text}")
                 return False
 
         except Exception as e:
-            print(f"❌ Error sending WhatsApp message: {str(e)}")
+            logger.error(f"❌ Error sending WhatsApp message: {str(e)}")
             return False

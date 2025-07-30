@@ -4,9 +4,9 @@ import json
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from whatsapp_workflow import WhatsAppWorkflow
-from whatsapp_workflow import WhatsAppWorkflow
 
-# Load environment variables from .env file
+# Load environment variables from .env file (for local development)
+# In production (Render), environment variables are set directly
 load_dotenv()
 
 
@@ -565,39 +565,56 @@ def create_simple_test_app():
     return app
 
 
+# Create the Flask app instance for WSGI servers (like Gunicorn)
+# This is required for Render deployment
+def create_app():
+    """Create app instance for WSGI"""
+    return create_flask_app() or create_simple_test_app()
+
+
+# For Gunicorn (production)
+app = create_app()
+
 if __name__ == '__main__':
     print("🚀 Starting WhatsApp Bot Server...")
     print(f"📅 Server time: {__import__('datetime').datetime.now()}")
 
     # Try to create full app first
-    app = create_flask_app()
+    flask_app = create_flask_app()
 
-    if not app:
+    if not flask_app:
         print("⚠️ Full app failed to initialize, starting debug app...")
-        app = create_simple_test_app()
+        flask_app = create_simple_test_app()
         print("🔧 Debug app started - visit endpoints to troubleshoot")
     else:
         print("✅ Full WhatsApp bot initialized successfully!")
 
-    print("\n🌐 Server URLs:")
-    print("   • Home: http://localhost:5000")
-    print("   • Config: http://localhost:5000/config")
-    print("   • Test: http://localhost:5000/test-credentials")
-    print("   • Health: http://localhost:5000/health")
-    print("   • Webhook: http://localhost:5000/webhook")
+    # Get port from environment (Render sets this)
+    port = int(os.environ.get('PORT', 5000))
+    debug_mode = os.environ.get('ENVIRONMENT', 'development') == 'development'
+
+    print(f"\n🌐 Server starting on port {port}")
+    if not debug_mode:
+        print(f"🔗 Production webhook URL: https://your-app-name.onrender.com/webhook")
+    else:
+        print("🔗 Local development URLs:")
+        print("   • Home: http://localhost:5000")
+        print("   • Config: http://localhost:5000/config")
+        print("   • Test: http://localhost:5000/test-credentials")
+        print("   • Health: http://localhost:5000/health")
+        print("   • Webhook: http://localhost:5000/webhook")
 
     print(f"\n🔗 For Meta Developer Console:")
-    print(f"   • Webhook URL: https://yourdomain.com/webhook")
     print(f"   • Verify Token: {os.getenv('VERIFY_TOKEN', 'my_webhook_verify_token_2024')}")
 
     print("\n" + "=" * 50)
 
     # Run the Flask app
     try:
-        app.run(
+        flask_app.run(
             host='0.0.0.0',
-            port=5000,
-            debug=True,
+            port=port,
+            debug=debug_mode,
             use_reloader=False  # Disable reloader to avoid issues with OpenAI
         )
     except KeyboardInterrupt:
