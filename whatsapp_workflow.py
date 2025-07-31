@@ -889,20 +889,19 @@ EXAMPLES:
             # Get items for category
             items = self.db.get_category_items(selected_category['category_id'])
 
-            # Generate professional response with complete menu
-            if not response_message:
-                if language == 'arabic':
-                    response_message = f"قائمة {selected_category['category_name_ar']}:\n\n"
-                    for i, item in enumerate(items, 1):
-                        response_message += f"{i}. {item['item_name_ar']}\n"
-                        response_message += f"   السعر: {item['price']} دينار\n\n"
-                    response_message += "اكتب رقم المنتج أو اسمه"
-                else:
-                    response_message = f"{selected_category['category_name_en']} Menu:\n\n"
-                    for i, item in enumerate(items, 1):
-                        response_message += f"{i}. {item['item_name_en']}\n"
-                        response_message += f"   Price: {item['price']} IQD\n\n"
-                    response_message += "Type the item number or name"
+            # Generate professional response with complete menu - ALWAYS show full menu
+            if language == 'arabic':
+                response_message = f"قائمة {selected_category['category_name_ar']}:\n\n"
+                for i, item in enumerate(items, 1):
+                    response_message += f"{i}. {item['item_name_ar']}\n"
+                    response_message += f"   السعر: {item['price']} دينار\n\n"
+                response_message += "اكتب رقم المنتج أو اسمه"
+            else:
+                response_message = f"{selected_category['category_name_en']} Menu:\n\n"
+                for i, item in enumerate(items, 1):
+                    response_message += f"{i}. {item['item_name_en']}\n"
+                    response_message += f"   Price: {item['price']} IQD\n\n"
+                response_message += "Type the item number or name"
 
             return self.create_response(response_message)
 
