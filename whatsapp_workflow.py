@@ -220,7 +220,7 @@ class CafeDatabaseManager:
             """, step_rules)
 
             conn.commit()
-            logger.info(" Initial data populated")
+            logger.info("✅ Initial data populated")
 
     def get_user_session(self, phone_number: str) -> Optional[Dict]:
         """Get current user session state"""
@@ -524,14 +524,14 @@ class TrueAIWorkflow:
             logger.warning("⚠️ Running without OpenAI - AI features limited")
 
         # AI System Prompt for Natural Language Understanding
-        self.system_prompt = """You are Hef, a friendly AI assistant for Hef Cafe in Iraq. You have natural language understanding and can handle different dialects, accents, typos, and informal language.
+        self.system_prompt = """You are Hef, a professional AI assistant for Hef Cafe in Iraq. You provide efficient, clear, and formal customer service.
 
 PERSONALITY:
-- Warm, conversational, and helpful
+- Professional, clear, and efficient
 - Understand various Arabic dialects (Iraqi, Gulf, Levantine, Egyptian, etc.)
 - Handle English with different accents and typos
-- Use appropriate emojis and casual language
-- Be patient and clarify when unsure
+- Formal tone without emojis or casual language
+- Direct and to-the-point responses
 
 CAPABILITIES:
 - Understand typos and misspellings (e.g., "coffe" = "coffee", "colde" = "cold")
@@ -553,20 +553,21 @@ CONVERSATION RULES:
 - When user says numbers/positions (1, ١, "first"), refer to the current menu context
 - Handle typos gracefully without mentioning them
 - If truly unclear, ask specific clarifying questions
-- Be conversational, not robotic
+- Be professional, not casual
 - Maintain context throughout the conversation
+- NO emojis or casual expressions
 
 RESPONSE FORMAT:
-- Respond naturally in the user's preferred language
-- Be helpful and understanding
-- Use emojis appropriately
-- Keep responses conversational and friendly"""
+- Professional and clear language in user's preferred language
+- Use numbered lists for options
+- Proper spacing between sections
+- Direct and informative responses"""
 
     def handle_whatsapp_message(self, message_data: Dict[str, Any]) -> Dict[str, Any]:
         """Main message handler with True AI Understanding"""
         try:
             if 'text' not in message_data:
-                return self.create_response("أرسل لي رسالة نصية من فضلك! 😊\nPlease send me a text message! 😊")
+                return self.create_response("الرجاء إرسال رسالة نصية\nPlease send a text message")
 
             text = message_data.get('text', {}).get('body', '').strip()
             phone_number = message_data.get('from')
@@ -579,7 +580,7 @@ RESPONSE FORMAT:
             session = self.db.get_user_session(phone_number)
             current_step = session['current_step'] if session else 'waiting_for_language'
 
-            logger.info(f"📊 User {phone_number} at step: {current_step}")
+            logger.info(f"User {phone_number} at step: {current_step}")
 
             # Process with True AI Understanding
             response = self.process_with_ai(phone_number, current_step, text, customer_name, session)
@@ -590,9 +591,9 @@ RESPONSE FORMAT:
             return response
 
         except Exception as e:
-            logger.error(f"❌ Error handling message: {str(e)}")
+            logger.error(f"Error handling message: {str(e)}")
             return self.create_response(
-                "عذراً، حدث خطأ. من فضلك أعد المحاولة! 🙏\nSorry, something went wrong. Please try again! 🙏")
+                "حدث خطأ. الرجاء إعادة المحاولة\nAn error occurred. Please try again")
 
     def extract_customer_name(self, message_data: Dict) -> str:
         """Extract customer name from WhatsApp message data"""
@@ -821,28 +822,36 @@ EXAMPLES:
             if success:
                 categories = self.db.get_available_categories()
 
-                # Generate natural response showing categories
+                # Generate professional response showing categories
                 if language == 'arabic':
                     if not response_message:
-                        response_message = f"أهلاً {customer_name}! 😊\n\nشو تحب تطلب اليوم؟ عندنا:\n"
-                        for cat in categories:
-                            response_message += f"🔸 {cat['category_name_ar']}\n"
-                        response_message += "\nقلي شو تريد! 👆"
+                        response_message = f"مرحباً {customer_name}\n\n"
+                        response_message += "الرجاء اختيار الفئة المطلوبة:\n\n"
+                        for i, cat in enumerate(categories, 1):
+                            response_message += f"{i}. {cat['category_name_ar']}\n\n"
+                        response_message += "اكتب رقم الفئة أو اسمها"
                 else:
                     if not response_message:
-                        response_message = f"Welcome {customer_name}! 😊\n\nWhat would you like today? We have:\n"
-                        for cat in categories:
-                            response_message += f"🔸 {cat['category_name_en']}\n"
-                        response_message += "\nTell me what you'd like! 👆"
+                        response_message = f"Welcome {customer_name}\n\n"
+                        response_message += "Please select the required category:\n\n"
+                        for i, cat in enumerate(categories, 1):
+                            response_message += f"{i}. {cat['category_name_en']}\n\n"
+                        response_message += "Type the category number or name"
 
                 return self.create_response(response_message)
 
-        # Language not detected, ask again naturally
+        # Language not detected, ask again professionally
         return self.create_response(
-            f"مرحباً {customer_name}! أهلاً بك في مقهى هيف ☕\n"
-            f"تحب نحكي عربي ولا إنكليزي؟\n\n"
-            f"Hello {customer_name}! Welcome to Hef Cafe ☕\n"
-            f"Would you prefer Arabic or English?"
+            f"مرحباً {customer_name}\n"
+            f"مرحباً بك في مقهى هيف\n\n"
+            f"الرجاء اختيار اللغة المفضلة:\n\n"
+            f"1. العربية\n"
+            f"2. English\n\n"
+            f"Hello {customer_name}\n"
+            f"Welcome to Hef Cafe\n\n"
+            f"Please choose your preferred language:\n\n"
+            f"1. Arabic\n"
+            f"2. English"
         )
 
     def execute_category_selection(self, phone_number: str, extracted_data: Dict, response_message: str,
@@ -880,32 +889,36 @@ EXAMPLES:
             # Get items for category
             items = self.db.get_category_items(selected_category['category_id'])
 
-            # Use AI response or generate natural one
+            # Generate professional response with complete menu
             if not response_message:
                 if language == 'arabic':
-                    response_message = f"ممتاز! عندنا من {selected_category['category_name_ar']}:\n\n"
+                    response_message = f"قائمة {selected_category['category_name_ar']}:\n\n"
                     for i, item in enumerate(items, 1):
-                        response_message += f"{i}. {item['item_name_ar']} - {item['price']} دينار\n"
-                    response_message += "\nشو تختار؟ 😊"
+                        response_message += f"{i}. {item['item_name_ar']}\n"
+                        response_message += f"   السعر: {item['price']} دينار\n\n"
+                    response_message += "اكتب رقم المنتج أو اسمه"
                 else:
-                    response_message = f"Great choice! Our {selected_category['category_name_en']} options:\n\n"
+                    response_message = f"{selected_category['category_name_en']} Menu:\n\n"
                     for i, item in enumerate(items, 1):
-                        response_message += f"{i}. {item['item_name_en']} - {item['price']} IQD\n"
-                    response_message += "\nWhat would you like? 😊"
+                        response_message += f"{i}. {item['item_name_en']}\n"
+                        response_message += f"   Price: {item['price']} IQD\n\n"
+                    response_message += "Type the item number or name"
 
             return self.create_response(response_message)
 
-        # Category not found, ask again naturally
+        # Category not found, ask again professionally
         if language == 'arabic':
-            response_message = "ما فهمت شو تريد بالضبط 🤔 عندنا هاي الأنواع:\n"
-            for cat in categories:
-                response_message += f"🔸 {cat['category_name_ar']}\n"
-            response_message += "\nإيش تفضل؟"
+            response_message = "الفئة غير محددة\n\n"
+            response_message += "الفئات المتاحة:\n\n"
+            for i, cat in enumerate(categories, 1):
+                response_message += f"{i}. {cat['category_name_ar']}\n\n"
+            response_message += "اكتب رقم الفئة أو اسمها"
         else:
-            response_message = "I'm not sure what you're looking for 🤔 We have these categories:\n"
-            for cat in categories:
-                response_message += f"🔸 {cat['category_name_en']}\n"
-            response_message += "\nWhat would you prefer?"
+            response_message = "Category not specified\n\n"
+            response_message += "Available categories:\n\n"
+            for i, cat in enumerate(categories, 1):
+                response_message += f"{i}. {cat['category_name_en']}\n\n"
+            response_message += "Type the category number or name"
 
         return self.create_response(response_message)
 
@@ -917,7 +930,7 @@ EXAMPLES:
 
         if not selected_category_id:
             return self.create_response(
-                "عذراً، حدث خطأ. من فضلك ابدأ من جديد.\nSorry, something went wrong. Please start over.")
+                "خطأ في النظام. الرجاء إعادة البدء\nSystem error. Please restart")
 
         # Get items for current category
         items = self.db.get_category_items(selected_category_id)
@@ -951,26 +964,26 @@ EXAMPLES:
             self.db.create_or_update_session(phone_number, 'waiting_for_quantity', language,
                                              selected_item=selected_item['id'])
 
-            # Ask for quantity naturally
+            # Ask for quantity professionally
             if not response_message:
-                unit = selected_item['unit']
                 if language == 'arabic':
-                    if unit == 'cups':
-                        response_message = f"حلو! كم كوب من {selected_item['item_name_ar']} تريد؟ ☕"
-                    elif unit == 'slices':
-                        response_message = f"ممتاز! كم شريحة من {selected_item['item_name_ar']} تريد؟ 🍰"
-                    else:
-                        response_message = f"تمام! كم قطعة من {selected_item['item_name_ar']} تريد؟ 🍞"
+                    response_message = f"تم اختيار: {selected_item['item_name_ar']}\n"
+                    response_message += f"السعر: {selected_item['price']} دينار\n\n"
+                    response_message += "كم الكمية المطلوبة؟"
                 else:
-                    response_message = f"Perfect! How many {selected_item['item_name_en']} would you like? 😊"
+                    response_message = f"Selected: {selected_item['item_name_en']}\n"
+                    response_message += f"Price: {selected_item['price']} IQD\n\n"
+                    response_message += "How many would you like?"
 
             return self.create_response(response_message)
 
-        # Item not found, ask again naturally
+        # Item not found, ask again professionally
         if language == 'arabic':
-            response_message = "ما لقيت هاي! 🤔 وين بالقائمة؟ قلي الرقم أو الاسم:"
+            response_message = "المنتج غير محدد\n\n"
+            response_message += "الرجاء اختيار رقم المنتج أو كتابة اسمه بدقة"
         else:
-            response_message = "I couldn't find that! 🤔 Which one from the menu? Tell me the number or name:"
+            response_message = "Item not specified\n\n"
+            response_message += "Please select the item number or type its name accurately"
 
         return self.create_response(response_message)
 
@@ -983,7 +996,7 @@ EXAMPLES:
 
         if not selected_item_id:
             return self.create_response(
-                "عذراً، حدث خطأ. من فضلك ابدأ من جديد.\nSorry, something went wrong. Please start over.")
+                "خطأ في النظام. الرجاء إعادة البدء\nSystem error. Please restart")
 
         if quantity and quantity > 0 and self.db.validate_step_transition(phone_number, 'waiting_for_additional'):
             # Add item to order
@@ -993,24 +1006,28 @@ EXAMPLES:
                 item = self.db.get_item_by_id(selected_item_id)
                 self.db.create_or_update_session(phone_number, 'waiting_for_additional', language)
 
-                # Natural confirmation
+                # Professional confirmation
                 if not response_message:
                     if language == 'arabic':
-                        unit_ar = "أكواب" if item['unit'] == 'cups' else (
-                            "شرائح" if item['unit'] == 'slices' else "قطع")
-                        response_message = f"تمام! أضفت {quantity} {unit_ar} {item['item_name_ar']} لطلبك ✅\n\n"
-                        response_message += "تريد تضيف شي ثاني؟ 😊"
+                        response_message = f"تم إضافة {quantity} من {item['item_name_ar']} إلى طلبك\n"
+                        response_message += f"المبلغ الفرعي: {item['price'] * quantity} دينار\n\n"
+                        response_message += "هل تريد إضافة منتجات أخرى؟\n\n"
+                        response_message += "1. نعم\n"
+                        response_message += "2. لا، إتمام الطلب"
                     else:
-                        response_message = f"Great! Added {quantity} {item['item_name_en']} to your order ✅\n\n"
-                        response_message += "Want to add anything else? 😊"
+                        response_message = f"Added {quantity} {item['item_name_en']} to your order\n"
+                        response_message += f"Subtotal: {item['price'] * quantity} IQD\n\n"
+                        response_message += "Would you like to add more items?\n\n"
+                        response_message += "1. Yes\n"
+                        response_message += "2. No, complete order"
 
                 return self.create_response(response_message)
 
         # Invalid quantity
         if language == 'arabic':
-            response_message = "كم واحد بالضبط تريد؟ قلي رقم 🔢"
+            response_message = "الكمية غير صحيحة\n\nالرجاء إدخال رقم صحيح للكمية"
         else:
-            response_message = "How many exactly would you like? Tell me a number 🔢"
+            response_message = "Invalid quantity\n\nPlease enter a valid number for quantity"
 
         return self.create_response(response_message)
 
@@ -1028,13 +1045,15 @@ EXAMPLES:
 
                     categories = self.db.get_available_categories()
                     if language == 'arabic':
-                        response_message = "ممتاز! شو كمان تريد؟\n"
-                        for cat in categories:
-                            response_message += f"🔸 {cat['category_name_ar']}\n"
+                        response_message = "اختر فئة أخرى:\n\n"
+                        for i, cat in enumerate(categories, 1):
+                            response_message += f"{i}. {cat['category_name_ar']}\n\n"
+                        response_message += "اكتب رقم الفئة أو اسمها"
                     else:
-                        response_message = "Great! What else would you like?\n"
-                        for cat in categories:
-                            response_message += f"🔸 {cat['category_name_en']}\n"
+                        response_message = "Choose another category:\n\n"
+                        for i, cat in enumerate(categories, 1):
+                            response_message += f"{i}. {cat['category_name_en']}\n\n"
+                        response_message += "Type the category number or name"
 
                     return self.create_response(response_message)
 
@@ -1043,9 +1062,13 @@ EXAMPLES:
                     self.db.create_or_update_session(phone_number, 'waiting_for_service', language)
 
                     if language == 'arabic':
-                        response_message = "تمام! تريد تاكل هنا في المقهى أو توصيل للبيت؟ 🚀"
+                        response_message = "اختر نوع الخدمة:\n\n"
+                        response_message += "1. تناول في المقهى\n"
+                        response_message += "2. توصيل"
                     else:
-                        response_message = "Perfect! Would you like to eat here at the cafe or delivery to your place? 🚀"
+                        response_message = "Choose service type:\n\n"
+                        response_message += "1. Dine-in at cafe\n"
+                        response_message += "2. Delivery"
 
                     return self.create_response(response_message)
 
@@ -1055,9 +1078,9 @@ EXAMPLES:
                 order_id = self.db.complete_order(phone_number)
                 if order_id:
                     if language == 'arabic':
-                        response_message = f"🎉 هاي! تم تأكيد طلبك!\n\n📄 رقم الطلب: {order_id}\n⏰ خلاص 10-15 دقيقة وجاهز!\n\nشكراً إلك! ☕✨"
+                        response_message = f"تم تأكيد طلبك\n\nرقم الطلب: {order_id}\nوقت التحضير: 10-15 دقيقة\n\nشكراً لك"
                     else:
-                        response_message = f"🎉 Awesome! Your order is confirmed!\n\n📄 Order ID: {order_id}\n⏰ Ready in 10-15 minutes!\n\nThank you! ☕✨"
+                        response_message = f"Your order is confirmed\n\nOrder ID: {order_id}\nPreparation time: 10-15 minutes\n\nThank you"
 
                     return self.create_response(response_message)
 
@@ -1070,9 +1093,9 @@ EXAMPLES:
                     conn.commit()
 
                 if language == 'arabic':
-                    response_message = "ماشي، ألغيت الطلب ❌\nإذا بدك تطلب شي تاني، بس اكتبلي! 😊"
+                    response_message = "تم إلغاء الطلب\nيمكنك البدء من جديد بإرسال رسالة"
                 else:
-                    response_message = "Okay, cancelled the order ❌\nIf you want to order something else, just message me! 😊"
+                    response_message = "Order cancelled\nYou can start over by sending a message"
 
                 return self.create_response(response_message)
 
@@ -1093,22 +1116,22 @@ EXAMPLES:
             if not response_message:
                 if service_type == 'dine-in':
                     if language == 'arabic':
-                        response_message = "حلو! رقم الطاولة كم؟ (1-7) 🪑"
+                        response_message = "رقم الطاولة (1-7):"
                     else:
-                        response_message = "Great! What's your table number? (1-7) 🪑"
+                        response_message = "Table number (1-7):"
                 else:  # delivery
                     if language == 'arabic':
-                        response_message = "ممتاز! وين عنوانك للتوصيل؟ 📍"
+                        response_message = "عنوان التوصيل:"
                     else:
-                        response_message = "Perfect! What's your address for delivery? 📍"
+                        response_message = "Delivery address:"
 
             return self.create_response(response_message)
 
         # Service type not clear
         if language == 'arabic':
-            response_message = "هنا في الكافيه ولا توصيل للبيت؟ 🤔"
+            response_message = "اختر نوع الخدمة:\n\n1. تناول في المقهى\n2. توصيل"
         else:
-            response_message = "Dine-in at the cafe or delivery to your place? 🤔"
+            response_message = "Choose service type:\n\n1. Dine-in at cafe\n2. Delivery"
 
         return self.create_response(response_message)
 
@@ -1130,31 +1153,31 @@ EXAMPLES:
 
                 if not response_message:
                     if language == 'arabic':
-                        response_message = f"تمام! هاي طلبك:\n\n📋 **طلبك:**\n"
+                        response_message = f"ملخص طلبك:\n\n"
                         for item in order['items']:
-                            unit_ar = "أكواب" if item['unit'] == 'cups' else (
-                                "شرائح" if item['unit'] == 'slices' else "قطع")
-                            response_message += f"• {item['item_name_ar']} x{item['quantity']} {unit_ar} - {item['subtotal']} دينار\n"
+                            response_message += f"• {item['item_name_ar']} × {item['quantity']}\n"
+                            response_message += f"  {item['subtotal']} دينار\n\n"
 
-                        response_message += f"\n💰 **المجموع:** {order['total']} دينار\n"
-                        response_message += f"📍 **مكان:** {location}\n\n"
-                        response_message += "تأكد الطلب؟ ✅"
+                        response_message += f"المجموع: {order['total']} دينار\n"
+                        response_message += f"المكان: {location}\n\n"
+                        response_message += "تأكيد الطلب؟\n\n1. نعم\n2. لا"
                     else:
-                        response_message = f"Perfect! Here's your order:\n\n📋 **Your Order:**\n"
+                        response_message = f"Order summary:\n\n"
                         for item in order['items']:
-                            response_message += f"• {item['item_name_en']} x{item['quantity']} {item['unit']} - {item['subtotal']} IQD\n"
+                            response_message += f"• {item['item_name_en']} × {item['quantity']}\n"
+                            response_message += f"  {item['subtotal']} IQD\n\n"
 
-                        response_message += f"\n💰 **Total:** {order['total']} IQD\n"
-                        response_message += f"📍 **Location:** {location}\n\n"
-                        response_message += "Confirm this order? ✅"
+                        response_message += f"Total: {order['total']} IQD\n"
+                        response_message += f"Location: {location}\n\n"
+                        response_message += "Confirm order?\n\n1. Yes\n2. No"
 
                 return self.create_response(response_message)
 
         # Location not clear
         if language == 'arabic':
-            response_message = "وين بالضبط؟ 📍"
+            response_message = "الرجاء تحديد المكان بوضوح"
         else:
-            response_message = "Where exactly? 📍"
+            response_message = "Please specify the location clearly"
 
         return self.create_response(response_message)
 
@@ -1174,15 +1197,15 @@ EXAMPLES:
                 categories = self.db.get_available_categories()
 
                 if language == 'arabic':
-                    response_message = "هاي قائمتنا! 📋\n\n"
-                    for cat in categories:
-                        response_message += f"🔸 {cat['category_name_ar']}\n"
-                    response_message += "\nشو تحب تجرب؟ 😊"
+                    response_message = "القائمة الرئيسية:\n\n"
+                    for i, cat in enumerate(categories, 1):
+                        response_message += f"{i}. {cat['category_name_ar']}\n\n"
+                    response_message += "اختر الفئة المطلوبة"
                 else:
-                    response_message = "Here's our menu! 📋\n\n"
-                    for cat in categories:
-                        response_message += f"🔸 {cat['category_name_en']}\n"
-                    response_message += "\nWhat would you like to try? 😊"
+                    response_message = "Main Menu:\n\n"
+                    for i, cat in enumerate(categories, 1):
+                        response_message += f"{i}. {cat['category_name_en']}\n\n"
+                    response_message += "Choose the required category"
 
                 return self.create_response(response_message)
 
@@ -1196,21 +1219,23 @@ EXAMPLES:
 
                 if current_category:
                     if language == 'arabic':
-                        response_message = f"إليك قائمة {current_category['category_name_ar']}:\n\n"
+                        response_message = f"قائمة {current_category['category_name_ar']}:\n\n"
                         for i, item in enumerate(items, 1):
-                            response_message += f"{i}. {item['item_name_ar']} - {item['price']} دينار\n"
-                        response_message += "\nاختر اللي تحبه! 😊"
+                            response_message += f"{i}. {item['item_name_ar']}\n"
+                            response_message += f"   السعر: {item['price']} دينار\n\n"
+                        response_message += "اختر المنتج المطلوب"
                     else:
-                        response_message = f"Here's our {current_category['category_name_en']} menu:\n\n"
+                        response_message = f"{current_category['category_name_en']} Menu:\n\n"
                         for i, item in enumerate(items, 1):
-                            response_message += f"{i}. {item['item_name_en']} - {item['price']} IQD\n"
-                        response_message += "\nChoose what you like! 😊"
+                            response_message += f"{i}. {item['item_name_en']}\n"
+                            response_message += f"   Price: {item['price']} IQD\n\n"
+                        response_message += "Choose the required item"
 
                 return self.create_response(response_message)
 
         # Default menu response
         return self.create_response(
-            response_message or "قائمتنا جاهزة! إيش تحب تشوف؟\nOur menu is ready! What would you like to see?")
+            response_message or "القائمة متاحة. ما الذي تريد أن تراه؟\nMenu available. What would you like to see?")
 
     def execute_help_request(self, phone_number: str, current_step: str, response_message: str, session: Dict) -> Dict:
         """Handle help requests based on current step"""
@@ -1218,21 +1243,39 @@ EXAMPLES:
 
         if current_step == 'waiting_for_category':
             if language == 'arabic':
-                response_message = "أكيد بساعدك! 😊\nعندنا أربع أنواع رئيسية:\n🔸 مشروبات حارة (قهوة، شاي)\n🔸 مشروبات باردة (آيس كوفي)\n🔸 توست (فطار)\n🔸 كيك (حلويات)\n\nشو يهمك؟"
+                response_message = "المساعدة - الفئات المتاحة:\n\n"
+                response_message += "1. مشروبات حارة (قهوة، شاي)\n"
+                response_message += "2. مشروبات باردة (قهوة مثلجة)\n"
+                response_message += "3. توست (وجبات خفيفة)\n"
+                response_message += "4. كيك (حلويات)\n\n"
+                response_message += "اختر الرقم أو اكتب اسم الفئة"
             else:
-                response_message = "Happy to help! 😊\nWe have four main types:\n🔸 Hot drinks (coffee, tea)\n🔸 Cold drinks (iced coffee)\n🔸 Toast (breakfast)\n🔸 Cake (desserts)\n\nWhat interests you?"
+                response_message = "Help - Available categories:\n\n"
+                response_message += "1. Hot drinks (coffee, tea)\n"
+                response_message += "2. Cold drinks (iced coffee)\n"
+                response_message += "3. Toast (light meals)\n"
+                response_message += "4. Cake (desserts)\n\n"
+                response_message += "Choose the number or type category name"
 
         elif current_step == 'waiting_for_item':
             if language == 'arabic':
-                response_message = "اختر رقم أو اسم اللي تحبه من القائمة فوق! 👆\nأو قل 'رجوع' إذا تريد تغير الفئة 😊"
+                response_message = "المساعدة:\n\n"
+                response_message += "اختر رقم المنتج من القائمة أعلاه\n"
+                response_message += "أو اكتب اسم المنتج بدقة\n"
+                response_message += "أو اكتب 'رجوع' للعودة للفئات"
             else:
-                response_message = "Choose a number or name from the menu above! 👆\nOr say 'back' if you want to change category 😊"
+                response_message = "Help:\n\n"
+                response_message += "Choose item number from menu above\n"
+                response_message += "Or type the item name accurately\n"
+                response_message += "Or type 'back' to return to categories"
 
         else:
             if language == 'arabic':
-                response_message = "أنا هنا أساعدك! قلي شو تحتاج 😊"
+                response_message = "كيف يمكنني مساعدتك؟"
             else:
-                response_message = "I'm here to help! Tell me what you need 😊"
+                response_message = "How can I help you?"
+
+        return self.create_response(response_message)
 
         return self.create_response(response_message)
 
