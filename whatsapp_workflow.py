@@ -179,17 +179,38 @@ class CafeDatabaseManager:
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, menu_data)
 
-            # Insert step validation rules
+            # Insert flexible step validation rules for AI conversations
             step_rules = [
-                ("waiting_for_language", "waiting_for_category", "language_preference", "Language selection"),
-                ("waiting_for_category", "waiting_for_item", "selected_category", "Category selection"),
-                ("waiting_for_item", "waiting_for_quantity", "selected_item", "Item selection"),
-                ("waiting_for_quantity", "waiting_for_additional", "quantity", "Quantity selection"),
-                ("waiting_for_additional", "waiting_for_category,waiting_for_service", "additional_choice",
-                 "Additional items choice"),
-                ("waiting_for_service", "waiting_for_location", "service_type", "Service type selection"),
-                ("waiting_for_location", "waiting_for_confirmation", "location", "Location/table selection"),
-                ("waiting_for_confirmation", "completed,waiting_for_language", "confirmation", "Order confirmation"),
+                # Language step - can stay for clarification or move forward
+                ("waiting_for_language", "waiting_for_language,waiting_for_category", "language_preference",
+                 "Language selection"),
+
+                # Category step - can stay for menu display/clarification or move forward
+                ("waiting_for_category", "waiting_for_category,waiting_for_item", "selected_category",
+                 "Category selection"),
+
+                # Item step - can stay for clarification or move forward
+                ("waiting_for_item", "waiting_for_item,waiting_for_quantity", "selected_item", "Item selection"),
+
+                # Quantity step - can stay for clarification or move forward
+                ("waiting_for_quantity", "waiting_for_quantity,waiting_for_additional", "quantity",
+                 "Quantity selection"),
+
+                # Additional items - can go back to categories, stay for clarification, or move to service
+                ("waiting_for_additional", "waiting_for_additional,waiting_for_category,waiting_for_service",
+                 "additional_choice", "Additional items choice"),
+
+                # Service type - can stay for clarification or move forward
+                ("waiting_for_service", "waiting_for_service,waiting_for_location", "service_type",
+                 "Service type selection"),
+
+                # Location - can stay for clarification or move forward
+                ("waiting_for_location", "waiting_for_location,waiting_for_confirmation", "location",
+                 "Location/table selection"),
+
+                # Confirmation - can stay, complete, or restart
+                ("waiting_for_confirmation", "waiting_for_confirmation,completed,waiting_for_language", "confirmation",
+                 "Order confirmation"),
             ]
 
             conn.executemany("""
@@ -667,7 +688,7 @@ RESPOND WITH JSON:
 {{
     "understood_intent": "clear description of what user wants",
     "confidence": "high/medium/low",
-    "action": "language_selection/category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation",
+    "action": "language_selection/category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu/help_request/stay_current_step",
     "extracted_data": {{
         "language": "arabic/english/null",
         "category_id": "number or null",
@@ -684,7 +705,15 @@ RESPOND WITH JSON:
     "response_message": "natural response to user in their preferred language"
 }}
 
+IMPORTANT ACTIONS:
+- Use "show_menu" when user asks for menu, منيو, قائمة
+- Use "help_request" when user needs help or explanation
+- Use "stay_current_step" when providing clarification without step change
+- Always prioritize staying at current step for natural conversation
+- Only move to next step when user clearly selects something
+
 EXAMPLES:
+- "منيو" at category step → show_menu action, stay at waiting_for_category
 - "Cold" → category_selection, category_name: "Cold Beverages"
 - "Iced coffe" → item_selection, item_name: "Iced Coffee"  
 - "١" in item context → item_selection, item_id: first item from context
@@ -724,11 +753,12 @@ EXAMPLES:
             return None
 
     def execute_ai_action(self, phone_number: str, ai_result: Dict, session: Dict, customer_name: str) -> Dict:
-        """Execute the action determined by AI"""
+        """Execute the action determined by AI with flexible workflow support"""
         action = ai_result.get('action')
         extracted_data = ai_result.get('extracted_data', {})
         response_message = ai_result.get('response_message', '')
         clarification_needed = ai_result.get('clarification_needed', False)
+        current_step = session.get('current_step') if session else 'waiting_for_language'
 
         # If AI needs clarification, return clarification question
         if clarification_needed:
@@ -736,11 +766,16 @@ EXAMPLES:
             return self.create_response(clarification_question)
 
         try:
+            # Handle staying at current step for clarification/help
+            if action == 'stay_current_step':
+                return self.create_response(response_message)
+
+            # Handle specific actions based on AI understanding
             if action == 'language_selection':
                 return self.execute_language_selection(phone_number, extracted_data, customer_name, response_message)
 
             elif action == 'category_selection':
-                return self.execute_category_selection(phone_number, extracted_data, response_message)
+                return self.execute_category_selection(phone_number, extracted_data, response_message, session)
 
             elif action == 'item_selection':
                 return self.execute_item_selection(phone_number, extracted_data, response_message, session)
@@ -752,16 +787,22 @@ EXAMPLES:
                 return self.execute_yes_no_action(phone_number, extracted_data, response_message, session)
 
             elif action == 'service_selection':
-                return self.execute_service_selection(phone_number, extracted_data, response_message)
+                return self.execute_service_selection(phone_number, extracted_data, response_message, session)
 
             elif action == 'location_input':
-                return self.execute_location_input(phone_number, extracted_data, response_message)
+                return self.execute_location_input(phone_number, extracted_data, response_message, session)
 
             elif action == 'confirmation':
-                return self.execute_confirmation(phone_number, extracted_data, response_message)
+                return self.execute_confirmation(phone_number, extracted_data, response_message, session)
+
+            elif action == 'show_menu':
+                return self.execute_show_menu(phone_number, current_step, response_message, session)
+
+            elif action == 'help_request':
+                return self.execute_help_request(phone_number, current_step, response_message, session)
 
             else:
-                # AI provided a natural response without specific action
+                # AI provided a natural response without specific action - allow staying at current step
                 return self.create_response(response_message)
 
         except Exception as e:
@@ -804,9 +845,9 @@ EXAMPLES:
             f"Would you prefer Arabic or English?"
         )
 
-    def execute_category_selection(self, phone_number: str, extracted_data: Dict, response_message: str) -> Dict:
+    def execute_category_selection(self, phone_number: str, extracted_data: Dict, response_message: str,
+                                   session: Dict) -> Dict:
         """Execute category selection with AI understanding"""
-        session = self.db.get_user_session(phone_number)
         language = session['language_preference'] if session else 'arabic'
 
         # Get category by ID or name
@@ -1029,18 +1070,18 @@ EXAMPLES:
                     conn.commit()
 
                 if language == 'arabic':
-                    response_message = "ماشي، ألغيت الطلب \nإذا بدك تطلب شي تاني، بس اكتبلي! "
+                    response_message = "ماشي، ألغيت الطلب ❌\nإذا بدك تطلب شي تاني، بس اكتبلي! 😊"
                 else:
-                    response_message = "Okay, cancelled the order \nIf you want to order something else, just message me! 😊"
+                    response_message = "Okay, cancelled the order ❌\nIf you want to order something else, just message me! 😊"
 
                 return self.create_response(response_message)
 
         # Default response if unclear
         return self.create_response(response_message or "هل تقصد نعم أو لا؟\nDo you mean yes or no?")
 
-    def execute_service_selection(self, phone_number: str, extracted_data: Dict, response_message: str) -> Dict:
+    def execute_service_selection(self, phone_number: str, extracted_data: Dict, response_message: str,
+                                  session: Dict) -> Dict:
         """Execute service type selection with AI understanding"""
-        session = self.db.get_user_session(phone_number)
         language = session['language_preference'] if session else 'arabic'
         service_type = extracted_data.get('service_type')
 
@@ -1052,28 +1093,28 @@ EXAMPLES:
             if not response_message:
                 if service_type == 'dine-in':
                     if language == 'arabic':
-                        response_message = "حلو! رقم الطاولة كم؟ (1-7) "
+                        response_message = "حلو! رقم الطاولة كم؟ (1-7) 🪑"
                     else:
-                        response_message = "Great! What's your table number? (1-7) "
+                        response_message = "Great! What's your table number? (1-7) 🪑"
                 else:  # delivery
                     if language == 'arabic':
-                        response_message = "ممتاز! وين عنوانك للتوصيل؟ "
+                        response_message = "ممتاز! وين عنوانك للتوصيل؟ 📍"
                     else:
-                        response_message = "Perfect! What's your address for delivery? "
+                        response_message = "Perfect! What's your address for delivery? 📍"
 
             return self.create_response(response_message)
 
         # Service type not clear
         if language == 'arabic':
-            response_message = "هنا في الكافيه ولا توصيل للبيت؟ "
+            response_message = "هنا في الكافيه ولا توصيل للبيت؟ 🤔"
         else:
-            response_message = "Dine-in at the cafe or delivery to your place? "
+            response_message = "Dine-in at the cafe or delivery to your place? 🤔"
 
         return self.create_response(response_message)
 
-    def execute_location_input(self, phone_number: str, extracted_data: Dict, response_message: str) -> Dict:
+    def execute_location_input(self, phone_number: str, extracted_data: Dict, response_message: str,
+                               session: Dict) -> Dict:
         """Execute location input with AI understanding"""
-        session = self.db.get_user_session(phone_number)
         language = session['language_preference'] if session else 'arabic'
         location = extracted_data.get('location')
 
@@ -1089,38 +1130,111 @@ EXAMPLES:
 
                 if not response_message:
                     if language == 'arabic':
-                        response_message = f"تمام! هاي طلبك:\n\n **طلبك:**\n"
+                        response_message = f"تمام! هاي طلبك:\n\n📋 **طلبك:**\n"
                         for item in order['items']:
                             unit_ar = "أكواب" if item['unit'] == 'cups' else (
                                 "شرائح" if item['unit'] == 'slices' else "قطع")
                             response_message += f"• {item['item_name_ar']} x{item['quantity']} {unit_ar} - {item['subtotal']} دينار\n"
 
-                        response_message += f"\n **المجموع:** {order['total']} دينار\n"
-                        response_message += f" **مكان:** {location}\n\n"
-                        response_message += "تأكد الطلب؟ "
+                        response_message += f"\n💰 **المجموع:** {order['total']} دينار\n"
+                        response_message += f"📍 **مكان:** {location}\n\n"
+                        response_message += "تأكد الطلب؟ ✅"
                     else:
-                        response_message = f"Perfect! Here's your order:\n\n **Your Order:**\n"
+                        response_message = f"Perfect! Here's your order:\n\n📋 **Your Order:**\n"
                         for item in order['items']:
                             response_message += f"• {item['item_name_en']} x{item['quantity']} {item['unit']} - {item['subtotal']} IQD\n"
 
-                        response_message += f"\n **Total:** {order['total']} IQD\n"
-                        response_message += f" **Location:** {location}\n\n"
-                        response_message += "Confirm this order? "
+                        response_message += f"\n💰 **Total:** {order['total']} IQD\n"
+                        response_message += f"📍 **Location:** {location}\n\n"
+                        response_message += "Confirm this order? ✅"
 
                 return self.create_response(response_message)
 
         # Location not clear
         if language == 'arabic':
-            response_message = "وين بالضبط؟ "
+            response_message = "وين بالضبط؟ 📍"
         else:
-            response_message = "Where exactly? "
+            response_message = "Where exactly? 📍"
 
         return self.create_response(response_message)
 
-    def execute_confirmation(self, phone_number: str, extracted_data: Dict, response_message: str) -> Dict:
+    def execute_confirmation(self, phone_number: str, extracted_data: Dict, response_message: str,
+                             session: Dict) -> Dict:
         """Execute order confirmation"""
         # This is handled by yes_no_action, so just return the AI response
         return self.create_response(response_message or "تأكد الطلب؟\nConfirm the order?")
+
+    def execute_show_menu(self, phone_number: str, current_step: str, response_message: str, session: Dict) -> Dict:
+        """Show menu based on current step"""
+        language = session['language_preference'] if session else 'arabic'
+
+        if current_step == 'waiting_for_category':
+            # Stay at category step, show categories
+            if self.db.validate_step_transition(phone_number, 'waiting_for_category'):
+                categories = self.db.get_available_categories()
+
+                if language == 'arabic':
+                    response_message = "هاي قائمتنا! 📋\n\n"
+                    for cat in categories:
+                        response_message += f"🔸 {cat['category_name_ar']}\n"
+                    response_message += "\nشو تحب تجرب؟ 😊"
+                else:
+                    response_message = "Here's our menu! 📋\n\n"
+                    for cat in categories:
+                        response_message += f"🔸 {cat['category_name_en']}\n"
+                    response_message += "\nWhat would you like to try? 😊"
+
+                return self.create_response(response_message)
+
+        elif current_step == 'waiting_for_item' and session and session.get('selected_category'):
+            # Stay at item step, show items for current category
+            if self.db.validate_step_transition(phone_number, 'waiting_for_item'):
+                items = self.db.get_category_items(session['selected_category'])
+                categories = self.db.get_available_categories()
+                current_category = next(
+                    (cat for cat in categories if cat['category_id'] == session['selected_category']), None)
+
+                if current_category:
+                    if language == 'arabic':
+                        response_message = f"إليك قائمة {current_category['category_name_ar']}:\n\n"
+                        for i, item in enumerate(items, 1):
+                            response_message += f"{i}. {item['item_name_ar']} - {item['price']} دينار\n"
+                        response_message += "\nاختر اللي تحبه! 😊"
+                    else:
+                        response_message = f"Here's our {current_category['category_name_en']} menu:\n\n"
+                        for i, item in enumerate(items, 1):
+                            response_message += f"{i}. {item['item_name_en']} - {item['price']} IQD\n"
+                        response_message += "\nChoose what you like! 😊"
+
+                return self.create_response(response_message)
+
+        # Default menu response
+        return self.create_response(
+            response_message or "قائمتنا جاهزة! إيش تحب تشوف؟\nOur menu is ready! What would you like to see?")
+
+    def execute_help_request(self, phone_number: str, current_step: str, response_message: str, session: Dict) -> Dict:
+        """Handle help requests based on current step"""
+        language = session['language_preference'] if session else 'arabic'
+
+        if current_step == 'waiting_for_category':
+            if language == 'arabic':
+                response_message = "أكيد بساعدك! 😊\nعندنا أربع أنواع رئيسية:\n🔸 مشروبات حارة (قهوة، شاي)\n🔸 مشروبات باردة (آيس كوفي)\n🔸 توست (فطار)\n🔸 كيك (حلويات)\n\nشو يهمك؟"
+            else:
+                response_message = "Happy to help! 😊\nWe have four main types:\n🔸 Hot drinks (coffee, tea)\n🔸 Cold drinks (iced coffee)\n🔸 Toast (breakfast)\n🔸 Cake (desserts)\n\nWhat interests you?"
+
+        elif current_step == 'waiting_for_item':
+            if language == 'arabic':
+                response_message = "اختر رقم أو اسم اللي تحبه من القائمة فوق! 👆\nأو قل 'رجوع' إذا تريد تغير الفئة 😊"
+            else:
+                response_message = "Choose a number or name from the menu above! 👆\nOr say 'back' if you want to change category 😊"
+
+        else:
+            if language == 'arabic':
+                response_message = "أنا هنا أساعدك! قلي شو تحتاج 😊"
+            else:
+                response_message = "I'm here to help! Tell me what you need 😊"
+
+        return self.create_response(response_message)
 
     def fallback_processing(self, phone_number: str, current_step: str, user_message: str, customer_name: str) -> Dict:
         """Fallback processing when AI is unavailable"""
@@ -1173,15 +1287,15 @@ EXAMPLES:
             response = requests.post(url, headers=headers, json=payload)
 
             if response.status_code == 200:
-                logger.info(f" Message sent successfully")
+                logger.info(f"✅ Message sent successfully")
                 return True
             else:
-                logger.error(f" Failed to send message: {response.status_code}")
+                logger.error(f"❌ Failed to send message: {response.status_code}")
                 logger.error(f"Response: {response.text}")
                 return False
 
         except Exception as e:
-            logger.error(f" Error sending WhatsApp message: {str(e)}")
+            logger.error(f"❌ Error sending WhatsApp message: {str(e)}")
             return False
 
 
