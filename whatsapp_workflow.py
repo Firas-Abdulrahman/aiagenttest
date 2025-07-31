@@ -144,9 +144,9 @@ class CafeDatabaseManager:
             if cursor.fetchone()[0] > 0:
                 return  # Data already exists
 
-            # Insert menu items
+            # Insert ALL 13 CATEGORIES with proper menu items
             menu_data = [
-                # Hot Beverages
+                # 1. Hot Beverages
                 (1, "المشروبات الحارة", "Hot Beverages", "اسبريسو", "Espresso", 3000, "cups"),
                 (1, "المشروبات الحارة", "Hot Beverages", "قهوة تركية", "Turkish Coffee", 3000, "cups"),
                 (1, "المشروبات الحارة", "Hot Beverages", "شاي عراقي", "Iraqi Tea", 1000, "cups"),
@@ -156,21 +156,59 @@ class CafeDatabaseManager:
                 (1, "المشروبات الحارة", "Hot Beverages", "لاتيه فانيلا", "Vanilla Latte", 5000, "cups"),
                 (1, "المشروبات الحارة", "Hot Beverages", "امريكانو", "Americano", 4000, "cups"),
 
-                # Cold Beverages
+                # 2. Cold Beverages
                 (2, "المشروبات الباردة", "Cold Beverages", "ايس كوفي", "Iced Coffee", 3000, "cups"),
                 (2, "المشروبات الباردة", "Cold Beverages", "ايس لاتيه", "Iced Latte", 4000, "cups"),
                 (2, "المشروبات الباردة", "Cold Beverages", "كراميل ايس لاتيه", "Caramel Iced Latte", 5000, "cups"),
                 (2, "المشروبات الباردة", "Cold Beverages", "ايس امريكانو", "Iced Americano", 4000, "cups"),
 
-                # Toast
+                # 3. Sweets
+                (3, "الحلويات", "Sweets", "كيك شوكولاتة", "Chocolate Cake", 4000, "slices"),
+                (3, "الحلويات", "Sweets", "كيك فانيلا", "Vanilla Cake", 4000, "slices"),
+                (3, "الحلويات", "Sweets", "تيراميسو", "Tiramisu", 5000, "slices"),
+
+                # 4. Iced Tea
+                (4, "الشاي المثلج", "Iced Tea", "شاي مثلج بالليمون", "Iced Lemon Tea", 2500, "cups"),
+                (4, "الشاي المثلج", "Iced Tea", "شاي مثلج بالخوخ", "Iced Peach Tea", 2500, "cups"),
+
+                # 5. Frappuccino
+                (5, "فرابتشينو", "Frappuccino", "فرابتشينو كراميل", "Caramel Frappuccino", 6000, "cups"),
+                (5, "فرابتشينو", "Frappuccino", "فرابتشينو موكا", "Mocha Frappuccino", 6000, "cups"),
+
+                # 6. Natural Juices
+                (6, "العصائر الطبيعية", "Natural Juices", "عصير برتقال", "Orange Juice", 3000, "cups"),
+                (6, "العصائر الطبيعية", "Natural Juices", "عصير تفاح", "Apple Juice", 3000, "cups"),
+                (6, "العصائر الطبيعية", "Natural Juices", "عصير مانجو", "Mango Juice", 3500, "cups"),
+
+                # 7. Mojito
+                (7, "موهيتو", "Mojito", "موهيتو كلاسيكي", "Classic Mojito", 4000, "cups"),
+                (7, "موهيتو", "Mojito", "موهيتو فراولة", "Strawberry Mojito", 4500, "cups"),
+
+                # 8. Milkshake
+                (8, "ميلك شيك", "Milkshake", "ميلك شيك فانيلا", "Vanilla Milkshake", 4000, "cups"),
+                (8, "ميلك شيك", "Milkshake", "ميلك شيك شوكولاتة", "Chocolate Milkshake", 4000, "cups"),
+
+                # 9. Toast
                 (9, "توست", "Toast", "مارتديلا لحم بالجبن", "Beef Mortadella with Cheese", 2000, "pieces"),
                 (9, "توست", "Toast", "مارتديلا دجاج بالجبن", "Chicken Mortadella with Cheese", 2000, "pieces"),
                 (9, "توست", "Toast", "جبن بالزعتر", "Cheese with Zaatar", 2000, "pieces"),
 
-                # Cake Slices
+                # 10. Sandwiches
+                (10, "سندويشات", "Sandwiches", "سندويش دجاج", "Chicken Sandwich", 3000, "pieces"),
+                (10, "سندويشات", "Sandwiches", "سندويش تونا", "Tuna Sandwich", 2500, "pieces"),
+
+                # 11. Cake Slices
                 (11, "قطع الكيك", "Cake Slices", "فانيلا كيك", "Vanilla Cake", 4000, "slices"),
                 (11, "قطع الكيك", "Cake Slices", "لوتس كيك", "Lotus Cake", 4000, "slices"),
                 (11, "قطع الكيك", "Cake Slices", "شوكليت كيك", "Chocolate Cake", 4000, "slices"),
+
+                # 12. Croissants
+                (12, "كرواسان", "Croissants", "كرواسان زبدة", "Butter Croissant", 2000, "pieces"),
+                (12, "كرواسان", "Croissants", "كرواسان شوكولاتة", "Chocolate Croissant", 2500, "pieces"),
+
+                # 13. Savory Pies
+                (13, "فطائر مالحة", "Savory Pies", "فطيرة سبانخ", "Spinach Pie", 2000, "pieces"),
+                (13, "فطائر مالحة", "Savory Pies", "فطيرة جبن", "Cheese Pie", 2000, "pieces"),
             ]
 
             conn.executemany("""
@@ -681,9 +719,10 @@ TASK:
 Understand what the user wants and determine the appropriate action. Consider:
 1. Typos and misspellings
 2. Different ways to express the same thing
-3. Numbers in different formats (1, ١, "first", "واحد")
-4. Casual language and slang
-5. Context from current menu/options
+3. Numbers in ANY format (1, ١, "first", "واحد", 6, ٦, "six", "ستة")
+4. Convert Arabic numerals automatically: ١=1, ٢=2, ٣=3, ٤=4, ٥=5, ٦=6, ٧=7, ٨=8, ٩=9
+5. Casual language and slang ("هاهية" = "هاهي" = "here it is", "كلا" = "no", "متابعة" = "continue")
+6. Context from current menu/options - if user says "6" or "٦", find the 6th category/item
 
 RESPOND WITH JSON:
 {{
@@ -712,14 +751,18 @@ IMPORTANT ACTIONS:
 - Use "stay_current_step" when providing clarification without step change
 - Always prioritize staying at current step for natural conversation
 - Only move to next step when user clearly selects something
+- CONVERT Arabic numerals: ٦ = 6, ١ = 1, etc.
 
 EXAMPLES:
 - "منيو" at category step → show_menu action, stay at waiting_for_category
 - "Cold" → category_selection, category_name: "Cold Beverages"
+- "٦" or "6" at category step → category_selection, category_id: 6
+- "العصائر الطبيعية" → category_selection, category_name: "Natural Juices"
 - "Iced coffe" → item_selection, item_name: "Iced Coffee"  
-- "١" in item context → item_selection, item_id: first item from context
-- "first one" → item_selection, item_id: first item from context
-- "Dine in" → service_selection, service_type: "dine-in"
+- "١" or "1" in item context → item_selection, item_id: 1 (first item from context)
+- "first one" → item_selection, item_id: 1 (first item from context)
+- "في المقهى" → service_selection, service_type: "dine-in"
+- "هاهية متابعة" or "كلا" → yes_no, yes_no: "no"
 """
 
             response = self.openai_client.chat.completions.create(
@@ -1104,22 +1147,27 @@ EXAMPLES:
 
         elif current_step == 'waiting_for_confirmation':
             if yes_no == 'yes':
-                # Complete order with proper final confirmation
+                # Complete order with proper final confirmation including ORDER ID and PAYMENT
                 order_id = self.db.complete_order(phone_number)
                 if order_id:
+                    # Get order details before deletion
                     order = self.db.get_user_order(phone_number)
+                    total_amount = 0
+                    for item in order.get('items', []):
+                        total_amount += item.get('subtotal', 0)
+
                     if language == 'arabic':
                         response_message = f"شكراً لك! تم وضع طلبك بنجاح. سنقوم بإشعارك بمجرد أن يصبح جاهزاً.\n\n"
                         response_message += f"تفاصيل الطلب:\n"
                         response_message += f"رقم الطلب: {order_id}\n"
-                        response_message += f"السعر الإجمالي: {order.get('total', 0)} دينار\n"
-                        response_message += f"مجموعك هو {order.get('total', 0)} دينار. الرجاء دفع هذا المبلغ للكاشير عند المنضدة."
+                        response_message += f"السعر الإجمالي: {total_amount} دينار\n\n"
+                        response_message += f"مجموعك هو {total_amount} دينار. الرجاء دفع هذا المبلغ للكاشير عند المنضدة."
                     else:
                         response_message = f"Thank you! Your order has been placed successfully. We'll notify you once it's ready.\n\n"
                         response_message += f"Order Details:\n"
                         response_message += f"Order ID: {order_id}\n"
-                        response_message += f"Total Price: {order.get('total', 0)} IQD\n"
-                        response_message += f"Your total is {order.get('total', 0)} IQD. Please pay this amount to the cashier at the counter."
+                        response_message += f"Total Price: {total_amount} IQD\n\n"
+                        response_message += f"Your total is {total_amount} IQD. Please pay this amount to the cashier at the counter."
 
                     return self.create_response(response_message)
 
@@ -1152,25 +1200,25 @@ EXAMPLES:
             self.db.update_order_details(phone_number, service_type=service_type)
             self.db.create_or_update_session(phone_number, 'waiting_for_location', language)
 
-            if not response_message:
-                if service_type == 'dine-in':
-                    if language == 'arabic':
-                        response_message = "رقم الطاولة (1-7):"
-                    else:
-                        response_message = "Table number (1-7):"
-                else:  # delivery
-                    if language == 'arabic':
-                        response_message = "عنوان التوصيل:"
-                    else:
-                        response_message = "Delivery address:"
+            # ALWAYS ask for location details after service selection
+            if service_type == 'dine-in':
+                if language == 'arabic':
+                    response_message = "الرجاء تحديد رقم الطاولة (1-7):"
+                else:
+                    response_message = "Please provide your table number (1-7):"
+            else:  # delivery
+                if language == 'arabic':
+                    response_message = "الرجاء مشاركة موقعك عبر واتساب، وأخبرنا إذا كان لديك تعليمات توصيل خاصة:"
+                else:
+                    response_message = "Please share your location via WhatsApp, and let us know if you have special delivery instructions:"
 
             return self.create_response(response_message)
 
         # Service type not clear
         if language == 'arabic':
-            response_message = "اختر نوع الخدمة:\n\n1. تناول في المقهى\n2. توصيل"
+            response_message = "هل تريد طلبك للتناول في المقهى أم للتوصيل؟\n\n1. تناول في المقهى\n2. توصيل"
         else:
-            response_message = "Choose service type:\n\n1. Dine-in at cafe\n2. Delivery"
+            response_message = "Do you want your order for dine-in or delivery?\n\n1. Dine-in\n2. Delivery"
 
         return self.create_response(response_message)
 
