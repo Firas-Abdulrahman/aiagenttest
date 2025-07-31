@@ -4,8 +4,8 @@ import datetime
 import logging
 import re
 import os
-from typing import Dict, Any, List, Optional, Tuple
 import requests
+from typing import Dict, Any, List, Optional, Tuple
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -236,21 +236,32 @@ class CafeDatabaseManager:
     def validate_step_transition(self, phone_number: str, next_step: str) -> bool:
         """Validate if user can move to next step"""
         session = self.get_user_session(phone_number)
-        if not session:
-            return next_step == "waiting_for_language"
+        current_step = session['current_step'] if session else 'waiting_for_language'
+
+        logger.info(f"🔄 Validating transition: {current_step} → {next_step}")
+
+        if not session and next_step == "waiting_for_language":
+            logger.info("✅ New user, allowing language selection")
+            return True
 
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("""
                 SELECT allowed_next_steps FROM step_rules 
                 WHERE current_step = ?
-            """, (session['current_step'],))
+            """, (current_step,))
 
             row = cursor.fetchone()
             if not row:
+                logger.warning(f"⚠️ No rules found for step: {current_step}")
                 return False
 
             allowed_steps = row[0].split(',')
-            return next_step in allowed_steps
+            is_allowed = next_step in allowed_steps
+
+            logger.info(
+                f"📋 Current: {current_step}, Allowed: {allowed_steps}, Requesting: {next_step}, Valid: {is_allowed}")
+
+            return is_allowed
 
     def get_available_categories(self) -> List[Dict]:
         """Get all available menu categories"""
@@ -505,28 +516,40 @@ class SmartAIWorkflow:
 
     def handle_language_selection(self, phone_number: str, user_message: str, customer_name: str) -> Dict:
         """Step 1: Language Selection - AI interprets, DB controls"""
+        logger.info(f"🔍 Processing language selection: '{user_message}'")
+
         # Use AI to understand language preference
         language = self.ai_detect_language_preference(user_message)
+        logger.info(f"🎯 Detected language: {language}")
 
         if language:
             # Database allows transition to next step
             if self.db.validate_step_transition(phone_number, 'waiting_for_category'):
-                self.db.create_or_update_session(phone_number, 'waiting_for_category', language, customer_name)
+                success = self.db.create_or_update_session(phone_number, 'waiting_for_category', language,
+                                                           customer_name)
+                logger.info(f"📊 Database update success: {success}")
 
-                if language == 'arabic':
-                    response = self.ai_generate_response(
-                        f"المستخدم اختار العربية. اعرض عليه الفئات المتاحة بطريقة طبيعية وودودة.",
-                        context={'step': 'category_selection', 'language': 'arabic'}
-                    )
+                if success:
+                    categories = self.db.get_available_categories()
+                    logger.info(f"📋 Retrieved {len(categories)} categories")
+
+                    if language == 'arabic':
+                        response_text = f"أهلاً {customer_name}! 😊\n\nاختر فئة من قائمتنا:\n"
+                        for cat in categories:
+                            response_text += f"🔸 {cat['category_name_ar']}\n"
+                        response_text += "\nيمكنك كتابة اسم الفئة أو رقمها 👆"
+                    else:
+                        response_text = f"Welcome {customer_name}! 😊\n\nSelect a category from our menu:\n"
+                        for cat in categories:
+                            response_text += f"🔸 {cat['category_name_en']}\n"
+                        response_text += "\nYou can type the category name or number 👆"
+
+                    return self.create_response(response_text)
                 else:
-                    response = self.ai_generate_response(
-                        f"User chose English. Show available categories in a natural, friendly way.",
-                        context={'step': 'category_selection', 'language': 'english'}
-                    )
+                    logger.error("❌ Failed to update database session")
 
-                return self.create_response(response)
-
-        # If language not detected, ask again
+        # If language not detected or database update failed, ask again
+        logger.warning(f"⚠️ Language detection failed for: '{user_message}'")
         return self.create_response(
             f"أهلاً {customer_name}! مرحباً بك في مقهى هيف ☕\n\n"
             f"أي لغة تفضل؟\n1️⃣ العربية\n2️⃣ English\n\n"
@@ -582,31 +605,59 @@ class SmartAIWorkflow:
 
     def ai_detect_language_preference(self, message: str) -> Optional[str]:
         """AI detects language preference from user message"""
-        if not self.openai_client:
-            # Fallback detection
-            if any(word in message.lower() for word in ['عربي', 'arabic', '1', 'العربية']):
+        message_lower = message.lower().strip()
+
+        # Enhanced pattern matching for Arabic
+        arabic_patterns = [
+            'عربي', 'العربية', 'عربية', 'arabic', '1',
+            'مرحبا', 'السلام', 'اهلا', 'أهلا'
+        ]
+
+        english_patterns = [
+            'english', 'انكليزي', 'إنكليزي', '2',
+            'hello', 'hi', 'hey'
+        ]
+
+        # Check for Arabic patterns
+        for pattern in arabic_patterns:
+            if pattern in message_lower:
+                logger.info(f"✅ Detected Arabic from pattern: {pattern}")
                 return 'arabic'
-            elif any(word in message.lower() for word in ['english', '2', 'انكليزي']):
+
+        # Check for English patterns
+        for pattern in english_patterns:
+            if pattern in message_lower:
+                logger.info(f"✅ Detected English from pattern: {pattern}")
                 return 'english'
-            return None
 
-        try:
-            response = self.openai_client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system",
-                     "content": "Detect if user wants Arabic or English. Reply only: 'arabic', 'english', or 'unknown'"},
-                    {"role": "user", "content": message}
-                ],
-                max_tokens=10
-            )
+        # If OpenAI is available, use it as backup
+        if self.openai_client:
+            try:
+                response = self.openai_client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system",
+                         "content": "User wants to select Arabic or English language. If message contains Arabic words or suggests Arabic preference, reply 'arabic'. If English preference, reply 'english'. Otherwise reply 'unknown'."},
+                        {"role": "user", "content": message}
+                    ],
+                    max_tokens=10
+                )
 
-            result = response.choices[0].message.content.strip().lower()
-            return result if result in ['arabic', 'english'] else None
+                result = response.choices[0].message.content.strip().lower()
+                if result in ['arabic', 'english']:
+                    logger.info(f"✅ AI detected language: {result}")
+                    return result
 
-        except Exception as e:
-            logger.error(f"❌ AI language detection error: {e}")
-            return None
+            except Exception as e:
+                logger.error(f"❌ AI language detection error: {e}")
+
+        # Default to Arabic for Arabic greetings
+        if any(char in message for char in 'ابتثجحخدذرزسشصضطظعغفقكلمنهوي'):
+            logger.info("✅ Detected Arabic from Arabic characters")
+            return 'arabic'
+
+        logger.warning(f"❌ Could not detect language from: {message}")
+        return None
 
     def ai_identify_category(self, message: str, categories: List[Dict]) -> Optional[Dict]:
         """AI identifies which category user selected"""
