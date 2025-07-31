@@ -220,7 +220,7 @@ class CafeDatabaseManager:
             """, step_rules)
 
             conn.commit()
-            logger.info("✅ Initial data populated")
+            logger.info(" Initial data populated")
 
     def get_user_session(self, phone_number: str) -> Optional[Dict]:
         """Get current user session state"""
