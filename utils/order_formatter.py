@@ -93,14 +93,12 @@ class OrderFormatter:
             message += f" رقم الطلب: {order_id}\n"
             message += f" المبلغ الإجمالي: {total_amount} دينار\n\n"
             message += f" سنقوم بإشعارك عندما يصبح طلبك جاهزاً\n"
-            message += f"💳 الرجاء دفع المبلغ للكاشير عند المنضدة\n\n"
             message += f"شكراً لك لاختيار مقهى هيف! ☕"
         else:
             message = f"🎉 Your order has been confirmed successfully!\n\n"
             message += f" Order ID: {order_id}\n"
             message += f" Total Amount: {total_amount} IQD\n\n"
             message += f" We'll notify you when your order is ready\n"
-            message += f" Please pay the amount to the cashier at the counter\n\n"
             message += f"Thank you for choosing Hef Cafe! "
 
         return message
