@@ -312,7 +312,7 @@ CONFIRMATION RULES:
                 'error': "عذراً، حدث خطأ. الرجاء إعادة المحاولة",
                 'invalid_input': "الرجاء إدخال اختيار صحيح",
                 'item_added': "تم إضافة المنتج إلى طلبك",
-                'order_cancelled': "تم إلغاء الطلب"
+                'order_cancelled': "تم إلغاء الطلب. شكراً لك {customer_name} لزيارة مقهى هيف.\n\nيمكنك البدء بطلب جديد في أي وقت بإرسال 'مرحبا'"
             }
         else:
             return {
@@ -329,7 +329,7 @@ CONFIRMATION RULES:
                 'error': "Sorry, something went wrong. Please try again",
                 'invalid_input': "Please enter a valid choice",
                 'item_added': "Item added to your order",
-                'order_cancelled': "Order cancelled"
+                'order_cancelled': "Order cancelled. Thank you {customer_name} for visiting Hef Cafe.\n\nYou can start a new order anytime by sending 'hello'"
             }
 
     @staticmethod

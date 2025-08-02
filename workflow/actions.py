@@ -281,10 +281,20 @@ class ActionExecutor:
                     return self._create_response(response_message)
 
             elif yes_no == 'no':
+                # Get customer name before deleting session
+                customer_name = session.get('customer_name', 'Customer')
+                
                 # Cancel order and restart
                 self.db.delete_session(phone_number)
-                templates = AIPrompts.get_response_templates(language)
-                response_message = templates['order_cancelled']
+                
+                # Create personalized cancellation message
+                if language == 'arabic':
+                    response_message = f"تم إلغاء الطلب. شكراً لك {customer_name} لزيارة مقهى هيف.\n\n"
+                    response_message += "يمكنك البدء بطلب جديد في أي وقت بإرسال 'مرحبا'"
+                else:
+                    response_message = f"Order cancelled. Thank you {customer_name} for visiting Hef Cafe.\n\n"
+                    response_message += "You can start a new order anytime by sending 'hello'"
+                
                 return self._create_response(response_message)
 
         # Default response if unclear

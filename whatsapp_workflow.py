@@ -1172,17 +1172,28 @@ EXAMPLES:
                     return self.create_response(response_message)
 
             elif yes_no == 'no':
-                # Cancel order and restart
+                # Get customer name before deleting session
+                customer_name = 'Customer'
                 with sqlite3.connect(self.db.db_path) as conn:
+                    # Get customer name from session
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT customer_name FROM user_sessions WHERE phone_number = ?", (phone_number,))
+                    result = cursor.fetchone()
+                    if result and result[0]:
+                        customer_name = result[0]
+                    
+                    # Delete session data
                     conn.execute("DELETE FROM user_orders WHERE phone_number = ?", (phone_number,))
                     conn.execute("DELETE FROM order_details WHERE phone_number = ?", (phone_number,))
                     conn.execute("DELETE FROM user_sessions WHERE phone_number = ?", (phone_number,))
                     conn.commit()
 
                 if language == 'arabic':
-                    response_message = "تم إلغاء الطلب. يمكنك البدء من جديد بإرسال رسالة"
+                    response_message = f"تم إلغاء الطلب. شكراً لك {customer_name} لزيارة مقهى هيف.\n\n"
+                    response_message += "يمكنك البدء بطلب جديد في أي وقت بإرسال 'مرحبا'"
                 else:
-                    response_message = "Order cancelled. You can start over by sending a message"
+                    response_message = f"Order cancelled. Thank you {customer_name} for visiting Hef Cafe.\n\n"
+                    response_message += "You can start a new order anytime by sending 'hello'"
 
                 return self.create_response(response_message)
 

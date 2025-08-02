@@ -359,19 +359,34 @@ class MessageHandler:
             return self._create_response(response)
 
         elif number == 2 or yes_no == 'no':
-            # Go to service selection
-            self.db.create_or_update_session(phone_number, 'waiting_for_service', language)
+            # Cancel order
+            self.db.delete_session(phone_number)
+            
+            # Get customer name from session before it's deleted
+            customer_name = session.get('customer_name', 'Customer')
 
             if language == 'arabic':
-                response = "ممتاز! الآن دعنا نحدد نوع الخدمة:\n\n"
-                response += "1. تناول في المقهى\n"
-                response += "2. توصيل\n\n"
-                response += "الرجاء اختيار نوع الخدمة"
+                response = f"تم إلغاء الطلب. شكراً لك {customer_name} لزيارة مقهى هيف.\n\n"
+                response += "يمكنك البدء بطلب جديد في أي وقت بإرسال 'مرحبا'"
             else:
-                response = "Great! Now let's determine the service type:\n\n"
-                response += "1. Dine-in\n"
-                response += "2. Delivery\n\n"
-                response += "Please select the service type"
+                response = f"Order cancelled. Thank you {customer_name} for visiting Hef Cafe.\n\n"
+                response += "You can start a new order anytime by sending 'hello'"
+
+            return self._create_response(response)
+
+        # Go to service selection
+        self.db.create_or_update_session(phone_number, 'waiting_for_service', language)
+
+        if language == 'arabic':
+            response = "ممتاز! الآن دعنا نحدد نوع الخدمة:\n\n"
+            response += "1. تناول في المقهى\n"
+            response += "2. توصيل\n\n"
+            response += "الرجاء اختيار نوع الخدمة"
+        else:
+            response = "Great! Now let's determine the service type:\n\n"
+            response += "1. Dine-in\n"
+            response += "2. Delivery\n\n"
+            response += "Please select the service type"
 
             return self._create_response(response)
 
@@ -471,12 +486,15 @@ class MessageHandler:
         elif number == 2 or yes_no == 'no':
             # Cancel order
             self.db.delete_session(phone_number)
+            
+            # Get customer name from session before it's deleted
+            customer_name = session.get('customer_name', 'Customer')
 
             if language == 'arabic':
-                response = "تم إلغاء الطلب. شكراً لك لزيارة مقهى هيف.\n\n"
+                response = f"تم إلغاء الطلب. شكراً لك {customer_name} لزيارة مقهى هيف.\n\n"
                 response += "يمكنك البدء بطلب جديد في أي وقت بإرسال 'مرحبا'"
             else:
-                response = "Order cancelled. Thank you for visiting Hef Cafe.\n\n"
+                response = f"Order cancelled. Thank you {customer_name} for visiting Hef Cafe.\n\n"
                 response += "You can start a new order anytime by sending 'hello'"
 
             return self._create_response(response)
