@@ -36,7 +36,30 @@ class AIProcessor:
 
     def is_available(self) -> bool:
         """Check if AI processing is available"""
-        return self.client is not None
+        if not self.client:
+            return False
+        
+        # Additional check for quota/rate limit issues
+        try:
+            # Simple test call to check if API is working
+            test_response = self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": "test"}],
+                max_tokens=5,
+                temperature=0
+            )
+            return True
+        except Exception as e:
+            error_msg = str(e)
+            if "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower() or "429" in error_msg:
+                logger.warning("⚠️ OpenAI quota exceeded, AI unavailable")
+                return False
+            elif "rate limit" in error_msg.lower():
+                logger.warning("⚠️ OpenAI rate limit hit, AI unavailable")
+                return False
+            else:
+                logger.warning(f"⚠️ OpenAI API error: {error_msg}")
+                return False
 
     def understand_message(self, user_message: str, current_step: str, context: Dict) -> Optional[Dict]:
         """Enhanced message understanding with better context processing"""
@@ -77,8 +100,16 @@ class AIProcessor:
                 return None
 
         except Exception as e:
-            logger.error(f"❌ AI understanding error: {str(e)}")
-            return None
+            error_msg = str(e)
+            if "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower() or "429" in error_msg:
+                logger.warning("⚠️ OpenAI quota exceeded, falling back to enhanced processing")
+                return None
+            elif "rate limit" in error_msg.lower():
+                logger.warning("⚠️ OpenAI rate limit hit, falling back to enhanced processing")
+                return None
+            else:
+                logger.error(f"❌ AI understanding error: {error_msg}")
+                return None
 
     def _preprocess_message(self, message: str) -> str:
         """Preprocess message for better AI understanding"""

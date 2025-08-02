@@ -21,6 +21,10 @@ class WhatsAppConfig:
         self.verify_token = os.getenv('VERIFY_TOKEN', 'my_webhook_verify_token_2024')
         self.openai_api_key = os.getenv('OPENAI_API_KEY')
 
+        # AI configuration
+        self.ai_enabled = bool(self.openai_api_key)
+        self.ai_fallback_enabled = os.getenv('AI_FALLBACK_ENABLED', 'true').lower() == 'true'
+
         # Server configuration
         self.port = int(os.environ.get('PORT', 5000))
         self.debug_mode = os.environ.get('ENVIRONMENT', 'development') == 'development'
@@ -51,6 +55,8 @@ class WhatsAppConfig:
         print(f"WHATSAPP_BUSINESS_ACCOUNT_ID: {'✅ Loaded' if self.waba_id else '❌ Missing'}")
         print(f"VERIFY_TOKEN: {'✅ Loaded' if self.verify_token else '❌ Missing'}")
         print(f"OPENAI_API_KEY: {'✅ Loaded' if self.openai_api_key else 'ℹ️ Missing (Optional)'}")
+        print(f"AI_ENABLED: {'✅ Yes' if self.ai_enabled else '❌ No'}")
+        print(f"AI_FALLBACK_ENABLED: {'✅ Yes' if self.ai_fallback_enabled else '❌ No'}")
 
         if self.whatsapp_token:
             print(f"Token preview: {self.whatsapp_token[:15]}...")

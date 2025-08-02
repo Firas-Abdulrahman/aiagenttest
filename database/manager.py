@@ -131,14 +131,40 @@ class DatabaseManager:
             return False
 
     def delete_session(self, phone_number: str) -> bool:
-        """Delete user session and related data"""
+        """Delete user session and related data with better error handling"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+                # Enable WAL mode for better concurrency
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=30000")
+                
                 conn.execute("DELETE FROM user_orders WHERE phone_number = ?", (phone_number,))
                 conn.execute("DELETE FROM order_details WHERE phone_number = ?", (phone_number,))
                 conn.execute("DELETE FROM user_sessions WHERE phone_number = ?", (phone_number,))
                 conn.commit()
                 return True
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                logger.warning(f"⚠️ Database locked, retrying delete session for {phone_number}")
+                # Retry once after a short delay
+                import time
+                time.sleep(1)
+                try:
+                    with sqlite3.connect(self.db_path, timeout=60.0) as conn:
+                        conn.execute("PRAGMA journal_mode=WAL")
+                        conn.execute("PRAGMA busy_timeout=60000")
+                        
+                        conn.execute("DELETE FROM user_orders WHERE phone_number = ?", (phone_number,))
+                        conn.execute("DELETE FROM order_details WHERE phone_number = ?", (phone_number,))
+                        conn.execute("DELETE FROM user_sessions WHERE phone_number = ?", (phone_number,))
+                        conn.commit()
+                        return True
+                except Exception as retry_error:
+                    logger.error(f"❌ Retry failed for delete session: {retry_error}")
+                    return False
+            else:
+                logger.error(f"❌ Database error deleting session: {e}")
+                return False
         except Exception as e:
             logger.error(f"❌ Error deleting session: {e}")
             return False
@@ -310,12 +336,16 @@ class DatabaseManager:
             return False
 
     def complete_order(self, phone_number: str) -> str:
-        """Complete order and generate order ID"""
+        """Complete order and generate order ID with better error handling"""
         try:
             import random
             order_id = f"HEF{random.randint(1000, 9999)}"
 
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+                # Enable WAL mode for better concurrency
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=30000")
+                
                 # Get order data
                 order = self.get_user_order(phone_number)
 
@@ -338,6 +368,45 @@ class DatabaseManager:
 
                 conn.commit()
                 return order_id
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                logger.warning(f"⚠️ Database locked, retrying complete order for {phone_number}")
+                # Retry once after a short delay
+                import time
+                time.sleep(1)
+                try:
+                    with sqlite3.connect(self.db_path, timeout=60.0) as conn:
+                        conn.execute("PRAGMA journal_mode=WAL")
+                        conn.execute("PRAGMA busy_timeout=60000")
+                        
+                        # Get order data
+                        order = self.get_user_order(phone_number)
+
+                        # Save to completed orders
+                        conn.execute("""
+                            INSERT INTO completed_orders 
+                            (phone_number, order_id, items_json, total_amount, service_type, location)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        """, (
+                            phone_number,
+                            order_id,
+                            json.dumps(order['items']),
+                            order['total'],
+                            order['details'].get('service_type'),
+                            order['details'].get('location')
+                        ))
+
+                        # Clear current order
+                        self.delete_session(phone_number)
+
+                        conn.commit()
+                        return order_id
+                except Exception as retry_error:
+                    logger.error(f"❌ Retry failed for complete order: {retry_error}")
+                    return None
+            else:
+                logger.error(f"❌ Database error completing order: {e}")
+                return None
         except Exception as e:
             logger.error(f"❌ Error completing order: {e}")
             return None

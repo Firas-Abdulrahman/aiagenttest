@@ -70,17 +70,20 @@ class MessageHandler:
         # ENHANCED: Build comprehensive context
         context = self._build_enhanced_context(session, current_step)
 
-        # TRY AI PROCESSING FIRST (if available)
+        # TRY AI PROCESSING FIRST (if available and not quota exceeded)
         if self.ai.is_available():
             logger.info("🤖 Using AI processing")
 
-            ai_result = self.ai.understand_message(text, current_step, context)
+            try:
+                ai_result = self.ai.understand_message(text, current_step, context)
 
-            if ai_result and self._validate_ai_result(ai_result, current_step):
-                logger.info(f"✅ AI understood: {ai_result.get('understood_intent', 'Unknown')}")
-                return self.executor.execute_action(phone_number, ai_result, session, customer_name)
-            else:
-                logger.warning("⚠️ AI result invalid, using enhanced fallback")
+                if ai_result and self._validate_ai_result(ai_result, current_step):
+                    logger.info(f"✅ AI understood: {ai_result.get('understood_intent', 'Unknown')}")
+                    return self.executor.execute_action(phone_number, ai_result, session, customer_name)
+                else:
+                    logger.warning("⚠️ AI result invalid, using enhanced fallback")
+            except Exception as e:
+                logger.warning(f"⚠️ AI processing failed: {str(e)}, using enhanced fallback")
         else:
             logger.info("🔄 AI not available, using enhanced fallback")
 
@@ -154,6 +157,18 @@ class MessageHandler:
 
         # CRITICAL FIX: Always start with language selection if no session exists
         if not session:
+            return self._handle_language_selection_enhanced(phone_number, text, customer_name)
+
+        # CRITICAL FIX: If user says "hello" or similar at any step, restart the conversation
+        text_lower = text.lower().strip()
+        if any(greeting in text_lower for greeting in ['مرحبا', 'هلا', 'hello', 'hi', 'hey']):
+            logger.info("🔄 User said hello, restarting conversation")
+            # Clear session and start fresh
+            try:
+                self.db.delete_session(phone_number)
+            except Exception as e:
+                logger.warning(f"⚠️ Could not delete session: {e}")
+            
             return self._handle_language_selection_enhanced(phone_number, text, customer_name)
 
         # ENHANCED: Handle based on current step with better understanding
@@ -442,51 +457,60 @@ class MessageHandler:
             return self._create_response("Please specify the location clearly")
 
     def _handle_confirmation_enhanced(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
-        """Enhanced confirmation handling"""
+        """Enhanced confirmation handling with better Arabic numeral support"""
 
         number = self._extract_number_enhanced(text)
         yes_no = self._detect_yes_no_enhanced(text, language)
 
         if number == 1 or yes_no == 'yes':
             # Complete order
-            order_id = self.db.complete_order(phone_number)
+            try:
+                order_id = self.db.complete_order(phone_number)
 
-            if order_id:
-                order = self.db.get_user_order(phone_number)
-                total_amount = order.get('total', 0)
+                if order_id:
+                    order = self.db.get_user_order(phone_number)
+                    total_amount = order.get('total', 0)
 
-                if language == 'arabic':
-                    response = f"🎉 تم تأكيد طلبك بنجاح!\n\n"
-                    response += f"📋 رقم الطلب: {order_id}\n"
-                    response += f"💰 المبلغ الإجمالي: {total_amount} دينار\n\n"
-                    response += f"⏰ سنقوم بإشعارك عندما يصبح طلبك جاهزاً\n"
-                    response += f"💳 الرجاء دفع المبلغ للكاشير عند المنضدة\n\n"
-                    response += f"شكراً لك لاختيار مقهى هيف! ☕"
-                else:
-                    response = f"🎉 Your order has been confirmed successfully!\n\n"
-                    response += f"📋 Order ID: {order_id}\n"
-                    response += f"💰 Total Amount: {total_amount} IQD\n\n"
-                    response += f"⏰ We'll notify you when your order is ready\n"
-                    response += f"💳 Please pay the amount to the cashier at the counter\n\n"
-                    response += f"Thank you for choosing Hef Cafe! ☕"
+                    if language == 'arabic':
+                        response = f"🎉 تم تأكيد طلبك بنجاح!\n\n"
+                        response += f"📋 رقم الطلب: {order_id}\n"
+                        response += f"💰 المبلغ الإجمالي: {total_amount} دينار\n\n"
+                        response += f"⏰ سنقوم بإشعارك عندما يصبح طلبك جاهزاً\n"
+                        response += f"💳 الرجاء دفع المبلغ للكاشير عند المنضدة\n\n"
+                        response += f"شكراً لك لاختيار مقهى هيف! ☕"
+                    else:
+                        response = f"🎉 Your order has been confirmed successfully!\n\n"
+                        response += f"📋 Order ID: {order_id}\n"
+                        response += f"💰 Total Amount: {total_amount} IQD\n\n"
+                        response += f"⏰ We'll notify you when your order is ready\n"
+                        response += f"💳 Please pay the amount to the cashier at the counter\n\n"
+                        response += f"Thank you for choosing Hef Cafe! ☕"
 
-                return self._create_response(response)
+                    return self._create_response(response)
+            except Exception as e:
+                logger.error(f"❌ Error completing order: {e}")
+                return self._create_response("عذراً، حدث خطأ في إتمام الطلب. الرجاء المحاولة مرة أخرى")
 
         elif number == 2 or yes_no == 'no':
             # Cancel order
-            self.db.delete_session(phone_number)
-            
-            # Get customer name from session before it's deleted
-            customer_name = session.get('customer_name', 'Customer')
-
-            if language == 'arabic':
-                response = f"تم إلغاء الطلب. شكراً لك {customer_name} لزيارة مقهى هيف.\n\n"
-                response += "يمكنك البدء بطلب جديد في أي وقت بإرسال 'مرحبا'"
-            else:
-                response = f"Order cancelled. Thank you {customer_name} for visiting Hef Cafe.\n\n"
-                response += "You can start a new order anytime by sending 'hello'"
-
-            return self._create_response(response)
+            try:
+                customer_name = session.get('customer_name', 'Customer')
+                
+                # Cancel order and restart
+                self.db.delete_session(phone_number)
+                
+                # Create personalized cancellation message
+                if language == 'arabic':
+                    response = f"تم إلغاء الطلب. شكراً لك {customer_name} لزيارة مقهى هيف.\n\n"
+                    response += "يمكنك البدء بطلب جديد في أي وقت بإرسال 'مرحبا'"
+                else:
+                    response = f"Order cancelled. Thank you {customer_name} for visiting Hef Cafe.\n\n"
+                    response += "You can start a new order anytime by sending 'hello'"
+                
+                return self._create_response(response)
+            except Exception as e:
+                logger.error(f"❌ Error cancelling order: {e}")
+                return self._create_response("عذراً، حدث خطأ في إلغاء الطلب. الرجاء المحاولة مرة أخرى")
 
         # Invalid confirmation
         if language == 'arabic':
