@@ -1,3 +1,5 @@
+# ai/processor.py - ENHANCED with better understanding and integration
+
 import json
 import logging
 from typing import Dict, Optional, Any
@@ -16,7 +18,7 @@ except ImportError:
 
 
 class AIProcessor:
-    """AI Processing and Understanding Engine"""
+    """Enhanced AI Processing and Understanding Engine"""
 
     def __init__(self, api_key: str = None):
         self.api_key = api_key
@@ -25,7 +27,7 @@ class AIProcessor:
         if OPENAI_AVAILABLE and api_key:
             try:
                 self.client = openai.OpenAI(api_key=api_key)
-                logger.info("✅ OpenAI client initialized")
+                logger.info("✅ Enhanced OpenAI client initialized")
             except Exception as e:
                 logger.error(f"⚠️ OpenAI initialization failed: {e}")
                 self.client = None
@@ -37,14 +39,19 @@ class AIProcessor:
         return self.client is not None
 
     def understand_message(self, user_message: str, current_step: str, context: Dict) -> Optional[Dict]:
-        """Process user message and return AI understanding"""
+        """Enhanced message understanding with better context processing"""
         if not self.client:
             logger.warning("AI client not available")
             return None
 
         try:
-            # Build AI prompt with rich context
+            # Pre-process message for better understanding
+            user_message = self._preprocess_message(user_message)
+
+            # Build enhanced prompt with better context
             prompt = AIPrompts.get_understanding_prompt(user_message, current_step, context)
+
+            logger.info(f"🤖 AI analyzing: '{user_message}' at step '{current_step}'")
 
             response = self.client.chat.completions.create(
                 model="gpt-4",
@@ -53,27 +60,48 @@ class AIProcessor:
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=800,
-                temperature=0.3,  # Lower temperature for consistent parsing
+                temperature=0.2,  # Lower temperature for more consistent parsing
             )
 
             ai_response = response.choices[0].message.content.strip()
 
-            # Parse JSON response
-            result = self._parse_ai_response(ai_response)
+            # Parse and validate JSON response
+            result = self._parse_and_validate_ai_response(ai_response, current_step, user_message)
 
             if result:
                 logger.info(f"✅ AI Understanding: {result['understood_intent']} (confidence: {result['confidence']})")
+                logger.info(f"🎯 Action: {result['action']}")
                 return result
             else:
-                logger.error("❌ Failed to parse AI response")
+                logger.error("❌ Failed to parse or validate AI response")
                 return None
 
         except Exception as e:
             logger.error(f"❌ AI understanding error: {str(e)}")
             return None
 
-    def _parse_ai_response(self, ai_response: str) -> Optional[Dict]:
-        """Parse AI JSON response safely"""
+    def _preprocess_message(self, message: str) -> str:
+        """Preprocess message for better AI understanding"""
+        if not message:
+            return ""
+
+        # Convert Arabic numerals to English for consistent processing
+        arabic_to_english = {
+            '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+            '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'
+        }
+
+        processed_message = message
+        for arabic, english in arabic_to_english.items():
+            processed_message = processed_message.replace(arabic, english)
+
+        # Clean whitespace
+        processed_message = ' '.join(processed_message.split())
+
+        return processed_message.strip()
+
+    def _parse_and_validate_ai_response(self, ai_response: str, current_step: str, user_message: str) -> Optional[Dict]:
+        """Parse and validate AI JSON response with enhanced validation"""
         try:
             # Clean the response if it has markdown formatting
             if ai_response.startswith('```json'):
@@ -88,6 +116,13 @@ class AIProcessor:
                     logger.error(f"Missing required field: {field}")
                     return None
 
+            # Enhanced validation based on current step
+            if not self._validate_result_for_step(result, current_step, user_message):
+                return None
+
+            # Post-process extracted data
+            result['extracted_data'] = self._postprocess_extracted_data(result['extracted_data'], current_step)
+
             return result
 
         except json.JSONDecodeError as e:
@@ -95,28 +130,222 @@ class AIProcessor:
             logger.error(f"AI Response was: {ai_response}")
             return None
 
+    def _validate_result_for_step(self, result: Dict, current_step: str, user_message: str) -> bool:
+        """Enhanced validation for AI results based on current step"""
+        action = result.get('action')
+        extracted_data = result.get('extracted_data', {})
+        confidence = result.get('confidence', 'low')
+
+        # Step-specific validation
+        step_validations = {
+            'waiting_for_language': self._validate_language_step,
+            'waiting_for_category': self._validate_category_step,
+            'waiting_for_item': self._validate_item_step,
+            'waiting_for_quantity': self._validate_quantity_step,
+            'waiting_for_additional': self._validate_additional_step,
+            'waiting_for_service': self._validate_service_step,
+            'waiting_for_location': self._validate_location_step,
+            'waiting_for_confirmation': self._validate_confirmation_step
+        }
+
+        validator = step_validations.get(current_step)
+        if validator:
+            return validator(result, extracted_data, user_message)
+
+        return True
+
+    def _validate_language_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+        """Validate language selection step"""
+        action = result.get('action')
+
+        if action != 'language_selection':
+            logger.warning(f"Invalid action for language step: {action}")
+            return False
+
+        language = extracted_data.get('language')
+        if language not in ['arabic', 'english']:
+            logger.warning(f"Invalid language detected: {language}")
+            return False
+
+        return True
+
+    def _validate_quantity_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+        """CRITICAL: Validate quantity step - prevent language selection confusion"""
+        action = result.get('action')
+
+        # For quantity step, ONLY accept quantity_selection action
+        if action != 'quantity_selection':
+            logger.warning(f"❌ Invalid action for quantity step: {action} (should be quantity_selection)")
+            return False
+
+        quantity = extracted_data.get('quantity')
+        if not isinstance(quantity, int) or quantity <= 0 or quantity > 50:
+            logger.warning(f"❌ Invalid quantity: {quantity}")
+            return False
+
+        # CRITICAL: Ensure no language data is present in quantity step
+        if extracted_data.get('language'):
+            logger.warning(f"❌ Language detected in quantity step - rejecting")
+            return False
+
+        logger.info(f"✅ Valid quantity detected: {quantity}")
+        return True
+
+    def _validate_category_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+        """Validate category selection step"""
+        action = result.get('action')
+
+        if action not in ['category_selection', 'show_menu', 'help_request']:
+            logger.warning(f"Invalid action for category step: {action}")
+            return False
+
+        if action == 'category_selection':
+            category_id = extracted_data.get('category_id')
+            category_name = extracted_data.get('category_name')
+
+            if not category_id and not category_name:
+                logger.warning("No category identifier provided")
+                return False
+
+            if category_id and (category_id < 1 or category_id > 13):
+                logger.warning(f"Invalid category ID: {category_id}")
+                return False
+
+        return True
+
+    def _validate_item_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+        """Validate item selection step"""
+        action = result.get('action')
+
+        if action not in ['item_selection', 'category_selection', 'show_menu']:
+            logger.warning(f"Invalid action for item step: {action}")
+            return False
+
+        if action == 'item_selection':
+            item_id = extracted_data.get('item_id')
+            item_name = extracted_data.get('item_name')
+
+            if not item_id and not item_name:
+                logger.warning("No item identifier provided")
+                return False
+
+        return True
+
+    def _validate_additional_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+        """Validate additional items step"""
+        action = result.get('action')
+
+        if action != 'yes_no':
+            logger.warning(f"Invalid action for additional step: {action}")
+            return False
+
+        yes_no = extracted_data.get('yes_no')
+        if yes_no not in ['yes', 'no']:
+            logger.warning(f"Invalid yes/no response: {yes_no}")
+            return False
+
+        return True
+
+    def _validate_service_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+        """Validate service selection step"""
+        action = result.get('action')
+
+        if action != 'service_selection':
+            logger.warning(f"Invalid action for service step: {action}")
+            return False
+
+        service_type = extracted_data.get('service_type')
+        if service_type not in ['dine-in', 'delivery']:
+            logger.warning(f"Invalid service type: {service_type}")
+            return False
+
+        return True
+
+    def _validate_location_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+        """Validate location input step"""
+        action = result.get('action')
+
+        if action != 'location_input':
+            logger.warning(f"Invalid action for location step: {action}")
+            return False
+
+        location = extracted_data.get('location')
+        if not location or len(location.strip()) < 1:
+            logger.warning("No valid location provided")
+            return False
+
+        return True
+
+    def _validate_confirmation_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+        """Validate confirmation step"""
+        action = result.get('action')
+
+        if action not in ['yes_no', 'confirmation']:
+            logger.warning(f"Invalid action for confirmation step: {action}")
+            return False
+
+        if action == 'yes_no':
+            yes_no = extracted_data.get('yes_no')
+            if yes_no not in ['yes', 'no']:
+                logger.warning(f"Invalid yes/no response: {yes_no}")
+                return False
+
+        return True
+
+    def _postprocess_extracted_data(self, extracted_data: Dict, current_step: str) -> Dict:
+        """Post-process extracted data for consistency"""
+        # Clean up extracted data
+        cleaned_data = {}
+
+        for key, value in extracted_data.items():
+            if value is not None and value != "null":
+                if key in ['category_id', 'item_id', 'quantity'] and isinstance(value, str):
+                    try:
+                        cleaned_data[key] = int(value)
+                    except ValueError:
+                        cleaned_data[key] = value
+                else:
+                    cleaned_data[key] = value
+
+        # Step-specific cleaning
+        if current_step == 'waiting_for_quantity':
+            # Ensure only quantity-related data is present
+            quantity = cleaned_data.get('quantity')
+            if quantity:
+                cleaned_data = {'quantity': quantity}
+
+        return cleaned_data
+
     def extract_language_preference(self, user_message: str) -> Optional[str]:
         """Extract language preference from user message"""
         message_lower = user_message.lower().strip()
 
-        # Arabic language indicators
+        # Convert Arabic numerals first
+        message_lower = self._preprocess_message(message_lower)
+
+        # Arabic language indicators (strong)
         arabic_indicators = [
             'عربي', 'العربية', 'مرحبا', 'أهلا', 'اريد', 'بدي',
-            'شو', 'ايش', 'كيف', 'وين', '1', '١'
+            'شو', 'ايش', 'كيف', 'وين'
         ]
 
-        # English language indicators
+        # English language indicators (strong)
         english_indicators = [
             'english', 'hello', 'hi', 'hey', 'want', 'need',
-            'order', 'menu', 'what', 'how', '2', '٢'
+            'order', 'menu', 'what', 'how'
         ]
 
-        # Check for Arabic
+        # Check for strong indicators first
         if any(indicator in message_lower for indicator in arabic_indicators):
             return 'arabic'
 
-        # Check for English
         if any(indicator in message_lower for indicator in english_indicators):
+            return 'english'
+
+        # Check for numbers ONLY if they are 1 or 2
+        if message_lower.strip() == '1':
+            return 'arabic'
+        elif message_lower.strip() == '2':
             return 'english'
 
         return None
@@ -125,19 +354,11 @@ class AIProcessor:
         """Extract number from text, handling Arabic and English numerals"""
         import re
 
-        # Arabic to English numeral mapping
-        arabic_to_english = {
-            '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
-            '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'
-        }
-
-        # Replace Arabic numerals with English ones
-        converted_text = text
-        for arabic, english in arabic_to_english.items():
-            converted_text = converted_text.replace(arabic, english)
+        # Preprocess to convert Arabic numerals
+        text = self._preprocess_message(text)
 
         # Extract numbers
-        numbers = re.findall(r'\d+', converted_text)
+        numbers = re.findall(r'\d+', text)
 
         if numbers:
             return int(numbers[0])
@@ -163,8 +384,8 @@ class AIProcessor:
         text_lower = text.lower().strip()
 
         if language == 'arabic':
-            yes_indicators = ['نعم', 'ايوه', 'اه', 'صح', 'تمام', 'موافق', 'اكيد', 'yes', '1', '١']
-            no_indicators = ['لا', 'كلا', 'مش', 'مو', 'لأ', 'رفض', 'no', '2', '٢']
+            yes_indicators = ['نعم', 'ايوه', 'اه', 'صح', 'تمام', 'موافق', 'اكيد', 'yes', '1']
+            no_indicators = ['لا', 'كلا', 'مش', 'مو', 'لأ', 'رفض', 'no', '2']
         else:
             yes_indicators = ['yes', 'yeah', 'yep', 'sure', 'ok', 'okay', 'confirm', '1']
             no_indicators = ['no', 'nope', 'cancel', 'stop', 'abort', '2']
@@ -184,11 +405,11 @@ class AIProcessor:
         if language == 'arabic':
             dine_in_indicators = [
                 'مقهى', 'داخل', 'هنا', 'جوا', 'في المكان', 'في الكافيه',
-                'طاولة', 'جلسة', '1', '١'
+                'طاولة', 'جلسة', '1'
             ]
             delivery_indicators = [
                 'توصيل', 'بيت', 'منزل', 'خارج', 'ديليفري', 'عنوان',
-                'موقع', 'مكان', '2', '٢'
+                'موقع', 'مكان', '2'
             ]
         else:
             dine_in_indicators = [
@@ -209,69 +430,89 @@ class AIProcessor:
         return None
 
     def fuzzy_match_category(self, text: str, categories: list, language: str = 'arabic') -> Optional[Dict]:
-        """Fuzzy match text to menu category"""
+        """Fuzzy match text to menu category with enhanced matching"""
         text_lower = text.lower().strip()
+
+        # Convert Arabic numerals
+        text_lower = self._preprocess_message(text_lower)
 
         # Direct number match
         number = self.extract_number_from_text(text)
         if number and 1 <= number <= len(categories):
             return categories[number - 1]
 
-        # Name matching
+        # Name matching with scoring
+        best_match = None
+        best_score = 0
+
         for category in categories:
             category_name_ar = category['category_name_ar'].lower()
             category_name_en = category['category_name_en'].lower()
 
-            # Exact match
+            score = 0
+
+            # Exact match gets highest score
             if text_lower == category_name_ar or text_lower == category_name_en:
                 return category
 
-            # Partial match
-            if (text_lower in category_name_ar or category_name_ar in text_lower or
-                    text_lower in category_name_en or category_name_en in text_lower):
-                return category
+            # Partial match scoring
+            if text_lower in category_name_ar or category_name_ar in text_lower:
+                score += 3
+            if text_lower in category_name_en or category_name_en in text_lower:
+                score += 3
 
-        # Keyword matching for common terms
+            # Word-level matching
+            text_words = text_lower.split()
+            ar_words = category_name_ar.split()
+            en_words = category_name_en.split()
+
+            for word in text_words:
+                if word in ar_words or word in en_words:
+                    score += 1
+
+            if score > best_score:
+                best_score = score
+                best_match = category
+
+        # Return match if score is high enough
+        if best_score >= 2:
+            return best_match
+
+        # Enhanced keyword matching
         keyword_mapping = {
-            'arabic': {
-                'حار': 1, 'ساخن': 1, 'قهوة': 1, 'شاي': 1,
-                'بارد': 2, 'مثلج': 2, 'ايس': 2,
-                'حلو': 3, 'كيك': 3, 'حلويات': 3,
-                'عصير': 6, 'فريش': 6,
-                'توست': 9, 'خبز': 9,
-                'سندويش': 10,
-                'كرواسان': 12,
-                'فطيرة': 13, 'مالح': 13
-            },
-            'english': {
-                'hot': 1, 'warm': 1, 'coffee': 1, 'tea': 1,
-                'cold': 2, 'iced': 2, 'ice': 2,
-                'sweet': 3, 'cake': 3, 'dessert': 3,
-                'juice': 6, 'fresh': 6,
-                'toast': 9, 'bread': 9,
-                'sandwich': 10,
-                'croissant': 12,
-                'pie': 13, 'savory': 13
-            }
+            'موهيتو': 7, 'mojito': 7,
+            'فرابتشينو': 5, 'frappuccino': 5,
+            'ميلك شيك': 8, 'milkshake': 8,
+            'توست': 9, 'toast': 9,
+            'سندويش': 10, 'sandwich': 10,
+            'كرواسان': 12, 'croissant': 12,
+            'كيك': 11, 'cake': 11,
+            'عصير': 6, 'juice': 6,
+            'شاي': 4, 'tea': 4,
+            'حار': 1, 'hot': 1,
+            'بارد': 2, 'cold': 2,
+            'حلو': 3, 'sweet': 3
         }
 
-        keywords = keyword_mapping.get(language, keyword_mapping['arabic'])
-        for keyword, category_id in keywords.items():
+        for keyword, category_id in keyword_mapping.items():
             if keyword in text_lower:
                 return next((cat for cat in categories if cat['category_id'] == category_id), None)
 
         return None
 
     def fuzzy_match_item(self, text: str, items: list, language: str = 'arabic') -> Optional[Dict]:
-        """Fuzzy match text to menu item"""
+        """Fuzzy match text to menu item with enhanced matching"""
         text_lower = text.lower().strip()
+
+        # Convert Arabic numerals
+        text_lower = self._preprocess_message(text_lower)
 
         # Direct number match
         number = self.extract_number_from_text(text)
         if number and 1 <= number <= len(items):
             return items[number - 1]
 
-        # Name matching
+        # Name matching with enhanced scoring
         best_match = None
         best_score = 0
 
@@ -279,16 +520,17 @@ class AIProcessor:
             item_name_ar = item['item_name_ar'].lower()
             item_name_en = item['item_name_en'].lower()
 
+            score = 0
+
             # Exact match
             if text_lower == item_name_ar or text_lower == item_name_en:
                 return item
 
             # Calculate similarity score
-            score = 0
             if text_lower in item_name_ar or item_name_ar in text_lower:
-                score += 3
+                score += 4
             if text_lower in item_name_en or item_name_en in text_lower:
-                score += 3
+                score += 4
 
             # Word-level matching
             text_words = text_lower.split()
@@ -297,14 +539,14 @@ class AIProcessor:
 
             for word in text_words:
                 if word in ar_words or word in en_words:
-                    score += 1
+                    score += 2
 
             if score > best_score:
                 best_score = score
                 best_match = item
 
         # Return match if score is high enough
-        if best_score >= 2:
+        if best_score >= 3:
             return best_match
 
         return None
@@ -334,7 +576,8 @@ class AIProcessor:
             'available_categories': [],
             'current_category_items': [],
             'current_order': {},
-            'language': session.get('language_preference') if session else None
+            'language': session.get('language_preference') if session else None,
+            'session_data': session or {}
         }
 
         # Add categories if relevant
