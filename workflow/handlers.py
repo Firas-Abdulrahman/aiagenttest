@@ -457,19 +457,20 @@ class MessageHandler:
             return self._create_response("Please specify the location clearly")
 
     def _handle_confirmation_enhanced(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
-        """Enhanced confirmation handling with better Arabic numeral support"""
+        """Enhanced confirmation handling with better Arabic numeral support and error handling"""
 
         number = self._extract_number_enhanced(text)
         yes_no = self._detect_yes_no_enhanced(text, language)
 
         if number == 1 or yes_no == 'yes':
-            # Complete order
+            # Complete order with better error handling
             try:
                 order_id = self.db.complete_order(phone_number)
 
                 if order_id:
+                    # Get order details before potential session deletion
                     order = self.db.get_user_order(phone_number)
-                    total_amount = order.get('total', 0)
+                    total_amount = order.get('total', 0) if order else 0
 
                     if language == 'arabic':
                         response = f"🎉 تم تأكيد طلبك بنجاح!\n\n"
@@ -487,17 +488,27 @@ class MessageHandler:
                         response += f"Thank you for choosing Hef Cafe! ☕"
 
                     return self._create_response(response)
+                else:
+                    # Order completion failed
+                    if language == 'arabic':
+                        return self._create_response("عذراً، حدث خطأ في إتمام الطلب. الرجاء المحاولة مرة أخرى")
+                    else:
+                        return self._create_response("Sorry, there was an error completing your order. Please try again")
+
             except Exception as e:
                 logger.error(f"❌ Error completing order: {e}")
-                return self._create_response("عذراً، حدث خطأ في إتمام الطلب. الرجاء المحاولة مرة أخرى")
+                if language == 'arabic':
+                    return self._create_response("عذراً، حدث خطأ في إتمام الطلب. الرجاء المحاولة مرة أخرى")
+                else:
+                    return self._create_response("Sorry, there was an error completing your order. Please try again")
 
         elif number == 2 or yes_no == 'no':
-            # Cancel order
+            # Cancel order with better error handling
             try:
                 customer_name = session.get('customer_name', 'Customer')
                 
                 # Cancel order and restart
-                self.db.delete_session(phone_number)
+                success = self.db.delete_session(phone_number)
                 
                 # Create personalized cancellation message
                 if language == 'arabic':
@@ -508,9 +519,13 @@ class MessageHandler:
                     response += "You can start a new order anytime by sending 'hello'"
                 
                 return self._create_response(response)
+                
             except Exception as e:
                 logger.error(f"❌ Error cancelling order: {e}")
-                return self._create_response("عذراً، حدث خطأ في إلغاء الطلب. الرجاء المحاولة مرة أخرى")
+                if language == 'arabic':
+                    return self._create_response("عذراً، حدث خطأ في إلغاء الطلب. الرجاء المحاولة مرة أخرى")
+                else:
+                    return self._create_response("Sorry, there was an error cancelling your order. Please try again")
 
         # Invalid confirmation
         if language == 'arabic':

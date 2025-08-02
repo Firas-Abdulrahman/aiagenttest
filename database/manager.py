@@ -16,7 +16,13 @@ class DatabaseManager:
 
     def init_database(self):
         """Initialize SQLite database with all required tables"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, timeout=60.0) as conn:
+            # Configure database for better concurrency
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA cache_size=10000")
+            conn.execute("PRAGMA temp_store=MEMORY")
+            conn.execute("PRAGMA mmap_size=268435456")  # 256MB
             conn.execute("PRAGMA foreign_keys = ON")
 
             # Create all tables
@@ -137,12 +143,20 @@ class DatabaseManager:
                 # Enable WAL mode for better concurrency
                 conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA busy_timeout=30000")
+                conn.execute("PRAGMA synchronous=NORMAL")
                 
-                conn.execute("DELETE FROM user_orders WHERE phone_number = ?", (phone_number,))
-                conn.execute("DELETE FROM order_details WHERE phone_number = ?", (phone_number,))
-                conn.execute("DELETE FROM user_sessions WHERE phone_number = ?", (phone_number,))
-                conn.commit()
-                return True
+                # Use a single transaction for all deletions
+                conn.execute("BEGIN TRANSACTION")
+                try:
+                    conn.execute("DELETE FROM user_orders WHERE phone_number = ?", (phone_number,))
+                    conn.execute("DELETE FROM order_details WHERE phone_number = ?", (phone_number,))
+                    conn.execute("DELETE FROM user_sessions WHERE phone_number = ?", (phone_number,))
+                    conn.commit()
+                    return True
+                except Exception as e:
+                    conn.rollback()
+                    raise e
+                    
         except sqlite3.OperationalError as e:
             if "database is locked" in str(e):
                 logger.warning(f"⚠️ Database locked, retrying delete session for {phone_number}")
@@ -153,12 +167,19 @@ class DatabaseManager:
                     with sqlite3.connect(self.db_path, timeout=60.0) as conn:
                         conn.execute("PRAGMA journal_mode=WAL")
                         conn.execute("PRAGMA busy_timeout=60000")
+                        conn.execute("PRAGMA synchronous=NORMAL")
                         
-                        conn.execute("DELETE FROM user_orders WHERE phone_number = ?", (phone_number,))
-                        conn.execute("DELETE FROM order_details WHERE phone_number = ?", (phone_number,))
-                        conn.execute("DELETE FROM user_sessions WHERE phone_number = ?", (phone_number,))
-                        conn.commit()
-                        return True
+                        # Use a single transaction for all deletions
+                        conn.execute("BEGIN TRANSACTION")
+                        try:
+                            conn.execute("DELETE FROM user_orders WHERE phone_number = ?", (phone_number,))
+                            conn.execute("DELETE FROM order_details WHERE phone_number = ?", (phone_number,))
+                            conn.execute("DELETE FROM user_sessions WHERE phone_number = ?", (phone_number,))
+                            conn.commit()
+                            return True
+                        except Exception as e:
+                            conn.rollback()
+                            raise e
                 except Exception as retry_error:
                     logger.error(f"❌ Retry failed for delete session: {retry_error}")
                     return False
@@ -341,12 +362,13 @@ class DatabaseManager:
             import random
             order_id = f"HEF{random.randint(1000, 9999)}"
 
-            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+            with sqlite3.connect(self.db_path, timeout=60.0) as conn:
                 # Enable WAL mode for better concurrency
                 conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("PRAGMA busy_timeout=30000")
+                conn.execute("PRAGMA busy_timeout=60000")
+                conn.execute("PRAGMA synchronous=NORMAL")
                 
-                # Get order data
+                # Get order data first
                 order = self.get_user_order(phone_number)
 
                 # Save to completed orders
@@ -363,21 +385,32 @@ class DatabaseManager:
                     order['details'].get('location')
                 ))
 
-                # Clear current order
-                self.delete_session(phone_number)
+                # Clear current order data (but don't delete session yet)
+                conn.execute("DELETE FROM user_orders WHERE phone_number = ?", (phone_number,))
+                conn.execute("DELETE FROM order_details WHERE phone_number = ?", (phone_number,))
 
                 conn.commit()
+                
+                # Delete session in a separate operation to avoid lock conflicts
+                try:
+                    self.delete_session(phone_number)
+                except Exception as session_error:
+                    logger.warning(f"⚠️ Could not delete session after order completion: {session_error}")
+                    # Don't fail the order completion if session deletion fails
+                
                 return order_id
+                
         except sqlite3.OperationalError as e:
             if "database is locked" in str(e):
                 logger.warning(f"⚠️ Database locked, retrying complete order for {phone_number}")
-                # Retry once after a short delay
+                # Retry once after a longer delay
                 import time
-                time.sleep(1)
+                time.sleep(2)
                 try:
-                    with sqlite3.connect(self.db_path, timeout=60.0) as conn:
+                    with sqlite3.connect(self.db_path, timeout=120.0) as conn:
                         conn.execute("PRAGMA journal_mode=WAL")
-                        conn.execute("PRAGMA busy_timeout=60000")
+                        conn.execute("PRAGMA busy_timeout=120000")
+                        conn.execute("PRAGMA synchronous=NORMAL")
                         
                         # Get order data
                         order = self.get_user_order(phone_number)
@@ -396,10 +429,18 @@ class DatabaseManager:
                             order['details'].get('location')
                         ))
 
-                        # Clear current order
-                        self.delete_session(phone_number)
+                        # Clear current order data
+                        conn.execute("DELETE FROM user_orders WHERE phone_number = ?", (phone_number,))
+                        conn.execute("DELETE FROM order_details WHERE phone_number = ?", (phone_number,))
 
                         conn.commit()
+                        
+                        # Delete session separately
+                        try:
+                            self.delete_session(phone_number)
+                        except Exception as session_error:
+                            logger.warning(f"⚠️ Could not delete session after order completion: {session_error}")
+                        
                         return order_id
                 except Exception as retry_error:
                     logger.error(f"❌ Retry failed for complete order: {retry_error}")
