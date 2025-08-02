@@ -465,13 +465,14 @@ class MessageHandler:
         if number == 1 or yes_no == 'yes':
             # Complete order with better error handling
             try:
+                # Get order details BEFORE completing the order
+                order = self.db.get_user_order(phone_number)
+                total_amount = order.get('total', 0) if order else 0
+                
+                # Now complete the order
                 order_id = self.db.complete_order(phone_number)
 
                 if order_id:
-                    # Get order details before potential session deletion
-                    order = self.db.get_user_order(phone_number)
-                    total_amount = order.get('total', 0) if order else 0
-
                     if language == 'arabic':
                         response = f"🎉 تم تأكيد طلبك بنجاح!\n\n"
                         response += f"📋 رقم الطلب: {order_id}\n"
