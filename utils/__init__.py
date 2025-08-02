@@ -12,6 +12,10 @@ from .helpers import (
 from .logging import (
     ColoredFormatter, setup_logging, log_message_flow, log_performance
 )
+# NEW IMPORTS - Add these
+from .session_manager import SessionManager
+from .message_validator import MessageValidator
+from .order_formatter import OrderFormatter
 
 __all__ = [
     # Constants
@@ -24,5 +28,8 @@ __all__ = [
     'clean_text_input', 'is_arabic_text', 'format_menu_display',
 
     # Logging
-    'ColoredFormatter', 'setup_logging', 'log_message_flow', 'log_performance'
+    'ColoredFormatter', 'setup_logging', 'log_message_flow', 'log_performance',
+
+    # NEW UTILITIES - Add these
+    'SessionManager', 'MessageValidator', 'OrderFormatter'
 ]
