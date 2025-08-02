@@ -175,7 +175,7 @@ class AIProcessor:
             logger.info(f"🤖 Standard AI analyzing: '{user_message}' at step '{current_step}'")
 
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o",
                 messages=[
                     {"role": "system", "content": AIPrompts.SYSTEM_PROMPT},
                     {"role": "user", "content": prompt}
