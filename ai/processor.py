@@ -103,10 +103,28 @@ class AIProcessor:
     def _parse_and_validate_ai_response(self, ai_response: str, current_step: str, user_message: str) -> Optional[Dict]:
         """Parse and validate AI JSON response with enhanced validation"""
         try:
-            # Clean the response if it has markdown formatting
+            # Clean the response if it has markdown formatting or prefixes
             if ai_response.startswith('```json'):
                 ai_response = ai_response.replace('```json', '').replace('```', '').strip()
+            
+            # Remove common prefixes that might cause JSON parsing issues
+            prefixes_to_remove = ['RESPOND WITH JSON:', 'JSON:', 'RESPONSE:']
+            for prefix in prefixes_to_remove:
+                if ai_response.startswith(prefix):
+                    ai_response = ai_response[len(prefix):].strip()
 
+            # Try to find JSON object in the response if it's not a clean JSON
+            if not ai_response.strip().startswith('{'):
+                import re
+                json_pattern = r'\{[\s\S]*\}'
+                json_match = re.search(json_pattern, ai_response)
+                if json_match:
+                    ai_response = json_match.group(0)
+                    logger.info("Extracted JSON object from response")
+            
+            # Log the cleaned response for debugging
+            logger.debug(f"Cleaned AI response for parsing: {ai_response}")
+            
             result = json.loads(ai_response)
 
             # Validate required fields
@@ -120,15 +138,54 @@ class AIProcessor:
             if not self._validate_result_for_step(result, current_step, user_message):
                 return None
 
-            # Post-process extracted data
-            result['extracted_data'] = self._postprocess_extracted_data(result['extracted_data'], current_step)
-
-            return result
+            return self._validate_and_postprocess_result(result, current_step, user_message)
 
         except json.JSONDecodeError as e:
             logger.error(f"❌ JSON parsing error: {e}")
             logger.error(f"AI Response was: {ai_response}")
+            
+            # Additional debugging information
+            logger.error(f"Response type: {type(ai_response)}")
+            logger.error(f"Response length: {len(ai_response)}")
+            
+            # Try to salvage the response if possible
+            try:
+                # Sometimes the response might have extra characters at the beginning or end
+                # Try to find a valid JSON object within the response
+                import re
+                json_pattern = r'\{[\s\S]*?\}'
+                matches = re.findall(json_pattern, ai_response)
+                
+                if matches:
+                    for potential_json in matches:
+                        try:
+                            result = json.loads(potential_json)
+                            logger.info(f"✅ Successfully salvaged JSON from response")
+                            return self._validate_and_postprocess_result(result, current_step, user_message)
+                        except:
+                            continue
+            except Exception as salvage_error:
+                logger.error(f"Failed to salvage JSON: {salvage_error}")
+            
             return None
+
+    def _validate_and_postprocess_result(self, result: Dict, current_step: str, user_message: str) -> Optional[Dict]:
+        """Validate and post-process the parsed result"""
+        # Validate required fields
+        required_fields = ['understood_intent', 'confidence', 'action', 'extracted_data']
+        for field in required_fields:
+            if field not in result:
+                logger.error(f"Missing required field: {field}")
+                return None
+
+        # Enhanced validation based on current step
+        if not self._validate_result_for_step(result, current_step, user_message):
+            return None
+
+        # Post-process extracted data
+        result['extracted_data'] = self._postprocess_extracted_data(result['extracted_data'], current_step)
+
+        return result
 
     def _validate_result_for_step(self, result: Dict, current_step: str, user_message: str) -> bool:
         """Enhanced validation for AI results based on current step"""

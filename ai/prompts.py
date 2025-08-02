@@ -10,7 +10,7 @@ class AIPrompts:
 
     SYSTEM_PROMPT = """You are Hef, a professional AI assistant for Hef Cafe in Iraq. You must respond ONLY with valid JSON.
 
-IMPORTANT: Your response must be ONLY a valid JSON object, nothing else. Do not include any explanatory text, markdown, or formatting outside the JSON.
+IMPORTANT: Your response must be ONLY a valid JSON object, nothing else. Do not include any explanatory text, markdown, or formatting outside the JSON. DO NOT prefix your response with phrases like 'RESPOND WITH JSON:' or similar - just return the raw JSON object.
 
 CORE CAPABILITIES:
 - Understand Arabic dialects (Iraqi, Gulf, Levantine, Egyptian, etc.)
@@ -52,7 +52,30 @@ Categories (1-13):
 12. كرواسان / Croissants
 13. فطائر مالحة / Savory Pies
 
-RESPONSE FORMAT: Respond with ONLY valid JSON, no other text."""
+RESPONSE FORMAT: Respond with ONLY valid JSON, no other text.
+
+EXAMPLE CORRECT RESPONSE FORMAT:
+{
+    "understood_intent": "greeting and language selection",
+    "confidence": "high",
+    "action": "language_selection",
+    "extracted_data": {
+        "language": "english",
+        "category_id": null,
+        "category_name": null,
+        "item_id": null,
+        "item_name": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    },
+    "clarification_needed": false,
+    "clarification_question": null,
+    "response_message": "Hello! Would you like to proceed in English? Please confirm by replying with 'yes' or 'no'."
+}
+
+DO NOT include any text before or after the JSON object. Just return the raw JSON."""
 
     @staticmethod
     def get_understanding_prompt(user_message: str, current_step: str, context: dict) -> str:
@@ -78,7 +101,7 @@ CRITICAL RULES:
 
 {AIPrompts._get_step_specific_rules(current_step, context)}
 
-Respond with ONLY this JSON structure (no additional text):
+Respond with ONLY this JSON structure (no additional text, no prefixes like 'RESPOND WITH JSON:', just the raw JSON):
 {{
     "understood_intent": "clear description of user intent",
     "confidence": "high/medium/low",
@@ -97,6 +120,27 @@ Respond with ONLY this JSON structure (no additional text):
     "clarification_needed": "true/false",
     "clarification_question": "question if clarification needed",
     "response_message": "helpful response in user's language"
+}}
+
+EXAMPLE CORRECT RESPONSE (just return raw JSON like this):
+{{
+    "understood_intent": "greeting and language selection",
+    "confidence": "high",
+    "action": "language_selection",
+    "extracted_data": {{
+        "language": "english",
+        "category_id": null,
+        "category_name": null,
+        "item_id": null,
+        "item_name": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "clarification_question": null,
+    "response_message": "Hello! Would you like to proceed in English? Please confirm by replying with 'yes' or 'no'."
 }}
 
 EXAMPLES FOR {current_step}:
