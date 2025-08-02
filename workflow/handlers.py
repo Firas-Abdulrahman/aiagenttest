@@ -152,6 +152,10 @@ class MessageHandler:
 
         logger.info(f"🔄 Enhanced fallback processing for step: {current_step}")
 
+        # CRITICAL FIX: Always start with language selection if no session exists
+        if not session:
+            return self._handle_language_selection_enhanced(phone_number, text, customer_name)
+
         # ENHANCED: Handle based on current step with better understanding
         if current_step == 'waiting_for_language':
             return self._handle_language_selection_enhanced(phone_number, text, customer_name)
@@ -335,7 +339,7 @@ class MessageHandler:
         return self._create_response(response)
 
     def _handle_additional_items_enhanced(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
-        """Enhanced additional items handling"""
+        """FIXED: Enhanced additional items handling - proceed to service selection instead of cancelling"""
 
         number = self._extract_number_enhanced(text)
         yes_no = self._detect_yes_no_enhanced(text, language)
@@ -359,38 +363,23 @@ class MessageHandler:
             return self._create_response(response)
 
         elif number == 2 or yes_no == 'no':
-            # Cancel order
-            self.db.delete_session(phone_number)
-            
-            # Get customer name from session before it's deleted
-            customer_name = session.get('customer_name', 'Customer')
+            # FIXED: Proceed to service selection instead of cancelling
+            self.db.create_or_update_session(phone_number, 'waiting_for_service', language)
 
             if language == 'arabic':
-                response = f"تم إلغاء الطلب. شكراً لك {customer_name} لزيارة مقهى هيف.\n\n"
-                response += "يمكنك البدء بطلب جديد في أي وقت بإرسال 'مرحبا'"
+                response = "ممتاز! الآن دعنا نحدد نوع الخدمة:\n\n"
+                response += "1. تناول في المقهى\n"
+                response += "2. توصيل\n\n"
+                response += "الرجاء اختيار نوع الخدمة"
             else:
-                response = f"Order cancelled. Thank you {customer_name} for visiting Hef Cafe.\n\n"
-                response += "You can start a new order anytime by sending 'hello'"
+                response = "Great! Now let's determine the service type:\n\n"
+                response += "1. Dine-in\n"
+                response += "2. Delivery\n\n"
+                response += "Please select the service type"
 
             return self._create_response(response)
 
-        # Go to service selection
-        self.db.create_or_update_session(phone_number, 'waiting_for_service', language)
-
-        if language == 'arabic':
-            response = "ممتاز! الآن دعنا نحدد نوع الخدمة:\n\n"
-            response += "1. تناول في المقهى\n"
-            response += "2. توصيل\n\n"
-            response += "الرجاء اختيار نوع الخدمة"
-        else:
-            response = "Great! Now let's determine the service type:\n\n"
-            response += "1. Dine-in\n"
-            response += "2. Delivery\n\n"
-            response += "Please select the service type"
-
-            return self._create_response(response)
-
-        # Invalid input
+        # Invalid input - stay at current step
         if language == 'arabic':
             return self._create_response("الرجاء الرد بـ '1' للنعم أو '2' للا")
         else:
@@ -577,20 +566,25 @@ class MessageHandler:
         return None
 
     def _detect_yes_no_enhanced(self, text: str, language: str) -> Optional[str]:
-        """Enhanced yes/no detection"""
+        """Enhanced yes/no detection with Iraqi dialect support"""
         text_lower = text.lower().strip()
 
         if language == 'arabic':
-            yes_indicators = ['نعم', 'ايوه', 'اه', 'صح', 'تمام', 'موافق', 'اكيد', 'طيب', 'حسنا']
-            no_indicators = ['لا', 'كلا', 'مش', 'مو', 'لأ', 'رفض', 'ما بدي', 'مابدي']
+            yes_indicators = ['نعم', 'ايوه', 'اه', 'صح', 'تمام', 'موافق', 'اكيد', 'طيب', 'حسنا', 'هيه', 'هاهية']
+            no_indicators = ['لا', 'كلا', 'مش', 'مو', 'لأ', 'رفض', 'ما بدي', 'مابدي', 'هاهية لا', 'لا هاهية']
         else:
             yes_indicators = ['yes', 'yeah', 'yep', 'sure', 'ok', 'okay', 'confirm', 'agree']
             no_indicators = ['no', 'nope', 'cancel', 'stop', 'abort', 'disagree']
 
-        if any(indicator in text_lower for indicator in yes_indicators):
-            return 'yes'
-        elif any(indicator in text_lower for indicator in no_indicators):
-            return 'no'
+        # Check for no first (more specific patterns)
+        for indicator in no_indicators:
+            if indicator in text_lower:
+                return 'no'
+
+        # Then check for yes
+        for indicator in yes_indicators:
+            if indicator in text_lower:
+                return 'yes'
 
         return None
 

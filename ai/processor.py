@@ -60,7 +60,7 @@ class AIProcessor:
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=800,
-                temperature=0.2,  # Lower temperature for more consistent parsing
+                temperature=0.1,  # Lower temperature for more consistent parsing
             )
 
             ai_response = response.choices[0].message.content.strip()
@@ -383,7 +383,7 @@ class AIProcessor:
         # Arabic language indicators (strong)
         arabic_indicators = [
             'عربي', 'العربية', 'مرحبا', 'أهلا', 'اريد', 'بدي',
-            'شو', 'ايش', 'كيف', 'وين'
+            'شو', 'ايش', 'كيف', 'وين', 'هلا', 'هلا والله'
         ]
 
         # English language indicators (strong)
@@ -437,21 +437,25 @@ class AIProcessor:
         return None
 
     def detect_yes_no(self, text: str, language: str = 'arabic') -> Optional[str]:
-        """Detect yes/no intent from text"""
+        """Detect yes/no intent from text with Iraqi dialect support"""
         text_lower = text.lower().strip()
 
         if language == 'arabic':
-            yes_indicators = ['نعم', 'ايوه', 'اه', 'صح', 'تمام', 'موافق', 'اكيد', 'yes', '1']
-            no_indicators = ['لا', 'كلا', 'مش', 'مو', 'لأ', 'رفض', 'no', '2']
+            yes_indicators = ['نعم', 'ايوه', 'اه', 'صح', 'تمام', 'موافق', 'اكيد', 'yes', '1', 'هيه', 'هاهية']
+            no_indicators = ['لا', 'كلا', 'مش', 'مو', 'لأ', 'رفض', 'no', '2', 'هاهية لا', 'لا هاهية']
         else:
             yes_indicators = ['yes', 'yeah', 'yep', 'sure', 'ok', 'okay', 'confirm', '1']
             no_indicators = ['no', 'nope', 'cancel', 'stop', 'abort', '2']
 
-        if any(indicator in text_lower for indicator in yes_indicators):
-            return 'yes'
+        # Check for no first (more specific patterns)
+        for indicator in no_indicators:
+            if indicator in text_lower:
+                return 'no'
 
-        if any(indicator in text_lower for indicator in no_indicators):
-            return 'no'
+        # Then check for yes
+        for indicator in yes_indicators:
+            if indicator in text_lower:
+                return 'yes'
 
         return None
 

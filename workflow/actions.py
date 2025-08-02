@@ -262,6 +262,7 @@ class ActionExecutor:
                     return self._create_response(response_message)
 
             elif yes_no == 'no':
+                # FIXED: Proceed to service selection instead of cancelling
                 if self.db.validate_step_transition(phone_number, 'waiting_for_service'):
                     self.db.create_or_update_session(phone_number, 'waiting_for_service', language)
                     templates = AIPrompts.get_response_templates(language)

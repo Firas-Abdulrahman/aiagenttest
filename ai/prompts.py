@@ -19,22 +19,31 @@ CORE CAPABILITIES:
 - Understand context from conversation flow
 - Recognize item names and category names in both languages
 
-CRITICAL UNDERSTANDING RULES:
-1. NUMBERS: Convert Arabic numerals automatically (١=1, ٢=2, ٣=3, ٤=4, ٥=5, ٦=6, ٧=7, ٨=8, ٩=9, ٠=0)
-2. CONTEXT MATTERS: A number's meaning depends on the current step
-3. QUANTITY CONTEXT: Numbers in quantity step are ALWAYS quantities, never language choices
-4. CATEGORY NAMES: Recognize both Arabic and English category names
-5. ITEM NAMES: Match partial item names intelligently
+CRITICAL WORKFLOW RULES:
+1. ALWAYS start with language selection for new users
+2. Numbers have different meanings based on current step:
+   - waiting_for_language: Only 1=Arabic, 2=English
+   - waiting_for_category: Numbers 1-13 are category selections
+   - waiting_for_item: Numbers refer to item positions
+   - waiting_for_quantity: Numbers are ALWAYS quantities (1-50)
+   - waiting_for_additional: 1=Yes (more items), 2=No (proceed to service)
+   - waiting_for_service: 1=Dine-in, 2=Delivery
+   - waiting_for_confirmation: 1=Yes (confirm), 2=No (cancel)
+
+3. CONTEXT MATTERS: A number's meaning depends on the current step
+4. QUANTITY CONTEXT: Numbers in quantity step are ALWAYS quantities, never language choices
+5. CATEGORY NAMES: Recognize both Arabic and English category names
+6. ITEM NAMES: Match partial item names intelligently
 
 WORKFLOW STEPS UNDERSTANDING:
 - waiting_for_language: Only accept 1/2 or clear language indicators
 - waiting_for_category: Accept numbers 1-13 or category names
 - waiting_for_item: Accept numbers 1-N or item names
 - waiting_for_quantity: Numbers are ALWAYS quantities (1-50)
-- waiting_for_additional: Accept yes/no responses
-- waiting_for_service: Accept service type choices
+- waiting_for_additional: Accept yes/no responses (1=Yes, 2=No)
+- waiting_for_service: Accept service type choices (1=Dine-in, 2=Delivery)
 - waiting_for_location: Accept location descriptions
-- waiting_for_confirmation: Accept yes/no responses
+- waiting_for_confirmation: Accept yes/no responses (1=Yes, 2=No)
 
 MENU KNOWLEDGE:
 Categories (1-13):
@@ -98,6 +107,9 @@ CRITICAL RULES:
    - If step is "waiting_for_language" → only 1/2 are language choices
    - If step is "waiting_for_category" → numbers 1-13 are category selections
    - If step is "waiting_for_item" → numbers refer to item positions
+   - If step is "waiting_for_additional" → 1=Yes (more items), 2=No (proceed to service)
+   - If step is "waiting_for_service" → 1=Dine-in, 2=Delivery
+   - If step is "waiting_for_confirmation" → 1=Yes (confirm), 2=No (cancel)
 
 {AIPrompts._get_step_specific_rules(current_step, context)}
 
@@ -156,8 +168,8 @@ LANGUAGE STEP RULES:
 - Only "2" or "٢" = English selection  
 - Arabic words like "عربي", "العربية" = Arabic
 - English words like "english" = English
-- Greetings like "مرحبا" = Arabic preference
-- Greetings like "hello" = English preference
+- Greetings like "مرحبا", "هلا", "هلا والله" = Arabic preference
+- Greetings like "hello", "hi" = English preference
 """
 
         elif current_step == 'waiting_for_category':
@@ -202,7 +214,8 @@ QUANTITY STEP RULES:
             return """
 ADDITIONAL ITEMS RULES:
 - "نعم"/"yes"/"1"/"١" = wants more items
-- "لا"/"no"/"2"/"٢" = no more items, proceed to service
+- "لا"/"no"/"2"/"٢" = no more items, proceed to service selection
+- "لا هاهية"/"هاهية لا" = no more items (Iraqi dialect)
 """
 
         elif current_step == 'waiting_for_service':
