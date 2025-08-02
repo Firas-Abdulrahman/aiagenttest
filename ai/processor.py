@@ -113,7 +113,7 @@ class AIProcessor:
                 prompt = AIPrompts.get_understanding_prompt(user_message, current_step, context)
 
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o",
                 messages=[
                     {"role": "system",
                      "content": "You are a helpful AI assistant for Hef Cafe with complete menu knowledge."},
