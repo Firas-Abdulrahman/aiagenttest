@@ -1,4 +1,7 @@
-# ai/processor.py - ENHANCED with better understanding and integration
+# ai/processor.py - UPDATED with Menu Awareness
+"""
+Enhanced AI Processing and Understanding Engine with Menu Awareness
+"""
 
 import json
 import logging
@@ -15,17 +18,18 @@ try:
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
-    logger.warning("OpenAI not installed. AI features will be  disabled.")
+    logger.warning("OpenAI not installed. AI features will be disabled.")
 
 
 class AIProcessor:
-    """Enhanced AI Processing and Understanding Engine"""
+    """Enhanced AI Processing and Understanding Engine with Menu Awareness"""
 
-    def __init__(self, api_key: str = None, config: Dict = None):
+    def __init__(self, api_key: str = None, config: Dict = None, database_manager=None):
         self.api_key = api_key
         self.client = None
         self.quota_exceeded_time = None
-        
+        self.database_manager = database_manager  # ADDED for menu awareness
+
         # Get configuration settings
         if config:
             self.quota_cache_duration = config.get('ai_quota_cache_duration', 300)
@@ -37,7 +41,7 @@ class AIProcessor:
         if OPENAI_AVAILABLE and api_key:
             try:
                 self.client = openai.OpenAI(api_key=api_key)
-                logger.info("✅ Enhanced OpenAI client initialized")
+                logger.info("✅ Enhanced OpenAI client initialized with menu awareness")
             except Exception as e:
                 logger.error(f"⚠️ OpenAI initialization failed: {e}")
                 self.client = None
@@ -48,44 +52,24 @@ class AIProcessor:
         """Check if AI processing is available with quota cache"""
         if not self.client:
             return False
-        
+
         # Check quota cache first
         if self.quota_exceeded_time:
             time_since_quota_error = time.time() - self.quota_exceeded_time
             if time_since_quota_error < self.quota_cache_duration:
-                logger.debug(f"⚠️ AI unavailable due to recent quota error (cache: {int(self.quota_cache_duration - time_since_quota_error)}s remaining)")
+                logger.debug(
+                    f"⚠️ AI unavailable due to recent quota error (cache: {int(self.quota_cache_duration - time_since_quota_error)}s remaining)")
                 return False
             else:
                 # Clear cache after duration
                 self.quota_exceeded_time = None
                 logger.info("🔄 Quota cache expired, retrying AI availability")
-        
-        # Additional check for quota/rate limit issues
-        try:
-            # Simple test call to check if API is working
-            test_response = self.client.chat.completions.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": "test"}],
-                max_tokens=5,
-                temperature=0
-            )
-            return True
-        except Exception as e:
-            error_msg = str(e)
-            if "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower() or "429" in error_msg:
-                logger.warning("⚠️ OpenAI quota exceeded, AI unavailable")
-                self.quota_exceeded_time = time.time()
-                return False
-            elif "rate limit" in error_msg.lower():
-                logger.warning("⚠️ OpenAI rate limit hit, AI unavailable")
-                self.quota_exceeded_time = time.time()
-                return False
-            else:
-                logger.warning(f"⚠️ OpenAI API error: {error_msg}")
-                return False
 
-    def understand_message(self, user_message: str, current_step: str, context: Dict) -> Optional[Dict]:
-        """Enhanced message understanding with better context processing"""
+        return True
+
+    def understand_message_with_menu_awareness(self, user_message: str, current_step: str, context: Dict) -> Optional[
+        Dict]:
+        """Enhanced message understanding with menu awareness"""
         if not self.client:
             logger.warning("AI client not available")
             return None
@@ -94,30 +78,49 @@ class AIProcessor:
         if self.quota_exceeded_time:
             time_since_quota_error = time.time() - self.quota_exceeded_time
             if time_since_quota_error < self.quota_cache_duration:
-                logger.debug(f"⚠️ Skipping AI call due to recent quota error (cache: {int(self.quota_cache_duration - time_since_quota_error)}s remaining)")
+                logger.debug(f"⚠️ Skipping AI call due to recent quota error")
                 return None
             else:
-                # Clear cache after duration
                 self.quota_exceeded_time = None
                 logger.info("🔄 Quota cache expired, retrying AI processing")
+
+        # Check if this looks like a natural menu request
+        natural_indicators = [
+            'i want', 'i need', 'something', 'اريد', 'بدي', 'شي', 'شيء',
+            'cold', 'hot', 'sweet', 'بارد', 'حار', 'حلو', 'منعش',
+            'coffee', 'tea', 'juice', 'قهوة', 'شاي', 'عصير',
+            'energy', 'wake up', 'طاقة', 'صحيان', 'نشاط',
+            'refresh', 'thirsty', 'عطشان', 'eat', 'food', 'hungry', 'اكل', 'طعام', 'جوعان'
+        ]
+
+        message_lower = user_message.lower().strip()
+        is_natural_request = any(indicator in message_lower for indicator in natural_indicators)
 
         try:
             # Pre-process message for better understanding
             user_message = self._preprocess_message(user_message)
 
-            # Build enhanced prompt with better context
-            prompt = AIPrompts.get_understanding_prompt(user_message, current_step, context)
-
-            logger.info(f"🤖 AI analyzing: '{user_message}' at step '{current_step}'")
+            if is_natural_request and self.database_manager:
+                # Use menu-aware prompt for natural requests
+                logger.info(f"🧠 Using menu-aware AI processing for: '{user_message}'")
+                from ai.menu_aware_prompts import MenuAwarePrompts
+                prompt = MenuAwarePrompts.get_enhanced_understanding_prompt(
+                    user_message, current_step, context, self.database_manager
+                )
+            else:
+                # Use standard prompt for regular interactions
+                logger.info(f"🤖 Using standard AI processing for: '{user_message}'")
+                prompt = AIPrompts.get_understanding_prompt(user_message, current_step, context)
 
             response = self.client.chat.completions.create(
                 model="gpt-4",
                 messages=[
-                    {"role": "system", "content": AIPrompts.SYSTEM_PROMPT},
+                    {"role": "system",
+                     "content": "You are a helpful AI assistant for Hef Cafe with complete menu knowledge."},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=800,
-                temperature=0.1,  # Lower temperature for more consistent parsing
+                temperature=0.2,  # Lower temperature for more consistent responses
             )
 
             ai_response = response.choices[0].message.content.strip()
@@ -126,8 +129,10 @@ class AIProcessor:
             result = self._parse_and_validate_ai_response(ai_response, current_step, user_message)
 
             if result:
-                logger.info(f"✅ AI Understanding: {result['understood_intent']} (confidence: {result['confidence']})")
-                logger.info(f"🎯 Action: {result['action']}")
+                confidence = result.get('confidence', 'medium')
+                action = result.get('action', 'unknown')
+                logger.info(
+                    f"✅ AI Understanding: {result.get('understood_intent', 'N/A')} (confidence: {confidence}, action: {action})")
                 return result
             else:
                 logger.error("❌ Failed to parse or validate AI response")
@@ -141,6 +146,64 @@ class AIProcessor:
                 return None
             elif "rate limit" in error_msg.lower():
                 logger.warning("⚠️ OpenAI rate limit hit, falling back to enhanced processing")
+                self.quota_exceeded_time = time.time()
+                return None
+            else:
+                logger.error(f"❌ AI understanding error: {error_msg}")
+                return None
+
+    def understand_message(self, user_message: str, current_step: str, context: Dict) -> Optional[Dict]:
+        """Standard message understanding (fallback when menu awareness not needed)"""
+        if not self.client:
+            return None
+
+        # Check quota cache first
+        if self.quota_exceeded_time:
+            time_since_quota_error = time.time() - self.quota_exceeded_time
+            if time_since_quota_error < self.quota_cache_duration:
+                return None
+            else:
+                self.quota_exceeded_time = None
+
+        try:
+            # Pre-process message for better understanding
+            user_message = self._preprocess_message(user_message)
+
+            # Build standard prompt
+            prompt = AIPrompts.get_understanding_prompt(user_message, current_step, context)
+
+            logger.info(f"🤖 Standard AI analyzing: '{user_message}' at step '{current_step}'")
+
+            response = self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": AIPrompts.SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=800,
+                temperature=0.1,
+            )
+
+            ai_response = response.choices[0].message.content.strip()
+
+            # Parse and validate JSON response
+            result = self._parse_and_validate_ai_response(ai_response, current_step, user_message)
+
+            if result:
+                logger.info(f"✅ AI Understanding: {result['understood_intent']} (confidence: {result['confidence']})")
+                return result
+            else:
+                logger.error("❌ Failed to parse or validate AI response")
+                return None
+
+        except Exception as e:
+            error_msg = str(e)
+            if "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower() or "429" in error_msg:
+                logger.warning("⚠️ OpenAI quota exceeded")
+                self.quota_exceeded_time = time.time()
+                return None
+            elif "rate limit" in error_msg.lower():
+                logger.warning("⚠️ OpenAI rate limit hit")
                 self.quota_exceeded_time = time.time()
                 return None
             else:
@@ -173,7 +236,7 @@ class AIProcessor:
             # Clean the response if it has markdown formatting or prefixes
             if ai_response.startswith('```json'):
                 ai_response = ai_response.replace('```json', '').replace('```', '').strip()
-            
+
             # Remove common prefixes that might cause JSON parsing issues
             prefixes_to_remove = ['RESPOND WITH JSON:', 'JSON:', 'RESPONSE:']
             for prefix in prefixes_to_remove:
@@ -188,10 +251,7 @@ class AIProcessor:
                 if json_match:
                     ai_response = json_match.group(0)
                     logger.info("Extracted JSON object from response")
-            
-            # Log the cleaned response for debugging
-            logger.debug(f"Cleaned AI response for parsing: {ai_response}")
-            
+
             result = json.loads(ai_response)
 
             # Validate required fields
@@ -210,30 +270,6 @@ class AIProcessor:
         except json.JSONDecodeError as e:
             logger.error(f"❌ JSON parsing error: {e}")
             logger.error(f"AI Response was: {ai_response}")
-            
-            # Additional debugging information
-            logger.error(f"Response type: {type(ai_response)}")
-            logger.error(f"Response length: {len(ai_response)}")
-            
-            # Try to salvage the response if possible
-            try:
-                # Sometimes the response might have extra characters at the beginning or end
-                # Try to find a valid JSON object within the response
-                import re
-                json_pattern = r'\{[\s\S]*?\}'
-                matches = re.findall(json_pattern, ai_response)
-                
-                if matches:
-                    for potential_json in matches:
-                        try:
-                            result = json.loads(potential_json)
-                            logger.info(f"✅ Successfully salvaged JSON from response")
-                            return self._validate_and_postprocess_result(result, current_step, user_message)
-                        except:
-                            continue
-            except Exception as salvage_error:
-                logger.error(f"Failed to salvage JSON: {salvage_error}")
-            
             return None
 
     def _validate_and_postprocess_result(self, result: Dict, current_step: str, user_message: str) -> Optional[Dict]:
@@ -260,6 +296,10 @@ class AIProcessor:
         extracted_data = result.get('extracted_data', {})
         confidence = result.get('confidence', 'low')
 
+        # Accept intelligent suggestions (new action type)
+        if action == 'intelligent_suggestion':
+            return True
+
         # Step-specific validation
         step_validations = {
             'waiting_for_language': self._validate_language_step,
@@ -282,14 +322,15 @@ class AIProcessor:
         """Validate language selection step"""
         action = result.get('action')
 
-        if action != 'language_selection':
+        if action not in ['language_selection', 'intelligent_suggestion']:
             logger.warning(f"Invalid action for language step: {action}")
             return False
 
-        language = extracted_data.get('language')
-        if language not in ['arabic', 'english']:
-            logger.warning(f"Invalid language detected: {language}")
-            return False
+        if action == 'language_selection':
+            language = extracted_data.get('language')
+            if language not in ['arabic', 'english']:
+                logger.warning(f"Invalid language detected: {language}")
+                return False
 
         return True
 
@@ -319,7 +360,7 @@ class AIProcessor:
         """Validate category selection step"""
         action = result.get('action')
 
-        if action not in ['category_selection', 'show_menu', 'help_request']:
+        if action not in ['category_selection', 'show_menu', 'help_request', 'intelligent_suggestion']:
             logger.warning(f"Invalid action for category step: {action}")
             return False
 
@@ -341,7 +382,7 @@ class AIProcessor:
         """Validate item selection step"""
         action = result.get('action')
 
-        if action not in ['item_selection', 'category_selection', 'show_menu']:
+        if action not in ['item_selection', 'category_selection', 'show_menu', 'intelligent_suggestion']:
             logger.warning(f"Invalid action for item step: {action}")
             return False
 
@@ -423,7 +464,8 @@ class AIProcessor:
 
         for key, value in extracted_data.items():
             if value is not None and value != "null":
-                if key in ['category_id', 'item_id', 'quantity'] and isinstance(value, str):
+                if key in ['category_id', 'item_id', 'quantity', 'suggested_main_category',
+                           'suggested_sub_category'] and isinstance(value, str):
                     try:
                         cleaned_data[key] = int(value)
                     except ValueError:
@@ -440,6 +482,7 @@ class AIProcessor:
 
         return cleaned_data
 
+    # Keep all existing utility methods...
     def extract_language_preference(self, user_message: str) -> Optional[str]:
         """Extract language preference from user message"""
         message_lower = user_message.lower().strip()
@@ -526,159 +569,6 @@ class AIProcessor:
 
         return None
 
-    def detect_service_type(self, text: str, language: str = 'arabic') -> Optional[str]:
-        """Detect service type (dine-in or delivery) from text"""
-        text_lower = text.lower().strip()
-
-        if language == 'arabic':
-            dine_in_indicators = [
-                'مقهى', 'داخل', 'هنا', 'جوا', 'في المكان', 'في الكافيه',
-                'طاولة', 'جلسة', '1'
-            ]
-            delivery_indicators = [
-                'توصيل', 'بيت', 'منزل', 'خارج', 'ديليفري', 'عنوان',
-                'موقع', 'مكان', '2'
-            ]
-        else:
-            dine_in_indicators = [
-                'dine', 'in', 'here', 'cafe', 'restaurant', 'table',
-                'inside', 'sit', '1'
-            ]
-            delivery_indicators = [
-                'delivery', 'home', 'address', 'location', 'deliver',
-                'outside', 'takeaway', '2'
-            ]
-
-        if any(indicator in text_lower for indicator in dine_in_indicators):
-            return 'dine-in'
-
-        if any(indicator in text_lower for indicator in delivery_indicators):
-            return 'delivery'
-
-        return None
-
-    def fuzzy_match_category(self, text: str, categories: list, language: str = 'arabic') -> Optional[Dict]:
-        """Fuzzy match text to menu category with enhanced matching"""
-        text_lower = text.lower().strip()
-
-        # Convert Arabic numerals
-        text_lower = self._preprocess_message(text_lower)
-
-        # Direct number match
-        number = self.extract_number_from_text(text)
-        if number and 1 <= number <= len(categories):
-            return categories[number - 1]
-
-        # Name matching with scoring
-        best_match = None
-        best_score = 0
-
-        for category in categories:
-            category_name_ar = category['category_name_ar'].lower()
-            category_name_en = category['category_name_en'].lower()
-
-            score = 0
-
-            # Exact match gets highest score
-            if text_lower == category_name_ar or text_lower == category_name_en:
-                return category
-
-            # Partial match scoring
-            if text_lower in category_name_ar or category_name_ar in text_lower:
-                score += 3
-            if text_lower in category_name_en or category_name_en in text_lower:
-                score += 3
-
-            # Word-level matching
-            text_words = text_lower.split()
-            ar_words = category_name_ar.split()
-            en_words = category_name_en.split()
-
-            for word in text_words:
-                if word in ar_words or word in en_words:
-                    score += 1
-
-            if score > best_score:
-                best_score = score
-                best_match = category
-
-        # Return match if score is high enough
-        if best_score >= 2:
-            return best_match
-
-        # Enhanced keyword matching
-        keyword_mapping = {
-            'موهيتو': 7, 'mojito': 7,
-            'فرابتشينو': 5, 'frappuccino': 5,
-            'ميلك شيك': 8, 'milkshake': 8,
-            'توست': 9, 'toast': 9,
-            'سندويش': 10, 'sandwich': 10,
-            'كرواسان': 12, 'croissant': 12,
-            'كيك': 11, 'cake': 11,
-            'عصير': 6, 'juice': 6,
-            'شاي': 4, 'tea': 4,
-            'حار': 1, 'hot': 1,
-            'بارد': 2, 'cold': 2,
-            'حلو': 3, 'sweet': 3
-        }
-
-        for keyword, category_id in keyword_mapping.items():
-            if keyword in text_lower:
-                return next((cat for cat in categories if cat['category_id'] == category_id), None)
-
-        return None
-
-    def fuzzy_match_item(self, text: str, items: list, language: str = 'arabic') -> Optional[Dict]:
-        """Fuzzy match text to menu item with enhanced matching"""
-        text_lower = text.lower().strip()
-
-        # Convert Arabic numerals
-        text_lower = self._preprocess_message(text_lower)
-
-        # Direct number match
-        number = self.extract_number_from_text(text)
-        if number and 1 <= number <= len(items):
-            return items[number - 1]
-
-        # Name matching with enhanced scoring
-        best_match = None
-        best_score = 0
-
-        for item in items:
-            item_name_ar = item['item_name_ar'].lower()
-            item_name_en = item['item_name_en'].lower()
-
-            score = 0
-
-            # Exact match
-            if text_lower == item_name_ar or text_lower == item_name_en:
-                return item
-
-            # Calculate similarity score
-            if text_lower in item_name_ar or item_name_ar in text_lower:
-                score += 4
-            if text_lower in item_name_en or item_name_en in text_lower:
-                score += 4
-
-            # Word-level matching
-            text_words = text_lower.split()
-            ar_words = item_name_ar.split()
-            en_words = item_name_en.split()
-
-            for word in text_words:
-                if word in ar_words or word in en_words:
-                    score += 2
-
-            if score > best_score:
-                best_score = score
-                best_match = item
-
-        # Return match if score is high enough
-        if best_score >= 3:
-            return best_match
-
-        return None
-
     def generate_fallback_response(self, current_step: str, language: str = 'arabic') -> str:
         """Generate fallback response when AI is not available"""
         templates = AIPrompts.get_response_templates(language)
@@ -695,67 +585,3 @@ class AIProcessor:
         }
 
         return step_mapping.get(current_step, templates['error'])
-
-    def build_context(self, session: Dict, current_step: str, database_manager) -> Dict:
-        """Build conversation context for AI understanding"""
-        context = {
-            'current_step': current_step,
-            'step_description': self._get_step_description(current_step),
-            'available_categories': [],
-            'current_category_items': [],
-            'current_order': {},
-            'language': session.get('language_preference') if session else None,
-            'session_data': session or {}
-        }
-
-        # Add categories if relevant
-        if current_step in ['waiting_for_language', 'waiting_for_category']:
-            context['available_categories'] = database_manager.get_available_categories()
-
-        # Add items if in item selection
-        if current_step == 'waiting_for_item' and session and session.get('selected_category'):
-            context['current_category_items'] = database_manager.get_category_items(session['selected_category'])
-
-        # Add current order if exists
-        if session:
-            phone_number = session.get('phone_number')
-            if phone_number:
-                context['current_order'] = database_manager.get_user_order(phone_number)
-
-        return context
-
-    def _get_step_description(self, step: str) -> str:
-        """Get human-readable step description"""
-        descriptions = {
-            'waiting_for_language': 'Choose language preference (Arabic or English)',
-            'waiting_for_category': 'Select menu category',
-            'waiting_for_item': 'Choose specific item from category',
-            'waiting_for_quantity': 'Specify quantity needed',
-            'waiting_for_additional': 'Decide if more items needed',
-            'waiting_for_service': 'Choose service type (dine-in or delivery)',
-            'waiting_for_location': 'Provide location/table number',
-            'waiting_for_confirmation': 'Confirm the complete order'
-        }
-        return descriptions.get(step, 'Unknown step')
-
-    def validate_extracted_data(self, extracted_data: Dict, current_step: str) -> bool:
-        """Validate extracted data based on current step"""
-        if not extracted_data:
-            return False
-
-        validation_rules = {
-            'waiting_for_language': lambda d: d.get('language') in ['arabic', 'english'],
-            'waiting_for_category': lambda d: d.get('category_id') or d.get('category_name'),
-            'waiting_for_item': lambda d: d.get('item_id') or d.get('item_name'),
-            'waiting_for_quantity': lambda d: isinstance(d.get('quantity'), int) and d.get('quantity') > 0,
-            'waiting_for_additional': lambda d: d.get('yes_no') in ['yes', 'no'],
-            'waiting_for_service': lambda d: d.get('service_type') in ['dine-in', 'delivery'],
-            'waiting_for_location': lambda d: bool(d.get('location')),
-            'waiting_for_confirmation': lambda d: d.get('yes_no') in ['yes', 'no']
-        }
-
-        validator = validation_rules.get(current_step)
-        if validator:
-            return validator(extracted_data)
-
-        return True  # Default to valid for unknown steps
