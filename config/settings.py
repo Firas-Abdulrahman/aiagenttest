@@ -24,6 +24,8 @@ class WhatsAppConfig:
         # AI configuration
         self.ai_enabled = bool(self.openai_api_key)
         self.ai_fallback_enabled = os.getenv('AI_FALLBACK_ENABLED', 'true').lower() == 'true'
+        self.ai_quota_cache_duration = int(os.getenv('AI_QUOTA_CACHE_DURATION', '300'))  # 5 minutes default
+        self.ai_disable_on_quota = os.getenv('AI_DISABLE_ON_QUOTA', 'true').lower() == 'true'
 
         # Server configuration
         self.port = int(os.environ.get('PORT', 5000))
@@ -57,6 +59,8 @@ class WhatsAppConfig:
         print(f"OPENAI_API_KEY: {'✅ Loaded' if self.openai_api_key else 'ℹ️ Missing (Optional)'}")
         print(f"AI_ENABLED: {'✅ Yes' if self.ai_enabled else '❌ No'}")
         print(f"AI_FALLBACK_ENABLED: {'✅ Yes' if self.ai_fallback_enabled else '❌ No'}")
+        print(f"AI_QUOTA_CACHE_DURATION: {self.ai_quota_cache_duration}s")
+        print(f"AI_DISABLE_ON_QUOTA: {'✅ Yes' if self.ai_disable_on_quota else '❌ No'}")
 
         if self.whatsapp_token:
             print(f"Token preview: {self.whatsapp_token[:15]}...")

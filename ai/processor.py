@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from typing import Dict, Optional, Any
 from .prompts import AIPrompts
 
@@ -20,9 +21,18 @@ except ImportError:
 class AIProcessor:
     """Enhanced AI Processing and Understanding Engine"""
 
-    def __init__(self, api_key: str = None):
+    def __init__(self, api_key: str = None, config: Dict = None):
         self.api_key = api_key
         self.client = None
+        self.quota_exceeded_time = None
+        
+        # Get configuration settings
+        if config:
+            self.quota_cache_duration = config.get('ai_quota_cache_duration', 300)
+            self.disable_on_quota = config.get('ai_disable_on_quota', True)
+        else:
+            self.quota_cache_duration = 300  # 5 minutes default
+            self.disable_on_quota = True
 
         if OPENAI_AVAILABLE and api_key:
             try:
@@ -35,9 +45,20 @@ class AIProcessor:
             logger.warning("⚠️ Running without OpenAI - AI features limited")
 
     def is_available(self) -> bool:
-        """Check if AI processing is available"""
+        """Check if AI processing is available with quota cache"""
         if not self.client:
             return False
+        
+        # Check quota cache first
+        if self.quota_exceeded_time:
+            time_since_quota_error = time.time() - self.quota_exceeded_time
+            if time_since_quota_error < self.quota_cache_duration:
+                logger.debug(f"⚠️ AI unavailable due to recent quota error (cache: {int(self.quota_cache_duration - time_since_quota_error)}s remaining)")
+                return False
+            else:
+                # Clear cache after duration
+                self.quota_exceeded_time = None
+                logger.info("🔄 Quota cache expired, retrying AI availability")
         
         # Additional check for quota/rate limit issues
         try:
@@ -53,9 +74,11 @@ class AIProcessor:
             error_msg = str(e)
             if "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower() or "429" in error_msg:
                 logger.warning("⚠️ OpenAI quota exceeded, AI unavailable")
+                self.quota_exceeded_time = time.time()
                 return False
             elif "rate limit" in error_msg.lower():
                 logger.warning("⚠️ OpenAI rate limit hit, AI unavailable")
+                self.quota_exceeded_time = time.time()
                 return False
             else:
                 logger.warning(f"⚠️ OpenAI API error: {error_msg}")
@@ -66,6 +89,17 @@ class AIProcessor:
         if not self.client:
             logger.warning("AI client not available")
             return None
+
+        # Check quota cache first
+        if self.quota_exceeded_time:
+            time_since_quota_error = time.time() - self.quota_exceeded_time
+            if time_since_quota_error < self.quota_cache_duration:
+                logger.debug(f"⚠️ Skipping AI call due to recent quota error (cache: {int(self.quota_cache_duration - time_since_quota_error)}s remaining)")
+                return None
+            else:
+                # Clear cache after duration
+                self.quota_exceeded_time = None
+                logger.info("🔄 Quota cache expired, retrying AI processing")
 
         try:
             # Pre-process message for better understanding
@@ -103,9 +137,11 @@ class AIProcessor:
             error_msg = str(e)
             if "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower() or "429" in error_msg:
                 logger.warning("⚠️ OpenAI quota exceeded, falling back to enhanced processing")
+                self.quota_exceeded_time = time.time()
                 return None
             elif "rate limit" in error_msg.lower():
                 logger.warning("⚠️ OpenAI rate limit hit, falling back to enhanced processing")
+                self.quota_exceeded_time = time.time()
                 return None
             else:
                 logger.error(f"❌ AI understanding error: {error_msg}")

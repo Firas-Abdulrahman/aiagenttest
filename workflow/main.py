@@ -29,8 +29,12 @@ class WhatsAppWorkflow:
             self.db = DatabaseManager(self.config.get('db_path', 'hef_cafe.db'))
             logger.info("✅ Database manager initialized")
 
-            # AI processor
-            self.ai = AIProcessor(self.config.get('openai_api_key'))
+            # AI processor with configuration
+            ai_config = {
+                'ai_quota_cache_duration': self.config.get('ai_quota_cache_duration', 300),
+                'ai_disable_on_quota': self.config.get('ai_disable_on_quota', True)
+            }
+            self.ai = AIProcessor(self.config.get('openai_api_key'), ai_config)
             logger.info("✅ AI processor initialized")
 
             # WhatsApp client
