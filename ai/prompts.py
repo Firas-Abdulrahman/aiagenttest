@@ -146,7 +146,7 @@ EXAMPLE CORRECT RESPONSE (just return raw JSON like this):
         "service_type": null,
         "location": null
     }},
-    "clarification_needed": false,
+    "clarification_needed":  false,
     "clarification_question": null,
     "response_message": "Hello! Would you like to proceed in English? Please confirm by replying with 'yes' or 'no'."
 }}

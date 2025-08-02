@@ -29,7 +29,7 @@ class MessageHandler:
             # Prevent duplicate processing
             lock_key = f"{phone_number}_{message_id}"
             if lock_key in self.processing_lock:
-                logger.warning(f"🔒 Duplicate message processing prevented for {phone_number}")
+                logger.warning(f" Duplicate message processing prevented for {phone_number}")
                 return self._create_response("Processing...")
 
             self.processing_lock[lock_key] = True

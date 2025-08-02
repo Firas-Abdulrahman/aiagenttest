@@ -15,7 +15,7 @@ try:
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
-    logger.warning("OpenAI not installed. AI features will be disabled.")
+    logger.warning("OpenAI not installed. AI features will be  disabled.")
 
 
 class AIProcessor:

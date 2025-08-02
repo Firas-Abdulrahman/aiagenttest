@@ -52,7 +52,7 @@ class WhatsAppConfig:
         print("🔧 WHATSAPP BOT CONFIGURATION")
         print("=" * 50)
         print(f"WHATSAPP_TOKEN: {'✅ Loaded' if self.whatsapp_token else '❌ Missing'}")
-        print(f"APP_ID: {'✅ Loaded' if self.app_id else '❌ Missing'}")
+        print(f"APP_ID: {'Loaded' if self.app_id else '❌ Missing'}")
         print(f"CLIENT_SECRET: {'✅ Loaded' if self.client_secret else '❌ Missing'}")
         print(f"WHATSAPP_BUSINESS_ACCOUNT_ID: {'✅ Loaded' if self.waba_id else '❌ Missing'}")
         print(f"VERIFY_TOKEN: {'✅ Loaded' if self.verify_token else '❌ Missing'}")

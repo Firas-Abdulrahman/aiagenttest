@@ -29,7 +29,7 @@ class DatabaseManager:
             table_definitions = DatabaseSchema.get_table_definitions()
             for table_name, sql in table_definitions.items():
                 conn.execute(sql)
-                logger.info(f"✅ Created/verified table: {table_name}")
+                logger.info(f" Created/verified table: {table_name}")
 
             # Populate initial data
             self.populate_initial_data()
