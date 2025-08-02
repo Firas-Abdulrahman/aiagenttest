@@ -276,7 +276,7 @@ class MessageHandler:
         return self._create_response(response)
 
     def _handle_sub_category_selection_enhanced(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
-        """Enhanced sub category selection with name matching"""
+        """Enhanced sub category selection with better error handling and suggestions"""
 
         selected_main_category_id = session.get('selected_main_category')
         if not selected_main_category_id:
@@ -293,27 +293,92 @@ class MessageHandler:
                                            session.get('customer_name'), selected_main_category_id, selected_sub_category['id'])
             return self._show_sub_category_items(phone_number, selected_sub_category, language)
 
-        # Try sub category name matching
+        # Try enhanced sub category name matching
         selected_sub_category = self._match_sub_category_by_name(text, sub_categories, language)
         if selected_sub_category:
             self.db.create_or_update_session(phone_number, 'waiting_for_item', language, 
                                            session.get('customer_name'), selected_main_category_id, selected_sub_category['id'])
             return self._show_sub_category_items(phone_number, selected_sub_category, language)
 
-        # Show sub categories again
+        # Check if user wants to go back to main categories
+        if self._wants_to_change_category(text, language):
+            return self._suggest_category_change(phone_number, text, language, session)
+
+        # Show sub categories again with smart suggestions
         main_categories = self.db.get_main_categories()
         current_main_category = next((cat for cat in main_categories if cat['id'] == selected_main_category_id), None)
 
+        # Get smart suggestions
+        suggestions = self._get_smart_suggestions(text, sub_categories, language)
+
         if language == 'arabic':
-            response = f"الفئة الفرعية غير محددة. الرجاء اختيار من قائمة {current_main_category['name_ar'] if current_main_category else 'الفئة'}:\n\n"
+            response = f"أعتذر، لم أفهم طلبك '{text}'.\n\n"
+            if suggestions:
+                response += f"{suggestions}\n\n"
+            response += f"الرجاء اختيار من قائمة {current_main_category['name_ar'] if current_main_category else 'الفئة'}:\n\n"
             for i, sub_cat in enumerate(sub_categories, 1):
                 response += f"{i}. {sub_cat['name_ar']}\n"
+            response += "\nأو اكتب اسم الفئة الفرعية"
         else:
-            response = f"Sub-category not specified. Please choose from {current_main_category['name_en'] if current_main_category else 'category'} list:\n\n"
+            response = f"Sorry, I didn't understand '{text}'.\n\n"
+            if suggestions:
+                response += f"{suggestions}\n\n"
+            response += f"Please choose from {current_main_category['name_en'] if current_main_category else 'category'} list:\n\n"
             for i, sub_cat in enumerate(sub_categories, 1):
                 response += f"{i}. {sub_cat['name_en']}\n"
+            response += "\nOr type the sub-category name"
 
         return self._create_response(response)
+
+    def _wants_to_change_category(self, text: str, language: str) -> bool:
+        """Check if user wants to change to a different main category"""
+        text_lower = text.lower().strip()
+        
+        # Keywords indicating they want something different
+        change_indicators = {
+            'arabic': ['اريد شي', 'بدي شي', 'شي اخر', 'غير', 'مختلف', 'حلو', 'حلويات', 'حار', 'ساخن'],
+            'english': ['want something', 'need something', 'different', 'other', 'sweet', 'hot', 'cold']
+        }
+        
+        indicators = change_indicators.get(language, change_indicators['arabic'])
+        return any(indicator in text_lower for indicator in indicators)
+
+    def _suggest_category_change(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
+        """Suggest changing to a different main category"""
+        text_lower = text.lower().strip()
+        
+        # Determine which category they might want
+        suggested_category = None
+        
+        if any(word in text_lower for word in ['حلو', 'حلويات', 'حلى', 'sweet']):
+            suggested_category = 3  # Pastries & Sweets
+        elif any(word in text_lower for word in ['حار', 'ساخن', 'hot']):
+            suggested_category = 2  # Hot Drinks
+        elif any(word in text_lower for word in ['بارد', 'cold']):
+            suggested_category = 1  # Cold Drinks
+        
+        if suggested_category:
+            main_categories = self.db.get_main_categories()
+            target_category = next((cat for cat in main_categories if cat['id'] == suggested_category), None)
+            
+            if target_category:
+                if language == 'arabic':
+                    response = f"أعتذر، أنت الآن في قائمة المشروبات الباردة.\n"
+                    response += f"للحلويات، اختر 'الحلويات والمعجنات' من القائمة الرئيسية.\n\n"
+                    response += "هل تريد العودة للقائمة الرئيسية؟\n"
+                    response += "1. نعم\n"
+                    response += "2. لا، أبقى هنا"
+                else:
+                    response = f"Sorry, you're currently in the Cold Drinks menu.\n"
+                    response += f"For sweets, choose 'Pastries & Sweets' from the main menu.\n\n"
+                    response += "Would you like to go back to the main menu?\n"
+                    response += "1. Yes\n"
+                    response += "2. No, stay here"
+                
+                return self._create_response(response)
+        
+        # If we can't determine, just show main categories
+        return self._handle_main_category_selection_enhanced(phone_number, text, language, session)
 
     def _handle_item_selection_enhanced(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
         """Enhanced item selection with name matching"""
@@ -847,7 +912,7 @@ class MessageHandler:
         return self._create_response(response)
 
     def _match_main_category_by_name(self, text: str, main_categories: list, language: str) -> Optional[Dict]:
-        """Match main category by name"""
+        """Enhanced main category matching with natural language understanding"""
         text_lower = text.lower().strip()
 
         # Direct name matching
@@ -860,21 +925,79 @@ class MessageHandler:
                     text_lower in en_name or en_name in text_lower):
                 return category
 
-        # Keyword matching
+        # Enhanced keyword matching with natural language
         keyword_mapping = {
-            'cold': 1, 'بارد': 1, 'مشروبات باردة': 1,
-            'hot': 2, 'حار': 2, 'مشروبات حارة': 2,
-            'pastry': 3, 'حلويات': 3, 'معجنات': 3, 'sweets': 3
+            # Cold Drinks
+            'cold': 1, 'بارد': 1, 'مشروبات باردة': 1, 'باردة': 1, 'شي بارد': 1, 'مشروب بارد': 1,
+            'iced': 1, 'مثلج': 1, 'ايس': 1,
+            
+            # Hot Drinks
+            'hot': 2, 'حار': 2, 'مشروبات حارة': 2, 'حارة': 2, 'شي حار': 2, 'مشروب حار': 2,
+            'ساخن': 2, 'ساخنة': 2, 'قهوة': 2, 'coffee': 2, 'tea': 2, 'شاي': 2,
+            
+            # Pastries & Sweets
+            'pastry': 3, 'حلويات': 3, 'معجنات': 3, 'sweets': 3, 'حلو': 3, 'حلى': 3,
+            'شي حلو': 3, 'حلويات ومعجنات': 3, 'كيك': 3, 'cake': 3, 'toast': 3, 'توست': 3,
+            'sandwich': 3, 'سندويش': 3, 'croissant': 3, 'كرواسان': 3,
         }
 
+        # Check for exact keyword matches
         for keyword, category_id in keyword_mapping.items():
             if keyword in text_lower:
                 return next((cat for cat in main_categories if cat['id'] == category_id), None)
 
+        # Intent-based matching
+        if any(word in text_lower for word in ['اريد شي', 'بدي شي', 'want something', 'need something']):
+            # Try to determine intent from context
+            if any(word in text_lower for word in ['بارد', 'cold', 'مثلج', 'iced']):
+                return next((cat for cat in main_categories if cat['id'] == 1), None)
+            elif any(word in text_lower for word in ['حار', 'hot', 'ساخن', 'قهوة', 'coffee']):
+                return next((cat for cat in main_categories if cat['id'] == 2), None)
+            elif any(word in text_lower for word in ['حلو', 'sweet', 'حلويات', 'كيك', 'cake']):
+                return next((cat for cat in main_categories if cat['id'] == 3), None)
+
+        # Fuzzy matching for typos
+        import difflib
+        
+        all_names = []
+        for category in main_categories:
+            all_names.append(category['name_ar'].lower())
+            all_names.append(category['name_en'].lower())
+        
+        # Common variations and typos
+        variations = {
+            'مشروبات باردة': 'المشروبات الباردة',
+            'مشروبات حارة': 'المشروبات الحارة',
+            'حلويات': 'الحلويات والمعجنات',
+            'معجنات': 'الحلويات والمعجنات',
+            'cold drinks': 'Cold Drinks',
+            'hot drinks': 'Hot Drinks',
+            'pastries': 'Pastries & Sweets',
+        }
+        
+        # Check variations
+        for variation, correct_name in variations.items():
+            if variation in text_lower:
+                return next((cat for cat in main_categories if correct_name in cat['name_ar'] or correct_name in cat['name_en']), None)
+        
+        # Fuzzy string matching
+        best_match = None
+        best_ratio = 0
+        
+        for name in all_names:
+            ratio = difflib.SequenceMatcher(None, text_lower, name).ratio()
+            if ratio > 0.6 and ratio > best_ratio:  # 60% similarity threshold
+                best_ratio = ratio
+                best_match = name
+        
+        if best_match:
+            return next((cat for cat in main_categories 
+                        if best_match in cat['name_ar'].lower() or best_match in cat['name_en'].lower()), None)
+
         return None
 
     def _match_sub_category_by_name(self, text: str, sub_categories: list, language: str) -> Optional[Dict]:
-        """Match sub category by name"""
+        """Enhanced sub category matching with natural language understanding"""
         text_lower = text.lower().strip()
 
         # Direct name matching
@@ -887,27 +1010,110 @@ class MessageHandler:
                     text_lower in en_name or en_name in text_lower):
                 return sub_category
 
-        # Keyword matching for common sub-categories
+        # Enhanced keyword matching with synonyms and typos
         keyword_mapping = {
-            'frappuccino': 2, 'فرابتشينو': 2,
-            'milkshake': 3, 'ميلك شيك': 3,
-            'iced tea': 4, 'شاي مثلج': 4,
-            'juice': 5, 'عصير': 5, 'عصائر': 5,
+            # Cold Drinks
+            'frappuccino': 2, 'فرابتشينو': 2, 'فراب': 2,
+            'milkshake': 3, 'ميلك شيك': 3, 'شيك': 3, 'ميلك': 3,
+            'iced tea': 4, 'شاي مثلج': 4, 'شاي': 4, 'مثلج': 4,
+            'juice': 5, 'عصير': 5, 'عصائر': 5, 'عصائر طازجة': 5, 'طازجة': 5,
             'mojito': 6, 'موهيتو': 6,
-            'coffee': 8, 'قهوة': 8, 'اسبرسو': 8,
-            'latte': 9, 'لاتيه': 9,
+            'energy': 7, 'طاقة': 7, 'مشروبات الطاقة': 7, 'مشروب طاقة': 7, 'مشروبات طاقة': 7,
+            'soda': 7, 'صودا': 7, 'ماء': 7, 'water': 7,
+            
+            # Hot Drinks
+            'coffee': 8, 'قهوة': 8, 'اسبرسو': 8, 'espresso': 8,
+            'latte': 9, 'لاتيه': 9, 'كابتشينو': 9, 'cappuccino': 9,
+            'hot': 10, 'ساخن': 10, 'شاي عراقي': 10, 'iraqi tea': 10,
+            
+            # Pastries & Sweets
             'toast': 11, 'توست': 11,
             'sandwich': 12, 'سندويش': 12, 'سندويشات': 12,
             'croissant': 13, 'كرواسان': 13,
             'pie': 14, 'فطيرة': 14, 'فطائر': 14,
-            'cake': 15, 'كيك': 15
+            'cake': 15, 'كيك': 15, 'حلو': 15, 'حلويات': 15, 'حلى': 15,
         }
 
+        # Check for exact keyword matches
         for keyword, sub_category_id in keyword_mapping.items():
             if keyword in text_lower:
                 return next((sub_cat for sub_cat in sub_categories if sub_cat['id'] == sub_category_id), None)
 
+        # Fuzzy matching for typos and variations
+        import difflib
+        
+        # Create a list of all possible names
+        all_names = []
+        for sub_cat in sub_categories:
+            all_names.append(sub_cat['name_ar'].lower())
+            all_names.append(sub_cat['name_en'].lower())
+        
+        # Add common variations and typos
+        variations = {
+            'مشوربات الطاقة': 'مشروبات الطاقة',
+            'مشروب طاقة': 'مشروبات الطاقة',
+            'مشروبات طاقة': 'مشروبات الطاقة',
+            'عصير طازج': 'عصائر طازجة',
+            'عصائر طازج': 'عصائر طازجة',
+            'شاي مثلج': 'شاي مثلج',
+            'ميلك شيك': 'ميلك شيك',
+            'فرابتشينو': 'فرابتشينو',
+            'موهيتو': 'موهيتو',
+            'توست': 'توست',
+            'سندويشات': 'سندويشات',
+            'كرواسان': 'كرواسان',
+            'فطائر': 'فطائر',
+            'كيك': 'قطع كيك',
+            'حلويات': 'قطع كيك',
+            'حلو': 'قطع كيك',
+        }
+        
+        # Check variations
+        for variation, correct_name in variations.items():
+            if variation in text_lower:
+                return next((sub_cat for sub_cat in sub_categories if correct_name in sub_cat['name_ar'].lower()), None)
+        
+        # Fuzzy string matching
+        best_match = None
+        best_ratio = 0
+        
+        for name in all_names:
+            ratio = difflib.SequenceMatcher(None, text_lower, name).ratio()
+            if ratio > 0.6 and ratio > best_ratio:  # 60% similarity threshold
+                best_ratio = ratio
+                best_match = name
+        
+        if best_match:
+            return next((sub_cat for sub_cat in sub_categories 
+                        if best_match in sub_cat['name_ar'].lower() or best_match in sub_cat['name_en'].lower()), None)
+
         return None
+
+    def _get_smart_suggestions(self, text: str, sub_categories: list, language: str) -> str:
+        """Generate smart suggestions for unclear input"""
+        text_lower = text.lower().strip()
+        
+        suggestions = []
+        
+        # Check for common patterns
+        if 'طاقة' in text_lower or 'energy' in text_lower:
+            suggestions.append("مشروبات الطاقة")
+        if 'عصير' in text_lower or 'juice' in text_lower:
+            suggestions.append("عصائر طازجة")
+        if 'شاي' in text_lower or 'tea' in text_lower:
+            suggestions.append("شاي مثلج")
+        if 'حلو' in text_lower or 'sweet' in text_lower:
+            suggestions.append("قطع كيك")
+        if 'بارد' in text_lower or 'cold' in text_lower:
+            suggestions.append("ايس كوفي")
+        
+        if suggestions:
+            if language == 'arabic':
+                return f"هل تقصد: {', '.join(suggestions)}؟"
+            else:
+                return f"Did you mean: {', '.join(suggestions)}?"
+        
+        return ""
 
     def _handle_quantity_selection_enhanced(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
         """Enhanced quantity selection with better number extraction"""
