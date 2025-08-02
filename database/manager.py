@@ -25,16 +25,63 @@ class DatabaseManager:
             conn.execute("PRAGMA mmap_size=268435456")  # 256MB
             conn.execute("PRAGMA foreign_keys = ON")
 
-            # Create all tables
-            table_definitions = DatabaseSchema.get_table_definitions()
-            for table_name, sql in table_definitions.items():
-                conn.execute(sql)
-                logger.info(f" Created/verified table: {table_name}")
+            # Check if we need to migrate from old schema
+            try:
+                # Try to access the old category_id column
+                conn.execute("SELECT category_id FROM menu_items LIMIT 1")
+                logger.info("🔄 Detected old schema, migrating to new structure...")
+                self._migrate_old_schema(conn)
+            except sqlite3.OperationalError:
+                # New schema, create tables normally
+                logger.info("✅ Using new schema, creating tables...")
+                table_definitions = DatabaseSchema.get_table_definitions()
+                for table_name, sql in table_definitions.items():
+                    conn.execute(sql)
+                    logger.info(f" Created/verified table: {table_name}")
 
             # Populate initial data
             self.populate_initial_data()
 
         logger.info("✅ Database initialized successfully")
+
+    def _migrate_old_schema(self, conn):
+        """Migrate from old schema to new schema"""
+        try:
+            # Backup old data
+            old_menu_items = conn.execute("SELECT * FROM menu_items").fetchall()
+            old_user_sessions = conn.execute("SELECT * FROM user_sessions").fetchall()
+            
+            # Drop old tables
+            conn.execute("DROP TABLE IF EXISTS menu_items")
+            conn.execute("DROP TABLE IF EXISTS user_sessions")
+            
+            # Create new tables
+            table_definitions = DatabaseSchema.get_table_definitions()
+            for table_name, sql in table_definitions.items():
+                conn.execute(sql)
+                logger.info(f" Created new table: {table_name}")
+            
+            # Populate with new data structure
+            self.populate_initial_data()
+            
+            logger.info("✅ Schema migration completed successfully")
+            
+        except Exception as e:
+            logger.error(f"❌ Error during schema migration: {e}")
+            # If migration fails, recreate database from scratch
+            conn.execute("DROP TABLE IF EXISTS menu_items")
+            conn.execute("DROP TABLE IF EXISTS user_sessions")
+            conn.execute("DROP TABLE IF EXISTS main_categories")
+            conn.execute("DROP TABLE IF EXISTS sub_categories")
+            
+            # Create tables fresh
+            table_definitions = DatabaseSchema.get_table_definitions()
+            for table_name, sql in table_definitions.items():
+                conn.execute(sql)
+                logger.info(f" Created fresh table: {table_name}")
+            
+            # Populate data
+            self.populate_initial_data()
 
     def populate_initial_data(self):
         """Populate database with initial data"""

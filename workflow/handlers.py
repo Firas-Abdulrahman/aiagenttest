@@ -55,40 +55,50 @@ class MessageHandler:
             return self._create_response("حدث خطأ. الرجاء إعادة المحاولة\nAn error occurred. Please try again")
 
     def _process_with_ai_first(self, phone_number: str, text: str, customer_name: str) -> Dict:
-        """ENHANCED: Always try AI processing first, with intelligent fallback"""
+        """Process message with AI first, fallback to enhanced processing"""
+        try:
+            # Get current session
+            session = self.db.get_user_session(phone_number)
+            current_step = session.get('current_step') if session else 'waiting_for_language'
+            language = session.get('language_preference') if session else None
 
-        # Get current session
-        session = self.db.get_user_session(phone_number)
-        current_step = session['current_step'] if session else 'waiting_for_language'
-        language = session.get('language_preference', 'arabic') if session else 'arabic'
+            # CRITICAL FIX: Always start with language selection if no session exists
+            if not session:
+                return self._handle_language_selection_enhanced(phone_number, text, customer_name)
 
-        logger.info(f"📊 User {phone_number} at step: {current_step}")
+            # CRITICAL FIX: If user says "hello" or similar at any step, restart the conversation
+            text_lower = text.lower().strip()
+            if any(greeting in text_lower for greeting in ['مرحبا', 'هلا', 'hello', 'hi', 'hey']):
+                logger.info("🔄 User said hello, restarting conversation")
+                try:
+                    self.db.delete_session(phone_number)
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not delete session: {e}")
+                return self._handle_language_selection_enhanced(phone_number, text, customer_name)
 
-        # CRITICAL FIX: Convert Arabic numerals before ANY processing
-        text = self._convert_arabic_numerals(text)
+            # Convert Arabic numerals early
+            text = self._convert_arabic_numerals(text)
 
-        # ENHANCED: Build comprehensive context
-        context = self._build_enhanced_context(session, current_step)
-
-        # TRY AI PROCESSING FIRST (if available and not quota exceeded)
-        if self.ai.is_available():
-            logger.info("🤖 Using AI processing")
-
-            try:
-                ai_result = self.ai.understand_message(text, current_step, context)
-
+            # Try AI processing first
+            if self.ai.is_available():
+                logger.info("🤖 Using AI processing")
+                ai_result = self.ai.understand_message(text, current_step, self._build_enhanced_context(session, current_step))
+                
                 if ai_result and self._validate_ai_result(ai_result, current_step):
-                    logger.info(f"✅ AI understood: {ai_result.get('understood_intent', 'Unknown')}")
-                    return self.executor.execute_action(phone_number, ai_result, session, customer_name)
+                    # AI understood correctly, use its result
+                    return self._handle_ai_result(phone_number, ai_result, session, language)
                 else:
                     logger.warning("⚠️ AI result invalid, using enhanced fallback")
-            except Exception as e:
-                logger.warning(f"⚠️ AI processing failed: {str(e)}, using enhanced fallback")
-        else:
-            logger.info("🔄 AI not available, using enhanced fallback")
+            else:
+                logger.info("🔄 AI not available, using enhanced fallback")
 
-        # ENHANCED FALLBACK with better understanding
-        return self._enhanced_fallback_processing(phone_number, current_step, text, customer_name, session, language)
+            # Enhanced fallback processing
+            return self._enhanced_fallback_processing(phone_number, current_step, text, customer_name, session, language)
+
+        except Exception as e:
+            logger.error(f"❌ Error in AI processing: {e}")
+            # Fallback to basic language selection
+            return self._handle_language_selection_enhanced(phone_number, text, customer_name)
 
     def _build_enhanced_context(self, session: Dict, current_step: str) -> Dict:
         """Build comprehensive context for AI understanding"""
@@ -942,3 +952,37 @@ class MessageHandler:
             response = "Invalid quantity. Please enter a valid number for quantity (like 1, 2, 3)"
 
         return self._create_response(response)
+
+    def _handle_ai_result(self, phone_number: str, ai_result: Dict, session: Dict, language: str) -> Dict:
+        """Handle AI processing result"""
+        try:
+            # Extract action from AI result
+            action = ai_result.get('action', '')
+            
+            if action == 'language_selection':
+                return self._handle_language_selection_enhanced(phone_number, ai_result.get('message', ''), session.get('customer_name', 'Customer'))
+            elif action == 'show_main_categories':
+                return self._handle_main_category_selection_enhanced(phone_number, ai_result.get('message', ''), language, session)
+            elif action == 'show_sub_categories':
+                return self._handle_sub_category_selection_enhanced(phone_number, ai_result.get('message', ''), language, session)
+            elif action == 'show_items':
+                return self._handle_item_selection_enhanced(phone_number, ai_result.get('message', ''), language, session)
+            elif action == 'ask_quantity':
+                return self._handle_quantity_selection_enhanced(phone_number, ai_result.get('message', ''), language, session)
+            elif action == 'ask_additional':
+                return self._handle_additional_items_enhanced(phone_number, ai_result.get('message', ''), language, session)
+            elif action == 'ask_service':
+                return self._handle_service_selection_enhanced(phone_number, ai_result.get('message', ''), language, session)
+            elif action == 'ask_location':
+                return self._handle_location_input_enhanced(phone_number, ai_result.get('message', ''), language, session)
+            elif action == 'confirm_order':
+                return self._handle_confirmation_enhanced(phone_number, ai_result.get('message', ''), language, session)
+            else:
+                # Fallback to enhanced processing
+                return self._enhanced_fallback_processing(phone_number, session.get('current_step', 'waiting_for_language'), 
+                                                        ai_result.get('message', ''), session.get('customer_name', 'Customer'), session, language)
+        except Exception as e:
+            logger.error(f"❌ Error handling AI result: {e}")
+            # Fallback to enhanced processing
+            return self._enhanced_fallback_processing(phone_number, session.get('current_step', 'waiting_for_language'), 
+                                                    ai_result.get('message', ''), session.get('customer_name', 'Customer'), session, language)
