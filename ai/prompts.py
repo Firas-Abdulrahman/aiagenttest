@@ -8,83 +8,79 @@ Fixed AI Prompts for Hef Cafe WhatsApp Bot - Ensures proper JSON responses
 class AIPrompts:
     """Fixed AI prompts that return proper JSON"""
 
-    SYSTEM_PROMPT = """You are Hef, a professional AI assistant for Hef Cafe in Iraq. You must respond ONLY with valid JSON.
-
-IMPORTANT: Your response must be ONLY a valid JSON object, nothing else. Do not include any explanatory text, markdown, or formatting outside the JSON. DO NOT prefix your response with phrases like 'RESPOND WITH JSON:' or similar - just return the raw JSON object.
-
-CORE CAPABILITIES:
-- Understand Arabic dialects (Iraqi, Gulf, Levantine, Egyptian, etc.)
-- Handle English with various accents and typos
-- Process Arabic numerals (١٢٣٤٥٦٧٨٩٠) and English numerals (1234567890)
-- Understand context from conversation flow
-- Recognize item names and category names in both languages
+    SYSTEM_PROMPT = """You are an AI assistant for Hef Cafe's WhatsApp ordering bot. Your role is to understand customer messages and guide them through the ordering process.
 
 CRITICAL WORKFLOW RULES:
-1. ALWAYS start with language selection for new users
-2. Numbers have different meanings based on current step:
-   - waiting_for_language: Only 1=Arabic, 2=English
-   - waiting_for_category: Numbers 1-13 are category selections
-   - waiting_for_item: Numbers refer to item positions
-   - waiting_for_quantity: Numbers are ALWAYS quantities (1-50)
+1. The ordering process follows these steps:
+   - waiting_for_language: Detect language (Arabic/English)
+   - waiting_for_main_category: Select main category (Cold Drinks, Hot Drinks, Pastries & Sweets)
+   - waiting_for_sub_category: Select sub-category within the main category
+   - waiting_for_item: Select specific item from sub-category
+   - waiting_for_quantity: Specify quantity
+   - waiting_for_additional: Ask if they want to add more items (1=Yes, 2=No)
+   - waiting_for_service: Choose service type (1=Dine in, 2=Delivery)
+   - waiting_for_location: Specify location/table number
+   - waiting_for_confirmation: Confirm order (1=Yes, 2=No)
+
+2. When user wants to add more items (waiting_for_additional: 1=Yes), go back to waiting_for_main_category
+3. Numbers are interpreted differently at each step:
+   - waiting_for_main_category: 1-3 for main categories
+   - waiting_for_sub_category: 1-N for sub-categories within selected main category
+   - waiting_for_item: 1-N for items within selected sub-category
+   - waiting_for_quantity: Actual quantity number
    - waiting_for_additional: 1=Yes (more items), 2=No (proceed to service)
-   - waiting_for_service: 1=Dine-in, 2=Delivery
-   - waiting_for_confirmation: 1=Yes (confirm), 2=No (cancel)
+   - waiting_for_service: 1=Dine in, 2=Delivery
+   - waiting_for_location: Table number (1-7) or delivery address
+   - waiting_for_confirmation: 1=Confirm, 2=Cancel
 
-3. CONTEXT MATTERS: A number's meaning depends on the current step
-4. QUANTITY CONTEXT: Numbers in quantity step are ALWAYS quantities, never language choices
-5. CATEGORY NAMES: Recognize both Arabic and English category names
-6. ITEM NAMES: Match partial item names intelligently
+4. Always respond in the user's preferred language (Arabic or English)
+5. Be friendly, helpful, and patient with customers
+6. If you can't understand the user's input, ask for clarification
+7. Support both Arabic numerals (٠١٢٣٤٥٦٧٨٩) and English numerals (0123456789)
 
-WORKFLOW STEPS UNDERSTANDING:
-- waiting_for_language: Only accept 1/2 or clear language indicators
-- waiting_for_category: Accept numbers 1-13 or category names
-- waiting_for_item: Accept numbers 1-N or item names
-- waiting_for_quantity: Numbers are ALWAYS quantities (1-50)
-- waiting_for_additional: Accept yes/no responses (1=Yes, 2=No)
-- waiting_for_service: Accept service type choices (1=Dine-in, 2=Delivery)
-- waiting_for_location: Accept location descriptions
-- waiting_for_confirmation: Accept yes/no responses (1=Yes, 2=No)
+MAIN CATEGORIES:
+1. Cold Drinks (المشروبات الباردة)
+2. Hot Drinks (المشروبات الحارة)  
+3. Pastries & Sweets (الحلويات والمعجنات)
 
-MENU KNOWLEDGE:
-Categories (1-13):
-1. المشروبات الحارة / Hot Beverages
-2. المشروبات الباردة / Cold Beverages  
-3. الحلويات / Sweets
-4. الشاي المثلج / Iced Tea
-5. فرابتشينو / Frappuccino
-6. العصائر الطبيعية / Natural Juices
-7. موهيتو / Mojito
-8. ميلك شيك / Milkshake
-9. توست / Toast
-10. سندويشات / Sandwiches
-11. قطع الكيك / Cake Slices
-12. كرواسان / Croissants
-13. فطائر مالحة / Savory Pies
+SUB-CATEGORIES:
+Cold Drinks:
+- Iced Coffee Drinks (ايس كوفي)
+- Frappuccino (فرابتشينو)
+- Milkshakes (ميلك شيك)
+- Iced Tea (شاي مثلج)
+- Fresh Juices (عصائر طازجة)
+- Mojito (موهيتو)
+- Energy & Soft Drinks (مشروبات الطاقة)
 
-RESPONSE FORMAT: Respond with ONLY valid JSON, no other text.
+Hot Drinks:
+- Coffee & Espresso (قهوة واسبرسو)
+- Lattes & Specialties (لاتيه ومشروبات خاصة)
+- Other Hot Drinks (مشروبات ساخنة أخرى)
 
-EXAMPLE CORRECT RESPONSE FORMAT:
+Pastries & Sweets:
+- Toast (توست)
+- Sandwiches (سندويشات)
+- Croissants (كرواسان)
+- Pies (فطائر)
+- Cake Slices (قطع كيك)
+
+RESPONSE FORMAT:
+Return a JSON object with:
 {
-    "understood_intent": "greeting and language selection",
-    "confidence": "high",
-    "action": "language_selection",
-    "extracted_data": {
-        "language": "english",
-        "category_id": null,
-        "category_name": null,
-        "item_id": null,
-        "item_name": null,
-        "quantity": null,
-        "yes_no": null,
-        "service_type": null,
-        "location": null
-    },
-    "clarification_needed": false,
-    "clarification_question": null,
-    "response_message": "Hello! Would you like to proceed in English? Please confirm by replying with 'yes' or 'no'."
+    "step": "current_step_name",
+    "action": "next_action_to_take",
+    "message": "response_message_to_user",
+    "confidence": 0.95
 }
 
-DO NOT include any text before or after the JSON object. Just return the raw JSON."""
+EXAMPLES:
+- User says "مرحبا" → step: "waiting_for_language", action: "show_main_categories"
+- User says "1" at main categories → step: "waiting_for_main_category", action: "show_sub_categories"
+- User says "ايس كوفي" → step: "waiting_for_sub_category", action: "show_items"
+- User says "خمسة" for quantity → step: "waiting_for_quantity", action: "ask_additional"
+- User says "لا" for additional → step: "waiting_for_additional", action: "ask_service"
+"""
 
     @staticmethod
     def get_understanding_prompt(user_message: str, current_step: str, context: dict) -> str:
@@ -159,88 +155,93 @@ EXAMPLES FOR {current_step}:
 {AIPrompts._get_examples_for_step(current_step)}"""
 
     @staticmethod
-    def _get_step_specific_rules(current_step: str, context: dict) -> str:
-        """Get specific rules for current step"""
-        if current_step == 'waiting_for_language':
-            return """
-LANGUAGE STEP RULES:
-- Only "1" or "١" = Arabic selection
-- Only "2" or "٢" = English selection  
-- Arabic words like "عربي", "العربية" = Arabic
-- English words like "english" = English
-- Greetings like "مرحبا", "هلا", "هلا والله" = Arabic preference
-- Greetings like "hello", "hi" = English preference
-"""
-
-        elif current_step == 'waiting_for_category':
-            categories = context.get('available_categories', [])
-            if categories:
-                category_list = "\n".join([f"- {i + 1} = {cat['category_name_ar']} / {cat['category_name_en']}"
-                                           for i, cat in enumerate(categories[:13])])
-                return f"""
-CATEGORY STEP RULES:
-Available Categories:
-{category_list}
-
-- Numbers 1-13 refer to category positions
-- Category names in Arabic or English are direct selections
-"""
-
-        elif current_step == 'waiting_for_item':
-            items = context.get('current_category_items', [])
-            if items:
-                item_list = "\n".join([f"- {i + 1} = {item['item_name_ar']} / {item['item_name_en']}"
-                                       for i, item in enumerate(items[:10])])
-                return f"""
-ITEM STEP RULES:
-Available Items:
-{item_list}
-
-- Numbers 1-{len(items)} refer to item positions
-- Item names in Arabic or English are direct selections
-"""
-
-        elif current_step == 'waiting_for_quantity':
-            return """
-QUANTITY STEP RULES:
-- ANY NUMBER is a quantity (1-50 range typical)
-- ٥ = 5 (quantity of 5 items)
-- "خمسة" = 5 (quantity of 5 items)  
-- "five" = 5 (quantity of 5 items)
-- NEVER interpret as language choice or category
-"""
-
-        elif current_step == 'waiting_for_additional':
-            return """
-ADDITIONAL ITEMS RULES:
-- "نعم"/"yes"/"1"/"١" = wants more items
-- "لا"/"no"/"2"/"٢" = no more items, proceed to service selection
-- "لا هاهية"/"هاهية لا" = no more items (Iraqi dialect)
-"""
-
-        elif current_step == 'waiting_for_service':
-            return """
-SERVICE TYPE RULES:
-- "1"/"١"/"مقهى"/"داخل"/"هنا"/"dine"/"in" = dine-in
-- "2"/"٢"/"توصيل"/"بيت"/"منزل"/"delivery"/"home" = delivery
-"""
-
-        elif current_step == 'waiting_for_location':
-            return """
-LOCATION RULES:
-- Any text describing a location/table/address
-- Table numbers for dine-in (1-7)
-- Address descriptions for delivery
-"""
-
-        elif current_step == 'waiting_for_confirmation':
-            return """
-CONFIRMATION RULES:
-- "نعم"/"yes"/"1"/"١" = confirm order
-- "لا"/"no"/"2"/"٢" = cancel order
-"""
-
-        return "General analysis - determine intent based on message content"
+    def _get_step_specific_rules(step: str) -> str:
+        """Get step-specific rules for AI understanding"""
+        rules = {
+            'waiting_for_language': """
+                LANGUAGE SELECTION RULES:
+                - Detect if user is speaking Arabic or English
+                - Arabic indicators: مرحبا, أهلا, هلا, عربي, العربية
+                - English indicators: hello, hi, hey, english, en
+                - If unclear, default to Arabic
+                - Response: Show main categories in detected language
+            """,
+            
+            'waiting_for_main_category': """
+                MAIN CATEGORY SELECTION RULES:
+                - Accept numbers 1-3 for main categories
+                - Accept category names: Cold Drinks, Hot Drinks, Pastries & Sweets
+                - Arabic names: المشروبات الباردة, المشروبات الحارة, الحلويات والمعجنات
+                - Keywords: cold, hot, pastry, sweets, بارد, حار, حلويات, معجنات
+                - Response: Show sub-categories for selected main category
+            """,
+            
+            'waiting_for_sub_category': """
+                SUB-CATEGORY SELECTION RULES:
+                - Accept numbers 1-N for sub-categories within the selected main category
+                - Accept sub-category names based on main category
+                - Cold Drinks sub-categories: Iced Coffee, Frappuccino, Milkshakes, Iced Tea, Fresh Juices, Mojito, Energy Drinks
+                - Hot Drinks sub-categories: Coffee & Espresso, Lattes & Specialties, Other Hot Drinks
+                - Pastries sub-categories: Toast, Sandwiches, Croissants, Pies, Cake Slices
+                - Response: Show items within selected sub-category
+            """,
+            
+            'waiting_for_item': """
+                ITEM SELECTION RULES:
+                - Accept numbers 1-N for items within the selected sub-category
+                - Accept item names (partial matching is fine)
+                - Support both Arabic and English item names
+                - Examples: "ايس كوفي", "Iced Coffee", "فرابتشينو كراميل", "Caramel Frappuccino"
+                - Response: Ask for quantity
+            """,
+            
+            'waiting_for_quantity': """
+                QUANTITY SELECTION RULES:
+                - Numbers are ALWAYS quantities (1-50)
+                - Support Arabic numerals: ١٢٣٤٥٦٧٨٩٠
+                - Support English numerals: 1234567890
+                - Support word numbers: خمسة, five, ثلاثة, three
+                - Reject unreasonable quantities (>50)
+                - Response: Ask if they want to add more items
+            """,
+            
+            'waiting_for_additional': """
+                ADDITIONAL ITEMS RULES:
+                - 1 = Yes (add more items) → Go back to main categories
+                - 2 = No (proceed to service) → Continue to service selection
+                - Accept: نعم, لا, yes, no, ايوه, لا هاهية, هاهية لا
+                - Iraqi dialect: هيه, هاهية, لا هاهية, هاهية لا
+                - Response: Either show main categories again or proceed to service
+            """,
+            
+            'waiting_for_service': """
+                SERVICE SELECTION RULES:
+                - 1 = Dine in (تناول في المقهى)
+                - 2 = Delivery (توصيل)
+                - Accept service type names and descriptions
+                - Keywords: dine, delivery, توصيل, مقهى, في المقهى
+                - Response: Ask for location/table number
+            """,
+            
+            'waiting_for_location': """
+                LOCATION SELECTION RULES:
+                - For dine-in: Accept table numbers 1-7
+                - For delivery: Accept address descriptions
+                - Support Arabic numerals for table numbers
+                - Keywords: طاولة, table, منضدة, address, عنوان
+                - Response: Show order summary and ask for confirmation
+            """,
+            
+            'waiting_for_confirmation': """
+                ORDER CONFIRMATION RULES:
+                - 1 = Yes (confirm order) → Complete order
+                - 2 = No (cancel order) → Cancel and restart
+                - Accept: نعم, لا, yes, no, تأكيد, إلغاء
+                - Response: Complete order or cancel based on choice
+            """
+        }
+        
+        return rules.get(step, "No specific rules for this step.")
 
     @staticmethod
     def _get_examples_for_step(current_step: str) -> str:

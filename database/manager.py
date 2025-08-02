@@ -37,101 +37,132 @@ class DatabaseManager:
         logger.info("✅ Database initialized successfully")
 
     def populate_initial_data(self):
-        """Populate initial menu and step rules"""
-        with sqlite3.connect(self.db_path) as conn:
-            # Check if menu data exists
-            cursor = conn.execute("SELECT COUNT(*) FROM menu_items")
-            if cursor.fetchone()[0] > 0:
-                return  # Data already exists
+        """Populate database with initial data"""
+        try:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=30000")
+                
+                # Check if data already exists
+                main_categories_count = conn.execute("SELECT COUNT(*) FROM main_categories").fetchone()[0]
+                if main_categories_count == 0:
+                    # Insert main categories
+                    main_categories = DatabaseSchema.get_initial_menu_data()
+                    for category in main_categories:
+                        conn.execute("""
+                            INSERT INTO main_categories (id, name_ar, name_en, display_order)
+                            VALUES (?, ?, ?, ?)
+                        """, category)
+                    
+                    # Insert sub categories
+                    sub_categories = DatabaseSchema.get_initial_sub_categories()
+                    for sub_category in sub_categories:
+                        conn.execute("""
+                            INSERT INTO sub_categories (id, main_category_id, name_ar, name_en, display_order)
+                            VALUES (?, ?, ?, ?, ?)
+                        """, sub_category)
+                    
+                    # Insert menu items
+                    menu_items = DatabaseSchema.get_initial_items()
+                    for item in menu_items:
+                        conn.execute("""
+                            INSERT INTO menu_items (id, sub_category_id, main_category_id, item_name_ar, item_name_en, price, unit)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, item)
+                    
+                    # Insert step validation rules
+                    step_rules = DatabaseSchema.get_initial_step_rules()
+                    for rule in step_rules:
+                        conn.execute("""
+                            INSERT OR REPLACE INTO step_rules 
+                            (current_step, allowed_next_steps, required_data, description)
+                            VALUES (?, ?, ?, ?)
+                        """, rule)
+                    
+                    conn.commit()
+                    logger.info("✅ Initial data populated successfully")
+                else:
+                    logger.info("✅ Data already exists, skipping population")
 
-            # Insert menu items
-            menu_data = DatabaseSchema.get_initial_menu_data()
-            conn.executemany("""
-                INSERT INTO menu_items 
-                (category_id, category_name_ar, category_name_en, item_name_ar, item_name_en, price, unit)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, menu_data)
-
-            # Insert step validation rules
-            step_rules = DatabaseSchema.get_initial_step_rules()
-            conn.executemany("""
-                INSERT OR REPLACE INTO step_rules 
-                (current_step, allowed_next_steps, required_data, description)
-                VALUES (?, ?, ?, ?)
-            """, step_rules)
-
-            conn.commit()
-            logger.info("✅ Initial data populated")
+        except Exception as e:
+            logger.error(f"❌ Error populating initial data: {e}")
 
     # User Session Operations
     def get_user_session(self, phone_number: str) -> Optional[Dict]:
-        """Get current user session state"""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.execute("""
-                SELECT * FROM user_sessions WHERE phone_number = ?
-            """, (phone_number,))
-
-            row = cursor.fetchone()
-            return dict(row) if row else None
-
-    def create_or_update_session(self, phone_number: str, current_step: str,
-                                 language: str = None, customer_name: str = None,
-                                 selected_category: int = None, selected_item: int = None,
-                                 conversation_context: str = None) -> bool:
-        """Create new session or update existing one"""
+        """Get user session with new structure"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=30000")
+                
+                cursor = conn.execute("""
+                    SELECT phone_number, current_step, language_preference, customer_name,
+                           selected_main_category, selected_sub_category, selected_item,
+                           conversation_context, created_at, updated_at
+                    FROM user_sessions 
+                    WHERE phone_number = ?
+                """, (phone_number,))
+                
+                row = cursor.fetchone()
+                if row:
+                    return {
+                        'phone_number': row[0],
+                        'current_step': row[1],
+                        'language_preference': row[2],
+                        'customer_name': row[3],
+                        'selected_main_category': row[4],
+                        'selected_sub_category': row[5],
+                        'selected_item': row[6],
+                        'conversation_context': row[7],
+                        'created_at': row[8],
+                        'updated_at': row[9]
+                    }
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Error getting user session: {e}")
+            return None
+
+    def create_or_update_session(self, phone_number: str, current_step: str, language: str = None, 
+                                customer_name: str = None, selected_main_category: int = None, 
+                                selected_sub_category: int = None, selected_item: int = None) -> bool:
+        """Create or update user session with new structure"""
+        try:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=30000")
+                
                 # Check if session exists
-                cursor = conn.execute("SELECT * FROM user_sessions WHERE phone_number = ?", (phone_number,))
-                existing = cursor.fetchone()
-
-                if existing:
+                cursor = conn.execute("SELECT phone_number FROM user_sessions WHERE phone_number = ?", (phone_number,))
+                existing_session = cursor.fetchone()
+                
+                if existing_session:
                     # Update existing session
-                    updates = ["current_step = ?", "updated_at = CURRENT_TIMESTAMP"]
-                    params = [current_step]
-
-                    if language:
-                        updates.append("language_preference = ?")
-                        params.append(language)
-                    if customer_name:
-                        updates.append("customer_name = ?")
-                        params.append(customer_name)
-                    if selected_category:
-                        updates.append("selected_category = ?")
-                        params.append(selected_category)
-                    if selected_item:
-                        updates.append("selected_item = ?")
-                        params.append(selected_item)
-                    if conversation_context:
-                        updates.append("conversation_context = ?")
-                        params.append(conversation_context)
-
-                    params.append(phone_number)
-
-                    conn.execute(f"""
+                    conn.execute("""
                         UPDATE user_sessions 
-                        SET {', '.join(updates)}
+                        SET current_step = ?, 
+                            language_preference = COALESCE(?, language_preference),
+                            customer_name = COALESCE(?, customer_name),
+                            selected_main_category = COALESCE(?, selected_main_category),
+                            selected_sub_category = COALESCE(?, selected_sub_category),
+                            selected_item = COALESCE(?, selected_item),
+                            updated_at = CURRENT_TIMESTAMP
                         WHERE phone_number = ?
-                    """, params)
+                    """, (current_step, language, customer_name, selected_main_category, 
+                         selected_sub_category, selected_item, phone_number))
                 else:
                     # Create new session
                     conn.execute("""
                         INSERT INTO user_sessions 
                         (phone_number, current_step, language_preference, customer_name, 
-                         selected_category, selected_item, conversation_context)
+                         selected_main_category, selected_sub_category, selected_item)
                         VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """, (phone_number, current_step, language, customer_name,
-                          selected_category, selected_item, conversation_context))
-
-                # Create order details record if doesn't exist
-                conn.execute("""
-                    INSERT OR IGNORE INTO order_details (phone_number)
-                    VALUES (?)
-                """, (phone_number,))
-
+                    """, (phone_number, current_step, language, customer_name, 
+                         selected_main_category, selected_sub_category, selected_item))
+                
                 conn.commit()
                 return True
+                
         except Exception as e:
             logger.error(f"❌ Error creating/updating session: {e}")
             return False
@@ -245,84 +276,137 @@ class DatabaseManager:
             return [dict(row) for row in cursor.fetchall()]
 
     def get_item_by_id(self, item_id: int) -> Optional[Dict]:
-        """Get specific menu item by ID"""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.execute("""
-                SELECT * FROM menu_items WHERE id = ?
-            """, (item_id,))
-
-            row = cursor.fetchone()
-            return dict(row) if row else None
+        """Get menu item by ID with new structure"""
+        try:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=30000")
+                
+                cursor = conn.execute("""
+                    SELECT id, sub_category_id, main_category_id, item_name_ar, item_name_en, price, unit, available
+                    FROM menu_items 
+                    WHERE id = ? AND available = 1
+                """, (item_id,))
+                
+                row = cursor.fetchone()
+                if row:
+                    return {
+                        'id': row[0],
+                        'sub_category_id': row[1],
+                        'main_category_id': row[2],
+                        'item_name_ar': row[3],
+                        'item_name_en': row[4],
+                        'price': row[5],
+                        'unit': row[6],
+                        'available': bool(row[7])
+                    }
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Error getting item by ID: {e}")
+            return None
 
     # Order Operations
-    def add_item_to_order(self, phone_number: str, menu_item_id: int, quantity: int,
-                          special_requests: str = None) -> bool:
-        """Add item to user's current order"""
+    def add_item_to_order(self, phone_number: str, item_id: int, quantity: int, special_requests: str = None) -> bool:
+        """Add item to user's order with new structure"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=30000")
+                
                 # Get item price
-                cursor = conn.execute("SELECT price FROM menu_items WHERE id = ?", (menu_item_id,))
-                price_row = cursor.fetchone()
-                if not price_row:
-                    logger.error(f"❌ Item {menu_item_id} not found")
+                cursor = conn.execute("SELECT price FROM menu_items WHERE id = ? AND available = 1", (item_id,))
+                item = cursor.fetchone()
+                
+                if not item:
+                    logger.error(f"❌ Item {item_id} not found or not available")
                     return False
-
-                price = price_row[0]
+                
+                price = item[0]
                 subtotal = price * quantity
-
-                # Add to order
+                
+                # Add item to order
                 conn.execute("""
-                    INSERT INTO user_orders 
-                    (phone_number, menu_item_id, quantity, subtotal, special_requests)
+                    INSERT INTO user_orders (phone_number, menu_item_id, quantity, subtotal, special_requests)
                     VALUES (?, ?, ?, ?, ?)
-                """, (phone_number, menu_item_id, quantity, subtotal, special_requests))
-
-                # Update total
-                cursor = conn.execute("""
-                    SELECT SUM(subtotal) FROM user_orders WHERE phone_number = ?
-                """, (phone_number,))
-                total = cursor.fetchone()[0] or 0
-
+                """, (phone_number, item_id, quantity, subtotal, special_requests))
+                
+                # Create order details record if doesn't exist
                 conn.execute("""
-                    UPDATE order_details SET total_amount = ? WHERE phone_number = ?
-                """, (total, phone_number))
-
+                    INSERT OR IGNORE INTO order_details (phone_number)
+                    VALUES (?)
+                """, (phone_number,))
+                
                 conn.commit()
+                logger.info(f"✅ Added item {item_id} × {quantity} to order for {phone_number}")
                 return True
+                
         except Exception as e:
             logger.error(f"❌ Error adding item to order: {e}")
             return False
 
-    def get_user_order(self, phone_number: str) -> Dict:
-        """Get user's current order with all details"""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-
-            # Get order items
-            cursor = conn.execute("""
-                SELECT uo.*, mi.item_name_ar, mi.item_name_en, mi.price, mi.unit
-                FROM user_orders uo
-                JOIN menu_items mi ON uo.menu_item_id = mi.id
-                WHERE uo.phone_number = ?
-                ORDER BY uo.added_at
-            """, (phone_number,))
-
-            items = [dict(row) for row in cursor.fetchall()]
-
-            # Get order details
-            cursor = conn.execute("""
-                SELECT * FROM order_details WHERE phone_number = ?
-            """, (phone_number,))
-
-            details = cursor.fetchone()
-            details = dict(details) if details else {}
-
-            return {
-                'items': items,
-                'details': details,
-                'total': details.get('total_amount', 0)
-            }
+    def get_user_order(self, phone_number: str) -> Optional[Dict]:
+        """Get user's current order with new menu structure"""
+        try:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=30000")
+                
+                # Get order items with menu item details
+                cursor = conn.execute("""
+                    SELECT uo.id, uo.phone_number, uo.menu_item_id, uo.quantity, uo.subtotal, uo.special_requests, uo.added_at,
+                           mi.item_name_ar, mi.item_name_en, mi.price, mi.unit
+                    FROM user_orders uo
+                    JOIN menu_items mi ON uo.menu_item_id = mi.id
+                    WHERE uo.phone_number = ?
+                    ORDER BY uo.added_at
+                """, (phone_number,))
+                
+                items = []
+                total = 0
+                
+                for row in cursor.fetchall():
+                    item = {
+                        'id': row[0],
+                        'phone_number': row[1],
+                        'menu_item_id': row[2],
+                        'quantity': row[3],
+                        'subtotal': row[4],
+                        'special_requests': row[5],
+                        'added_at': row[6],
+                        'item_name_ar': row[7],
+                        'item_name_en': row[8],
+                        'price': row[9],
+                        'unit': row[10]
+                    }
+                    items.append(item)
+                    total += row[4]
+                
+                # Get order details
+                cursor = conn.execute("""
+                    SELECT service_type, location, total_amount, customizations, order_status
+                    FROM order_details 
+                    WHERE phone_number = ?
+                """, (phone_number,))
+                
+                details_row = cursor.fetchone()
+                details = {
+                    'service_type': details_row[0] if details_row else None,
+                    'location': details_row[1] if details_row else None,
+                    'total_amount': details_row[2] if details_row else 0,
+                    'customizations': details_row[3] if details_row else None,
+                    'order_status': details_row[4] if details_row else 'in_progress'
+                }
+                
+                return {
+                    'items': items,
+                    'total': total,
+                    'details': details
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ Error getting user order: {e}")
+            return None
 
     def update_order_details(self, phone_number: str, service_type: str = None,
                              location: str = None, customizations: str = None) -> bool:
@@ -560,3 +644,94 @@ class DatabaseManager:
             stats['total_revenue'] = total_revenue or 0
 
             return stats
+
+    def get_main_categories(self) -> List[Dict]:
+        """Get all main categories"""
+        try:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=30000")
+                
+                cursor = conn.execute("""
+                    SELECT id, name_ar, name_en, display_order, available
+                    FROM main_categories 
+                    WHERE available = 1
+                    ORDER BY display_order
+                """)
+                
+                categories = []
+                for row in cursor.fetchall():
+                    categories.append({
+                        'id': row[0],
+                        'name_ar': row[1],
+                        'name_en': row[2],
+                        'display_order': row[3],
+                        'available': bool(row[4])
+                    })
+                
+                return categories
+        except Exception as e:
+            logger.error(f"❌ Error getting main categories: {e}")
+            return []
+
+    def get_sub_categories(self, main_category_id: int) -> List[Dict]:
+        """Get sub categories for a main category"""
+        try:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=30000")
+                
+                cursor = conn.execute("""
+                    SELECT id, main_category_id, name_ar, name_en, display_order, available
+                    FROM sub_categories 
+                    WHERE main_category_id = ? AND available = 1
+                    ORDER BY display_order
+                """, (main_category_id,))
+                
+                sub_categories = []
+                for row in cursor.fetchall():
+                    sub_categories.append({
+                        'id': row[0],
+                        'main_category_id': row[1],
+                        'name_ar': row[2],
+                        'name_en': row[3],
+                        'display_order': row[4],
+                        'available': bool(row[5])
+                    })
+                
+                return sub_categories
+        except Exception as e:
+            logger.error(f"❌ Error getting sub categories: {e}")
+            return []
+
+    def get_sub_category_items(self, sub_category_id: int) -> List[Dict]:
+        """Get items for a sub category"""
+        try:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=30000")
+                
+                cursor = conn.execute("""
+                    SELECT id, sub_category_id, main_category_id, item_name_ar, item_name_en, price, unit, available
+                    FROM menu_items 
+                    WHERE sub_category_id = ? AND available = 1
+                    ORDER BY item_name_ar
+                """, (sub_category_id,))
+                
+                items = []
+                for row in cursor.fetchall():
+                    items.append({
+                        'id': row[0],
+                        'sub_category_id': row[1],
+                        'main_category_id': row[2],
+                        'item_name_ar': row[3],
+                        'item_name_en': row[4],
+                        'price': row[5],
+                        'unit': row[6],
+                        'available': bool(row[7])
+                    })
+                
+                return items
+        except Exception as e:
+            logger.error(f"❌ Error getting sub category items: {e}")
+            return []

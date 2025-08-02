@@ -150,33 +150,18 @@ class MessageHandler:
         return True
 
     def _enhanced_fallback_processing(self, phone_number: str, current_step: str, text: str,
-                                      customer_name: str, session: Dict, language: str) -> Dict:
-        """Enhanced fallback with better number and text understanding"""
-
+                                    customer_name: str, session: Dict, language: str) -> Dict:
+        """Enhanced fallback processing for all steps"""
         logger.info(f"🔄 Enhanced fallback processing for step: {current_step}")
 
-        # CRITICAL FIX: Always start with language selection if no session exists
-        if not session:
-            return self._handle_language_selection_enhanced(phone_number, text, customer_name)
-
-        # CRITICAL FIX: If user says "hello" or similar at any step, restart the conversation
-        text_lower = text.lower().strip()
-        if any(greeting in text_lower for greeting in ['مرحبا', 'هلا', 'hello', 'hi', 'hey']):
-            logger.info("🔄 User said hello, restarting conversation")
-            # Clear session and start fresh
-            try:
-                self.db.delete_session(phone_number)
-            except Exception as e:
-                logger.warning(f"⚠️ Could not delete session: {e}")
-            
-            return self._handle_language_selection_enhanced(phone_number, text, customer_name)
-
-        # ENHANCED: Handle based on current step with better understanding
         if current_step == 'waiting_for_language':
             return self._handle_language_selection_enhanced(phone_number, text, customer_name)
 
-        elif current_step == 'waiting_for_category':
-            return self._handle_category_selection_enhanced(phone_number, text, language, session)
+        elif current_step == 'waiting_for_main_category':
+            return self._handle_main_category_selection_enhanced(phone_number, text, language, session)
+
+        elif current_step == 'waiting_for_sub_category':
+            return self._handle_sub_category_selection_enhanced(phone_number, text, language, session)
 
         elif current_step == 'waiting_for_item':
             return self._handle_item_selection_enhanced(phone_number, text, language, session)
@@ -197,135 +182,138 @@ class MessageHandler:
             return self._handle_confirmation_enhanced(phone_number, text, language, session)
 
         else:
-            # Fallback to language selection
+            # Unknown step, restart conversation
+            logger.warning(f"⚠️ Unknown step: {current_step}, restarting conversation")
             return self._handle_language_selection_enhanced(phone_number, text, customer_name)
 
     def _handle_language_selection_enhanced(self, phone_number: str, text: str, customer_name: str) -> Dict:
-        """Enhanced language selection with better detection"""
+        """Enhanced language selection with better Arabic detection"""
 
-        # FIXED: Don't treat numbers as language selection if they're not 1 or 2
-        number = self._extract_number_enhanced(text)
-        text_lower = text.lower().strip()
+        # Detect language
+        language = self._detect_language_enhanced(text)
 
-        # Only accept 1, 2 as valid language numbers
-        if number in [1, 2]:
-            language = 'arabic' if number == 1 else 'english'
-        else:
-            # Enhanced language detection
-            language = self._detect_language_enhanced(text)
-
-        if language:
-            self.db.create_or_update_session(phone_number, 'waiting_for_category', language, customer_name)
-
-            # Show categories
-            categories = self.db.get_available_categories()
-
-            if language == 'arabic':
-                response = f"أهلاً وسهلاً {customer_name} في مقهى هيف!\n\n"
-                response += "القائمة الرئيسية:\n\n"
-                for i, cat in enumerate(categories, 1):
-                    response += f"{i}. {cat['category_name_ar']}\n"
-                response += "\nالرجاء اختيار الفئة المطلوبة بالرد بالرقم"
-            else:
-                response = f"Welcome {customer_name} to Hef Cafe!\n\n"
-                response += "Main Menu:\n\n"
-                for i, cat in enumerate(categories, 1):
-                    response += f"{i}. {cat['category_name_en']}\n"
-                response += "\nPlease select the required category by replying with the number"
-
-            return self._create_response(response)
-
-        # Show language selection
-        return self._create_response(
-            "مرحباً بك في مقهى هيف\n\n"
-            "الرجاء اختيار لغتك المفضلة:\n"
-            "1. العربية\n"
-            "2. English\n\n"
-            "Welcome to Hef Cafe\n\n"
-            "Please select your preferred language:\n"
-            "1. العربية (Arabic)\n"
-            "2. English"
-        )
-
-    def _handle_quantity_selection_enhanced(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
-        """FIXED: Enhanced quantity selection that won't trigger language selection"""
-
-        selected_item_id = session.get('selected_item')
-
-        if not selected_item_id:
-            return self._create_response(
-                "خطأ في النظام. الرجاء إعادة البدء\nSystem error. Please restart")
-
-        # ENHANCED: Better number extraction for quantities
-        quantity = self._extract_number_enhanced(text)
-
-        # Additional validation for quantity context
-        if quantity and quantity > 0 and quantity <= 50:  # Reasonable quantity limit
-            # Add item to order
-            success = self.db.add_item_to_order(phone_number, selected_item_id, quantity)
-
-            if success:
-                item = self.db.get_item_by_id(selected_item_id)
-                self.db.create_or_update_session(phone_number, 'waiting_for_additional', language)
-
-                if language == 'arabic':
-                    response = f"تم إضافة {item['item_name_ar']} × {quantity} إلى طلبك\n\n"
-                    response += "هل تريد إضافة المزيد من الأصناف؟\n\n"
-                    response += "1. نعم\n"
-                    response += "2. لا"
-                else:
-                    response = f"Added {item['item_name_en']} × {quantity} to your order\n\n"
-                    response += "Would you like to add more items?\n\n"
-                    response += "1. Yes\n"
-                    response += "2. No"
-
-                return self._create_response(response)
-
-        # Invalid quantity
         if language == 'arabic':
-            response = "الكمية غير صحيحة. الرجاء إدخال رقم صحيح للكمية (مثل 1، 2، 3)"
+            # Create session and show main categories
+            self.db.create_or_update_session(phone_number, 'waiting_for_main_category', 'arabic', customer_name)
+            
+            response = f"أهلاً وسهلاً {customer_name} في مقهى هيف!\n\n"
+            response += "القائمة الرئيسية:\n\n"
+            
+            main_categories = self.db.get_main_categories()
+            for i, category in enumerate(main_categories, 1):
+                response += f"{i}. {category['name_ar']}\n"
+            
+            response += "\nالرجاء اختيار الفئة المطلوبة بالرد بالرقم"
+            
+        elif language == 'english':
+            # Create session and show main categories
+            self.db.create_or_update_session(phone_number, 'waiting_for_main_category', 'english', customer_name)
+            
+            response = f"Welcome {customer_name} to Hef Cafe!\n\n"
+            response += "Main Menu:\n\n"
+            
+            main_categories = self.db.get_main_categories()
+            for i, category in enumerate(main_categories, 1):
+                response += f"{i}. {category['name_en']}\n"
+            
+            response += "\nPlease choose the category by replying with the number"
+            
         else:
-            response = "Invalid quantity. Please enter a valid number for quantity (like 1, 2, 3)"
+            # Default to Arabic
+            self.db.create_or_update_session(phone_number, 'waiting_for_main_category', 'arabic', customer_name)
+            
+            response = f"أهلاً وسهلاً {customer_name} في مقهى هيف!\n\n"
+            response += "القائمة الرئيسية:\n\n"
+            
+            main_categories = self.db.get_main_categories()
+            for i, category in enumerate(main_categories, 1):
+                response += f"{i}. {category['name_ar']}\n"
+            
+            response += "\nالرجاء اختيار الفئة المطلوبة بالرد بالرقم"
 
         return self._create_response(response)
 
-    def _handle_category_selection_enhanced(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
-        """Enhanced category selection with name matching"""
+    def _handle_main_category_selection_enhanced(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
+        """Enhanced main category selection with name matching"""
 
         # Try number first
         number = self._extract_number_enhanced(text)
-        categories = self.db.get_available_categories()
+        main_categories = self.db.get_main_categories()
 
-        if number and 1 <= number <= len(categories):
-            selected_category = categories[number - 1]
-            return self._show_category_items(phone_number, selected_category, language)
+        if number and 1 <= number <= len(main_categories):
+            selected_category = main_categories[number - 1]
+            self.db.create_or_update_session(phone_number, 'waiting_for_sub_category', language, 
+                                           session.get('customer_name'), selected_category['id'])
+            return self._show_sub_categories(phone_number, selected_category, language)
 
         # Try category name matching
-        selected_category = self._match_category_by_name(text, categories, language)
+        selected_category = self._match_main_category_by_name(text, main_categories, language)
         if selected_category:
-            return self._show_category_items(phone_number, selected_category, language)
+            self.db.create_or_update_session(phone_number, 'waiting_for_sub_category', language, 
+                                           session.get('customer_name'), selected_category['id'])
+            return self._show_sub_categories(phone_number, selected_category, language)
 
-        # Show categories again
+        # Show main categories again
         if language == 'arabic':
             response = "الرقم أو اسم الفئة غير صحيح. الرجاء اختيار من القائمة:\n\n"
-            for i, cat in enumerate(categories, 1):
-                response += f"{i}. {cat['category_name_ar']}\n"
+            for i, cat in enumerate(main_categories, 1):
+                response += f"{i}. {cat['name_ar']}\n"
         else:
             response = "Invalid number or category name. Please choose from the menu:\n\n"
-            for i, cat in enumerate(categories, 1):
-                response += f"{i}. {cat['category_name_en']}\n"
+            for i, cat in enumerate(main_categories, 1):
+                response += f"{i}. {cat['name_en']}\n"
+
+        return self._create_response(response)
+
+    def _handle_sub_category_selection_enhanced(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
+        """Enhanced sub category selection with name matching"""
+
+        selected_main_category_id = session.get('selected_main_category')
+        if not selected_main_category_id:
+            return self._create_response(
+                "خطأ في النظام. الرجاء إعادة البدء\nSystem error. Please restart")
+
+        sub_categories = self.db.get_sub_categories(selected_main_category_id)
+
+        # Try number first
+        number = self._extract_number_enhanced(text)
+        if number and 1 <= number <= len(sub_categories):
+            selected_sub_category = sub_categories[number - 1]
+            self.db.create_or_update_session(phone_number, 'waiting_for_item', language, 
+                                           session.get('customer_name'), selected_main_category_id, selected_sub_category['id'])
+            return self._show_sub_category_items(phone_number, selected_sub_category, language)
+
+        # Try sub category name matching
+        selected_sub_category = self._match_sub_category_by_name(text, sub_categories, language)
+        if selected_sub_category:
+            self.db.create_or_update_session(phone_number, 'waiting_for_item', language, 
+                                           session.get('customer_name'), selected_main_category_id, selected_sub_category['id'])
+            return self._show_sub_category_items(phone_number, selected_sub_category, language)
+
+        # Show sub categories again
+        main_categories = self.db.get_main_categories()
+        current_main_category = next((cat for cat in main_categories if cat['id'] == selected_main_category_id), None)
+
+        if language == 'arabic':
+            response = f"الفئة الفرعية غير محددة. الرجاء اختيار من قائمة {current_main_category['name_ar'] if current_main_category else 'الفئة'}:\n\n"
+            for i, sub_cat in enumerate(sub_categories, 1):
+                response += f"{i}. {sub_cat['name_ar']}\n"
+        else:
+            response = f"Sub-category not specified. Please choose from {current_main_category['name_en'] if current_main_category else 'category'} list:\n\n"
+            for i, sub_cat in enumerate(sub_categories, 1):
+                response += f"{i}. {sub_cat['name_en']}\n"
 
         return self._create_response(response)
 
     def _handle_item_selection_enhanced(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
         """Enhanced item selection with name matching"""
 
-        selected_category_id = session.get('selected_category')
-        if not selected_category_id:
+        selected_sub_category_id = session.get('selected_sub_category')
+        if not selected_sub_category_id:
             return self._create_response(
                 "خطأ في النظام. الرجاء إعادة البدء\nSystem error. Please restart")
 
-        items = self.db.get_category_items(selected_category_id)
+        items = self.db.get_sub_category_items(selected_sub_category_id)
 
         # Try number first
         number = self._extract_number_enhanced(text)
@@ -339,48 +327,50 @@ class MessageHandler:
             return self._show_quantity_selection(phone_number, selected_item, language)
 
         # Show items again
-        categories = self.db.get_available_categories()
-        current_category = next((cat for cat in categories if cat['category_id'] == selected_category_id), None)
+        sub_categories = self.db.get_sub_categories(session.get('selected_main_category', 0))
+        current_sub_category = next((sub_cat for sub_cat in sub_categories if sub_cat['id'] == selected_sub_category_id), None)
 
         if language == 'arabic':
-            response = f"المنتج غير محدد. الرجاء اختيار من قائمة {current_category['category_name_ar'] if current_category else 'الفئة'}:\n\n"
+            response = f"المنتج غير محدد. الرجاء اختيار من قائمة {current_sub_category['name_ar'] if current_sub_category else 'الفئة'}:\n\n"
             for i, item in enumerate(items, 1):
                 response += f"{i}. {item['item_name_ar']} - {item['price']} دينار\n"
         else:
-            response = f"Item not specified. Please choose from {current_category['category_name_en'] if current_category else 'category'} menu:\n\n"
+            response = f"Item not specified. Please choose from {current_sub_category['name_en'] if current_sub_category else 'category'} list:\n\n"
             for i, item in enumerate(items, 1):
                 response += f"{i}. {item['item_name_en']} - {item['price']} IQD\n"
 
         return self._create_response(response)
 
     def _handle_additional_items_enhanced(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
-        """FIXED: Enhanced additional items handling - proceed to service selection instead of cancelling"""
+        """Enhanced additional items handling with better yes/no detection"""
 
         number = self._extract_number_enhanced(text)
         yes_no = self._detect_yes_no_enhanced(text, language)
 
         if number == 1 or yes_no == 'yes':
-            # Add more items
-            categories = self.db.get_available_categories()
-            self.db.create_or_update_session(phone_number, 'waiting_for_category', language)
-
+            # Go back to main categories for more items
+            self.db.create_or_update_session(phone_number, 'waiting_for_main_category', language, 
+                                           session.get('customer_name'))
+            
+            main_categories = self.db.get_main_categories()
+            
             if language == 'arabic':
-                response = "ممتاز! إليك القائمة الرئيسية:\n\n"
-                for i, cat in enumerate(categories, 1):
-                    response += f"{i}. {cat['category_name_ar']}\n"
+                response = "ممتاز! اختر من القائمة الرئيسية:\n\n"
+                for i, category in enumerate(main_categories, 1):
+                    response += f"{i}. {category['name_ar']}\n"
                 response += "\nالرجاء اختيار الفئة المطلوبة"
             else:
-                response = "Great! Here's the main menu:\n\n"
-                for i, cat in enumerate(categories, 1):
-                    response += f"{i}. {cat['category_name_en']}\n"
-                response += "\nPlease select the required category"
+                response = "Great! Choose from the main menu:\n\n"
+                for i, category in enumerate(main_categories, 1):
+                    response += f"{i}. {category['name_en']}\n"
+                response += "\nPlease choose the category"
 
             return self._create_response(response)
 
         elif number == 2 or yes_no == 'no':
-            # FIXED: Proceed to service selection instead of cancelling
+            # Proceed to service selection
             self.db.create_or_update_session(phone_number, 'waiting_for_service', language)
-
+            
             if language == 'arabic':
                 response = "ممتاز! الآن دعنا نحدد نوع الخدمة:\n\n"
                 response += "1. تناول في المقهى\n"
@@ -388,17 +378,17 @@ class MessageHandler:
                 response += "الرجاء اختيار نوع الخدمة"
             else:
                 response = "Great! Now let's determine the service type:\n\n"
-                response += "1. Dine-in\n"
+                response += "1. Dine in\n"
                 response += "2. Delivery\n\n"
-                response += "Please select the service type"
+                response += "Please choose the service type"
 
             return self._create_response(response)
 
-        # Invalid input - stay at current step
+        # Invalid response
         if language == 'arabic':
-            return self._create_response("الرجاء الرد بـ '1' للنعم أو '2' للا")
+            return self._create_response("الرجاء الرد بـ '1' لإضافة المزيد أو '2' للمتابعة")
         else:
-            return self._create_response("Please reply with '1' for Yes or '2' for No")
+            return self._create_response("Please reply with '1' to add more or '2' to continue")
 
     def _handle_service_selection_enhanced(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
         """Enhanced service selection"""
@@ -809,3 +799,146 @@ class MessageHandler:
             'content': content,
             'timestamp': datetime.now().isoformat()
         }
+
+    def _show_sub_categories(self, phone_number: str, selected_main_category: Dict, language: str) -> Dict:
+        """Show sub categories for selected main category"""
+        sub_categories = self.db.get_sub_categories(selected_main_category['id'])
+        
+        if language == 'arabic':
+            response = f"قائمة {selected_main_category['name_ar']}:\n\n"
+            for i, sub_cat in enumerate(sub_categories, 1):
+                response += f"{i}. {sub_cat['name_ar']}\n"
+            response += "\nالرجاء اختيار الفئة الفرعية المطلوبة"
+        else:
+            response = f"{selected_main_category['name_en']} Menu:\n\n"
+            for i, sub_cat in enumerate(sub_categories, 1):
+                response += f"{i}. {sub_cat['name_en']}\n"
+            response += "\nPlease choose the sub-category"
+        
+        return self._create_response(response)
+
+    def _show_sub_category_items(self, phone_number: str, selected_sub_category: Dict, language: str) -> Dict:
+        """Show items for selected sub category"""
+        items = self.db.get_sub_category_items(selected_sub_category['id'])
+        
+        if language == 'arabic':
+            response = f"قائمة {selected_sub_category['name_ar']}:\n\n"
+            for i, item in enumerate(items, 1):
+                response += f"{i}. {item['item_name_ar']}\n"
+                response += f"   السعر: {item['price']} دينار\n\n"
+            response += "الرجاء اختيار المنتج المطلوب"
+        else:
+            response = f"{selected_sub_category['name_en']} Menu:\n\n"
+            for i, item in enumerate(items, 1):
+                response += f"{i}. {item['item_name_en']}\n"
+                response += f"   Price: {item['price']} IQD\n\n"
+            response += "Please choose the item"
+        
+        return self._create_response(response)
+
+    def _match_main_category_by_name(self, text: str, main_categories: list, language: str) -> Optional[Dict]:
+        """Match main category by name"""
+        text_lower = text.lower().strip()
+
+        # Direct name matching
+        for category in main_categories:
+            ar_name = category['name_ar'].lower()
+            en_name = category['name_en'].lower()
+
+            if (text_lower == ar_name or text_lower == en_name or
+                    text_lower in ar_name or ar_name in text_lower or
+                    text_lower in en_name or en_name in text_lower):
+                return category
+
+        # Keyword matching
+        keyword_mapping = {
+            'cold': 1, 'بارد': 1, 'مشروبات باردة': 1,
+            'hot': 2, 'حار': 2, 'مشروبات حارة': 2,
+            'pastry': 3, 'حلويات': 3, 'معجنات': 3, 'sweets': 3
+        }
+
+        for keyword, category_id in keyword_mapping.items():
+            if keyword in text_lower:
+                return next((cat for cat in main_categories if cat['id'] == category_id), None)
+
+        return None
+
+    def _match_sub_category_by_name(self, text: str, sub_categories: list, language: str) -> Optional[Dict]:
+        """Match sub category by name"""
+        text_lower = text.lower().strip()
+
+        # Direct name matching
+        for sub_category in sub_categories:
+            ar_name = sub_category['name_ar'].lower()
+            en_name = sub_category['name_en'].lower()
+
+            if (text_lower == ar_name or text_lower == en_name or
+                    text_lower in ar_name or ar_name in text_lower or
+                    text_lower in en_name or en_name in text_lower):
+                return sub_category
+
+        # Keyword matching for common sub-categories
+        keyword_mapping = {
+            'frappuccino': 2, 'فرابتشينو': 2,
+            'milkshake': 3, 'ميلك شيك': 3,
+            'iced tea': 4, 'شاي مثلج': 4,
+            'juice': 5, 'عصير': 5, 'عصائر': 5,
+            'mojito': 6, 'موهيتو': 6,
+            'coffee': 8, 'قهوة': 8, 'اسبرسو': 8,
+            'latte': 9, 'لاتيه': 9,
+            'toast': 11, 'توست': 11,
+            'sandwich': 12, 'سندويش': 12, 'سندويشات': 12,
+            'croissant': 13, 'كرواسان': 13,
+            'pie': 14, 'فطيرة': 14, 'فطائر': 14,
+            'cake': 15, 'كيك': 15
+        }
+
+        for keyword, sub_category_id in keyword_mapping.items():
+            if keyword in text_lower:
+                return next((sub_cat for sub_cat in sub_categories if sub_cat['id'] == sub_category_id), None)
+
+        return None
+
+    def _handle_quantity_selection_enhanced(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
+        """Enhanced quantity selection with better number extraction"""
+
+        selected_item_id = session.get('selected_item')
+
+        if not selected_item_id:
+            return self._create_response(
+                "خطأ في النظام. الرجاء إعادة البدء\nSystem error. Please restart")
+
+        # Enhanced number extraction for quantities
+        quantity = self._extract_number_enhanced(text)
+
+        # Additional validation for quantity context
+        if quantity and quantity > 0 and quantity <= 50:  # Reasonable quantity limit
+            # Add item to order
+            success = self.db.add_item_to_order(phone_number, selected_item_id, quantity)
+
+            if success:
+                item = self.db.get_item_by_id(selected_item_id)
+                self.db.create_or_update_session(phone_number, 'waiting_for_additional', language, 
+                                               session.get('customer_name'), session.get('selected_main_category'), 
+                                               session.get('selected_sub_category'))
+
+                if language == 'arabic':
+                    response = f"تم إضافة {item['item_name_ar']} × {quantity} إلى طلبك\n\n"
+                    response += "هل تريد إضافة المزيد من الأصناف؟\n\n"
+                    response += "1. نعم\n"
+                    response += "2. لا"
+                else:
+                    response = f"Added {item['item_name_en']} × {quantity} to your order\n\n"
+                    response += "Would you like to add more items?\n\n"
+                    response += "1. Yes\n"
+                    response += "2. No"
+
+                return self._create_response(response)
+
+        # Invalid quantity
+        if language == 'arabic':
+            response = "الكمية غير صحيحة. الرجاء إدخال رقم صحيح للكمية (مثل 1، 2، 3)"
+        else:
+            response = "Invalid quantity. Please enter a valid number for quantity (like 1, 2, 3)"
+
+        return self._create_response(response)
