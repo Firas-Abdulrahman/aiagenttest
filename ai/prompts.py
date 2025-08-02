@@ -1,14 +1,16 @@
-# ai/prompts.py - ENHANCED AI prompts for better understanding
+# ai/prompts.py - FIXED to return proper JSON
 
 """
-Enhanced AI Prompts for Hef Cafe WhatsApp Bot with better context understanding
+Fixed AI Prompts for Hef Cafe WhatsApp Bot - Ensures proper JSON responses
 """
 
 
 class AIPrompts:
-    """Enhanced AI prompts with better context understanding"""
+    """Fixed AI prompts that return proper JSON"""
 
-    SYSTEM_PROMPT = """You are Hef, a professional AI assistant for Hef Cafe in Iraq. You excel at understanding user intent in both Arabic and English.
+    SYSTEM_PROMPT = """You are Hef, a professional AI assistant for Hef Cafe in Iraq. You must respond ONLY with valid JSON.
+
+IMPORTANT: Your response must be ONLY a valid JSON object, nothing else. Do not include any explanatory text, markdown, or formatting outside the JSON.
 
 CORE CAPABILITIES:
 - Understand Arabic dialects (Iraqi, Gulf, Levantine, Egyptian, etc.)
@@ -50,44 +52,37 @@ Categories (1-13):
 12. كرواسان / Croissants
 13. فطائر مالحة / Savory Pies
 
-RESPONSE FORMAT:
-- Always provide exactly ONE action
-- Be helpful and professional
-- Use appropriate language (Arabic/English)
-- Provide clear, actionable responses"""
+RESPONSE FORMAT: Respond with ONLY valid JSON, no other text."""
 
     @staticmethod
     def get_understanding_prompt(user_message: str, current_step: str, context: dict) -> str:
-        """Generate enhanced AI understanding prompt with better context"""
-        return f"""
-ANALYZE THIS MESSAGE:
+        """Generate AI understanding prompt that returns clean JSON"""
+        return f"""Analyze this user message and respond with ONLY a JSON object:
+
 User Message: "{user_message}"
 Current Step: {current_step}
 Language: {context.get('language', 'arabic')}
 
-CONTEXT INFORMATION:
+CONTEXT:
 Step Description: {context.get('step_description', 'Unknown')}
 Available Categories: {len(context.get('available_categories', []))} categories
 Current Category Items: {len(context.get('current_category_items', []))} items
-Session Data: {context.get('session_data', {})}
 
-CRITICAL ANALYSIS RULES:
-1. CONVERT NUMERALS: ١=1, ٢=2, ٣=3, ٤=4, ٥=5, ٦=6, ٧=7, ٨=8, ٩=9, ٠=0
-2. CONTEXT INTERPRETATION:
+CRITICAL RULES:
+1. Convert Arabic numerals: ١=1, ٢=2, ٣=3, ٤=4, ٥=5, ٦=6, ٧=7, ٨=8, ٩=9, ٠=0
+2. Context interpretation:
    - If step is "waiting_for_quantity" → numbers are ALWAYS quantities
    - If step is "waiting_for_language" → only 1/2 are language choices
    - If step is "waiting_for_category" → numbers 1-13 are category selections
    - If step is "waiting_for_item" → numbers refer to item positions
 
-SPECIFIC STEP ANALYSIS:
+{AIPrompts._get_step_specific_rules(current_step, context)}
 
-{AIPrompts._get_step_specific_guidance(current_step, context)}
-
-RESPOND WITH JSON:
+Respond with ONLY this JSON structure (no additional text):
 {{
     "understood_intent": "clear description of user intent",
     "confidence": "high/medium/low",
-    "action": "single_action_type",
+    "action": "language_selection/category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation",
     "extracted_data": {{
         "language": "arabic/english/null",
         "category_id": "number or null",
@@ -104,102 +99,88 @@ RESPOND WITH JSON:
     "response_message": "helpful response in user's language"
 }}
 
-EXAMPLES FOR CURRENT STEP ({current_step}):
-{AIPrompts._get_examples_for_step(current_step)}
-
-IMPORTANT:
-- NEVER interpret quantities as language selections
-- ALWAYS consider current step context
-- Convert Arabic numerals before interpretation
-- Provide helpful, contextual responses
-"""
+EXAMPLES FOR {current_step}:
+{AIPrompts._get_examples_for_step(current_step)}"""
 
     @staticmethod
-    def _get_step_specific_guidance(current_step: str, context: dict) -> str:
-        """Get specific guidance for current step"""
+    def _get_step_specific_rules(current_step: str, context: dict) -> str:
+        """Get specific rules for current step"""
         if current_step == 'waiting_for_language':
             return """
-LANGUAGE STEP ANALYSIS:
+LANGUAGE STEP RULES:
 - Only "1" or "١" = Arabic selection
 - Only "2" or "٢" = English selection  
 - Arabic words like "عربي", "العربية" = Arabic
-- English words like "english", "انجليزي" = English
+- English words like "english" = English
 - Greetings like "مرحبا" = Arabic preference
 - Greetings like "hello" = English preference
-- IGNORE: Any other numbers (they don't mean language choice)
 """
 
         elif current_step == 'waiting_for_category':
             categories = context.get('available_categories', [])
-            category_list = "\n".join([f"- {i+1} = {cat['category_name_ar']} / {cat['category_name_en']}"
-                                     for i, cat in enumerate(categories)])
-            return f"""
-CATEGORY STEP ANALYSIS:
+            if categories:
+                category_list = "\n".join([f"- {i + 1} = {cat['category_name_ar']} / {cat['category_name_en']}"
+                                           for i, cat in enumerate(categories[:13])])
+                return f"""
+CATEGORY STEP RULES:
 Available Categories:
 {category_list}
 
 - Numbers 1-13 refer to category positions
 - Category names in Arabic or English are direct selections
-- Keywords like "موهيتو", "فرابتشينو", "توست" match specific categories
 """
 
         elif current_step == 'waiting_for_item':
             items = context.get('current_category_items', [])
             if items:
-                item_list = "\n".join([f"- {i+1} = {item['item_name_ar']} / {item['item_name_en']}"
-                                     for i, item in enumerate(items)])
+                item_list = "\n".join([f"- {i + 1} = {item['item_name_ar']} / {item['item_name_en']}"
+                                       for i, item in enumerate(items[:10])])
                 return f"""
-ITEM STEP ANALYSIS:
+ITEM STEP RULES:
 Available Items:
 {item_list}
 
 - Numbers 1-{len(items)} refer to item positions
 - Item names in Arabic or English are direct selections
-- Partial names are acceptable (e.g., "موهيتو الكلاسيكي" = "موهيتو كلاسيكي")
 """
 
         elif current_step == 'waiting_for_quantity':
             return """
-QUANTITY STEP ANALYSIS:
+QUANTITY STEP RULES:
 - ANY NUMBER is a quantity (1-50 range typical)
 - ٥ = 5 (quantity of 5 items)
 - "خمسة" = 5 (quantity of 5 items)  
 - "five" = 5 (quantity of 5 items)
 - NEVER interpret as language choice or category
-- CONTEXT: User is specifying how many items they want
 """
 
         elif current_step == 'waiting_for_additional':
             return """
-ADDITIONAL ITEMS ANALYSIS:
+ADDITIONAL ITEMS RULES:
 - "نعم"/"yes"/"1"/"١" = wants more items
 - "لا"/"no"/"2"/"٢" = no more items, proceed to service
-- Context: User deciding if they want to add more items to order
 """
 
         elif current_step == 'waiting_for_service':
             return """
-SERVICE TYPE ANALYSIS:
+SERVICE TYPE RULES:
 - "1"/"١"/"مقهى"/"داخل"/"هنا"/"dine"/"in" = dine-in
 - "2"/"٢"/"توصيل"/"بيت"/"منزل"/"delivery"/"home" = delivery
-- Context: User choosing where to consume their order
 """
 
         elif current_step == 'waiting_for_location':
             return """
-LOCATION ANALYSIS:
+LOCATION RULES:
 - Any text describing a location/table/address
 - Table numbers for dine-in (1-7)
 - Address descriptions for delivery
-- Context: User providing where they are or want delivery
 """
 
         elif current_step == 'waiting_for_confirmation':
             return """
-CONFIRMATION ANALYSIS:
+CONFIRMATION RULES:
 - "نعم"/"yes"/"1"/"١" = confirm order
 - "لا"/"no"/"2"/"٢" = cancel order
-- Context: Final order confirmation before processing
 """
 
         return "General analysis - determine intent based on message content"
@@ -214,7 +195,6 @@ CONFIRMATION ANALYSIS:
 "عربي" → language_selection, language: "arabic"
 "english" → language_selection, language: "english"
 "مرحبا" → language_selection, language: "arabic"
-"5" → language_selection with clarification (not a language choice)
 ''',
             'waiting_for_category': '''
 "1" → category_selection, category_id: 1
@@ -224,10 +204,10 @@ CONFIRMATION ANALYSIS:
 "toast" → category_selection, category_id: 9, category_name: "توست"
 ''',
             'waiting_for_item': '''
-"1" → item_selection, item_id: 1 (first item from context)
-"٢" → item_selection, item_id: 2 (second item from context)
-"موهيتو كلاسيكي" → item_selection, item_name: "موهيتو كلاسيكي"
-"classic mojito" → item_selection, item_name: "Classic Mojito"
+"1" → item_selection, item_id: 1
+"٢" → item_selection, item_id: 2
+"شاي مثلج بالليمون" → item_selection, item_name: "شاي مثلج بالليمون"
+"lemon iced tea" → item_selection, item_name: "Iced Lemon Tea"
 ''',
             'waiting_for_quantity': '''
 "٥" → quantity_selection, quantity: 5
@@ -262,7 +242,7 @@ CONFIRMATION ANALYSIS:
 '''
         }
 
-        return examples.get(current_step, "No specific examples for this step")
+        return examples.get(current_step, "No specific examples")
 
     @staticmethod
     def _format_context(context: dict) -> str:
