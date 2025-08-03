@@ -1,13 +1,16 @@
 import requests
 import json
 import logging
+import time
 from typing import Dict, Any, Optional, List
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
 
 class WhatsAppClient:
-    """WhatsApp Business API Client"""
+    """WhatsApp Business API Client with enhanced reliability"""
 
     def __init__(self, config: Dict[str, str]):
         self.whatsapp_token = config.get('whatsapp_token')
@@ -25,10 +28,68 @@ class WhatsAppClient:
             'Content-Type': 'application/json'
         }
 
+        # Configure retry strategy
+        self.session = self._create_retry_session()
+
         logger.info(f"✅ WhatsApp client initialized with phone ID: {self.phone_number_id}")
 
+    def _create_retry_session(self) -> requests.Session:
+        """Create session with retry strategy"""
+        session = requests.Session()
+        
+        # Configure retry strategy
+        retry_strategy = Retry(
+            total=3,  # Maximum number of retries
+            backoff_factor=1,  # Exponential backoff: 1, 2, 4 seconds
+            status_forcelist=[429, 500, 502, 503, 504],  # Retry on these status codes
+            allowed_methods=["HEAD", "GET", "POST", "PUT", "DELETE", "OPTIONS", "TRACE"]
+        )
+        
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        
+        return session
+
+    def _make_request(self, method: str, url: str, **kwargs) -> Optional[requests.Response]:
+        """Make HTTP request with retry logic and proper error handling"""
+        try:
+            response = self.session.request(method, url, **kwargs)
+            
+            # Log request details
+            logger.debug(f"📡 {method} {url} - Status: {response.status_code}")
+            
+            # Handle specific error cases
+            if response.status_code == 401:
+                logger.error("❌ Authentication failed - check WhatsApp token")
+                return None
+            elif response.status_code == 403:
+                logger.error("❌ Permission denied - check API permissions")
+                return None
+            elif response.status_code == 429:
+                logger.warning("⚠️ Rate limit exceeded - request will be retried")
+                return None
+            elif response.status_code >= 500:
+                logger.warning(f"⚠️ Server error {response.status_code} - request will be retried")
+                return None
+            
+            return response
+            
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"❌ Connection error: {e}")
+            return None
+        except requests.exceptions.Timeout as e:
+            logger.error(f"❌ Request timeout: {e}")
+            return None
+        except requests.exceptions.RequestException as e:
+            logger.error(f"❌ Request failed: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Unexpected error: {e}")
+            return None
+
     def send_text_message(self, to: str, message: str) -> bool:
-        """Send a text message to WhatsApp user"""
+        """Send a text message to WhatsApp user with enhanced reliability"""
         try:
             url = f"{self.base_url}/{self.phone_number_id}/messages"
 
@@ -40,14 +101,15 @@ class WhatsAppClient:
 
             logger.info(f"📤 Sending text message to {to}")
 
-            response = requests.post(url, headers=self.headers, json=payload)
+            response = self._make_request('POST', url, headers=self.headers, json=payload)
 
-            if response.status_code == 200:
+            if response and response.status_code == 200:
                 logger.info("✅ Message sent successfully")
                 return True
             else:
-                logger.error(f"❌ Failed to send message: {response.status_code}")
-                logger.error(f"Response: {response.text}")
+                logger.error(f"❌ Failed to send message: {response.status_code if response else 'No response'}")
+                if response:
+                    logger.error(f"Response: {response.text}")
                 return False
 
         except Exception as e:
@@ -56,7 +118,7 @@ class WhatsAppClient:
 
     def send_template_message(self, to: str, template_name: str, language_code: str = 'en',
                               parameters: List[str] = None) -> bool:
-        """Send a template message to WhatsApp user"""
+        """Send a template message to WhatsApp user with enhanced reliability"""
         try:
             url = f"{self.base_url}/{self.phone_number_id}/messages"
 
@@ -82,14 +144,15 @@ class WhatsAppClient:
 
             logger.info(f"📤 Sending template message '{template_name}' to {to}")
 
-            response = requests.post(url, headers=self.headers, json=payload)
+            response = self._make_request('POST', url, headers=self.headers, json=payload)
 
-            if response.status_code == 200:
+            if response and response.status_code == 200:
                 logger.info("✅ Template message sent successfully")
                 return True
             else:
-                logger.error(f"❌ Failed to send template message: {response.status_code}")
-                logger.error(f"Response: {response.text}")
+                logger.error(f"❌ Failed to send template message: {response.status_code if response else 'No response'}")
+                if response:
+                    logger.error(f"Response: {response.text}")
                 return False
 
         except Exception as e:
@@ -98,7 +161,7 @@ class WhatsAppClient:
 
     def send_interactive_message(self, to: str, header_text: str, body_text: str,
                                  footer_text: str, buttons: List[Dict]) -> bool:
-        """Send an interactive message with buttons"""
+        """Send an interactive message with buttons with enhanced reliability"""
         try:
             url = f"{self.base_url}/{self.phone_number_id}/messages"
 
@@ -120,14 +183,15 @@ class WhatsAppClient:
 
             logger.info(f"📤 Sending interactive message to {to}")
 
-            response = requests.post(url, headers=self.headers, json=payload)
+            response = self._make_request('POST', url, headers=self.headers, json=payload)
 
-            if response.status_code == 200:
+            if response and response.status_code == 200:
                 logger.info("✅ Interactive message sent successfully")
                 return True
             else:
-                logger.error(f"❌ Failed to send interactive message: {response.status_code}")
-                logger.error(f"Response: {response.text}")
+                logger.error(f"❌ Failed to send interactive message: {response.status_code if response else 'No response'}")
+                if response:
+                    logger.error(f"Response: {response.text}")
                 return False
 
         except Exception as e:
@@ -136,7 +200,7 @@ class WhatsAppClient:
 
     def send_list_message(self, to: str, header_text: str, body_text: str,
                           footer_text: str, button_text: str, sections: List[Dict]) -> bool:
-        """Send a list message with multiple options"""
+        """Send a list message with multiple options with enhanced reliability"""
         try:
             url = f"{self.base_url}/{self.phone_number_id}/messages"
 
@@ -161,14 +225,15 @@ class WhatsAppClient:
 
             logger.info(f"📤 Sending list message to {to}")
 
-            response = requests.post(url, headers=self.headers, json=payload)
+            response = self._make_request('POST', url, headers=self.headers, json=payload)
 
-            if response.status_code == 200:
+            if response and response.status_code == 200:
                 logger.info("✅ List message sent successfully")
                 return True
             else:
-                logger.error(f"❌ Failed to send list message: {response.status_code}")
-                logger.error(f"Response: {response.text}")
+                logger.error(f"❌ Failed to send list message: {response.status_code if response else 'No response'}")
+                if response:
+                    logger.error(f"Response: {response.text}")
                 return False
 
         except Exception as e:
@@ -176,7 +241,7 @@ class WhatsAppClient:
             return False
 
     def mark_message_as_read(self, message_id: str) -> bool:
-        """Mark a message as read"""
+        """Mark a message as read with enhanced reliability"""
         try:
             url = f"{self.base_url}/{self.phone_number_id}/messages"
 
@@ -186,13 +251,13 @@ class WhatsAppClient:
                 'message_id': message_id
             }
 
-            response = requests.post(url, headers=self.headers, json=payload)
+            response = self._make_request('POST', url, headers=self.headers, json=payload)
 
-            if response.status_code == 200:
+            if response and response.status_code == 200:
                 logger.info(f"✅ Message {message_id} marked as read")
                 return True
             else:
-                logger.error(f"❌ Failed to mark message as read: {response.status_code}")
+                logger.error(f"❌ Failed to mark message as read: {response.status_code if response else 'No response'}")
                 return False
 
         except Exception as e:
@@ -200,16 +265,16 @@ class WhatsAppClient:
             return False
 
     def get_media(self, media_id: str) -> Optional[Dict]:
-        """Get media information by ID"""
+        """Get media information by ID with enhanced reliability"""
         try:
             url = f"{self.base_url}/{media_id}"
 
-            response = requests.get(url, headers=self.headers)
+            response = self._make_request('GET', url, headers=self.headers)
 
-            if response.status_code == 200:
+            if response and response.status_code == 200:
                 return response.json()
             else:
-                logger.error(f"❌ Failed to get media: {response.status_code}")
+                logger.error(f"❌ Failed to get media: {response.status_code if response else 'No response'}")
                 return None
 
         except Exception as e:
@@ -217,14 +282,14 @@ class WhatsAppClient:
             return None
 
     def download_media(self, media_url: str) -> Optional[bytes]:
-        """Download media content"""
+        """Download media content with enhanced reliability"""
         try:
-            response = requests.get(media_url, headers=self.headers)
+            response = self._make_request('GET', media_url, headers=self.headers)
 
-            if response.status_code == 200:
+            if response and response.status_code == 200:
                 return response.content
             else:
-                logger.error(f"❌ Failed to download media: {response.status_code}")
+                logger.error(f"❌ Failed to download media: {response.status_code if response else 'No response'}")
                 return None
 
         except Exception as e:
@@ -232,16 +297,16 @@ class WhatsAppClient:
             return None
 
     def get_business_profile(self) -> Optional[Dict]:
-        """Get business profile information"""
+        """Get business profile information with enhanced reliability"""
         try:
             url = f"{self.base_url}/{self.phone_number_id}/whatsapp_business_profile"
 
-            response = requests.get(url, headers=self.headers)
+            response = self._make_request('GET', url, headers=self.headers)
 
-            if response.status_code == 200:
+            if response and response.status_code == 200:
                 return response.json()
             else:
-                logger.error(f"❌ Failed to get business profile: {response.status_code}")
+                logger.error(f"❌ Failed to get business profile: {response.status_code if response else 'No response'}")
                 return None
 
         except Exception as e:
@@ -249,17 +314,17 @@ class WhatsAppClient:
             return None
 
     def update_business_profile(self, profile_data: Dict) -> bool:
-        """Update business profile"""
+        """Update business profile with enhanced reliability"""
         try:
             url = f"{self.base_url}/{self.phone_number_id}/whatsapp_business_profile"
 
-            response = requests.post(url, headers=self.headers, json=profile_data)
+            response = self._make_request('POST', url, headers=self.headers, json=profile_data)
 
-            if response.status_code == 200:
+            if response and response.status_code == 200:
                 logger.info("✅ Business profile updated successfully")
                 return True
             else:
-                logger.error(f"❌ Failed to update business profile: {response.status_code}")
+                logger.error(f"❌ Failed to update business profile: {response.status_code if response else 'No response'}")
                 return False
 
         except Exception as e:
@@ -267,17 +332,17 @@ class WhatsAppClient:
             return False
 
     def get_phone_numbers(self) -> Optional[List[Dict]]:
-        """Get all phone numbers associated with the WhatsApp Business Account"""
+        """Get all phone numbers associated with the WhatsApp Business Account with enhanced reliability"""
         try:
             url = f"{self.base_url}/{self.waba_id}/phone_numbers"
 
-            response = requests.get(url, headers=self.headers)
+            response = self._make_request('GET', url, headers=self.headers)
 
-            if response.status_code == 200:
+            if response and response.status_code == 200:
                 data = response.json()
                 return data.get('data', [])
             else:
-                logger.error(f"❌ Failed to get phone numbers: {response.status_code}")
+                logger.error(f"❌ Failed to get phone numbers: {response.status_code if response else 'No response'}")
                 return None
 
         except Exception as e:
@@ -297,7 +362,7 @@ class WhatsAppClient:
             return None
 
     def send_response(self, phone_number: str, response_data: Dict[str, Any]) -> bool:
-        """Send response back to WhatsApp user"""
+        """Send response back to WhatsApp user with enhanced reliability"""
         try:
             content = response_data.get('content', '')
             message_type = response_data.get('type', 'text')

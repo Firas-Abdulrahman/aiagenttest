@@ -1,6 +1,6 @@
-# ai/processor.py - UPDATED with Menu Awareness
+# ai/processor.py - UPDATED with Menu Awareness and Enhanced Reliability
 """
-Enhanced AI Processing and Understanding Engine with Menu Awareness
+Enhanced AI Processing and Understanding Engine with Menu Awareness and Reliability
 """
 
 import json
@@ -22,26 +22,34 @@ except ImportError:
 
 
 class AIProcessor:
-    """Enhanced AI Processing and Understanding Engine with Menu Awareness"""
+    """Enhanced AI Processing and Understanding Engine with Menu Awareness and Reliability"""
 
     def __init__(self, api_key: str = None, config: Dict = None, database_manager=None):
         self.api_key = api_key
         self.client = None
         self.quota_exceeded_time = None
         self.database_manager = database_manager  # ADDED for menu awareness
+        
+        # Enhanced error tracking
+        self.consecutive_failures = 0
+        self.max_consecutive_failures = 5
+        self.failure_window_start = None
+        self.failure_window_duration = 300  # 5 minutes
 
         # Get configuration settings
         if config:
             self.quota_cache_duration = config.get('ai_quota_cache_duration', 300)
             self.disable_on_quota = config.get('ai_disable_on_quota', True)
+            self.fallback_enabled = config.get('ai_fallback_enabled', True)
         else:
             self.quota_cache_duration = 300  # 5 minutes default
             self.disable_on_quota = True
+            self.fallback_enabled = True
 
         if OPENAI_AVAILABLE and api_key:
             try:
                 self.client = openai.OpenAI(api_key=api_key)
-                logger.info("✅ Enhanced OpenAI client initialized with menu awareness")
+                logger.info("✅ Enhanced OpenAI client initialized with menu awareness and reliability")
             except Exception as e:
                 logger.error(f"⚠️ OpenAI initialization failed: {e}")
                 self.client = None
@@ -49,7 +57,7 @@ class AIProcessor:
             logger.warning("⚠️ Running without OpenAI - AI features limited")
 
     def is_available(self) -> bool:
-        """Check if AI processing is available with quota cache"""
+        """Check if AI processing is available with enhanced reliability checks"""
         if not self.client:
             return False
 
@@ -65,24 +73,61 @@ class AIProcessor:
                 self.quota_exceeded_time = None
                 logger.info("🔄 Quota cache expired, retrying AI availability")
 
+        # Check consecutive failures
+        if self.consecutive_failures >= self.max_consecutive_failures:
+            if self.failure_window_start:
+                time_since_failures = time.time() - self.failure_window_start
+                if time_since_failures < self.failure_window_duration:
+                    logger.warning(f"⚠️ AI temporarily disabled due to {self.consecutive_failures} consecutive failures")
+                    return False
+                else:
+                    # Reset failure counter after window
+                    self.consecutive_failures = 0
+                    self.failure_window_start = None
+                    logger.info("🔄 Failure window expired, re-enabling AI")
+
         return True
+
+    def _handle_ai_failure(self, error: Exception) -> None:
+        """Handle AI processing failures with enhanced tracking"""
+        self.consecutive_failures += 1
+        
+        if self.failure_window_start is None:
+            self.failure_window_start = time.time()
+        
+        error_msg = str(error).lower()
+        
+        if "quota" in error_msg or "insufficient_quota" in error_msg or "429" in error_msg:
+            logger.warning("⚠️ OpenAI quota exceeded, falling back to enhanced processing")
+            self.quota_exceeded_time = time.time()
+        elif "rate limit" in error_msg:
+            logger.warning("⚠️ OpenAI rate limit hit, falling back to enhanced processing")
+            self.quota_exceeded_time = time.time()
+        elif "timeout" in error_msg:
+            logger.warning("⚠️ OpenAI request timeout, falling back to enhanced processing")
+        else:
+            logger.error(f"❌ AI processing error: {error}")
+        
+        logger.warning(f"⚠️ Consecutive failures: {self.consecutive_failures}/{self.max_consecutive_failures}")
+
+    def _reset_failure_counter(self) -> None:
+        """Reset failure counter on successful AI processing"""
+        if self.consecutive_failures > 0:
+            logger.info(f"✅ AI processing successful, resetting failure counter from {self.consecutive_failures}")
+            self.consecutive_failures = 0
+            self.failure_window_start = None
 
     def understand_message_with_menu_awareness(self, user_message: str, current_step: str, context: Dict) -> Optional[
         Dict]:
-        """Enhanced message understanding with menu awareness"""
+        """Enhanced message understanding with menu awareness and reliability"""
         if not self.client:
             logger.warning("AI client not available")
-            return None
+            return self._generate_fallback_response(user_message, current_step, context)
 
-        # Check quota cache first
-        if self.quota_exceeded_time:
-            time_since_quota_error = time.time() - self.quota_exceeded_time
-            if time_since_quota_error < self.quota_cache_duration:
-                logger.debug(f"⚠️ Skipping AI call due to recent quota error")
-                return None
-            else:
-                self.quota_exceeded_time = None
-                logger.info("🔄 Quota cache expired, retrying AI processing")
+        # Check availability
+        if not self.is_available():
+            logger.warning("AI temporarily unavailable, using fallback")
+            return self._generate_fallback_response(user_message, current_step, context)
 
         # Check if this looks like a natural menu request
         natural_indicators = [
@@ -121,6 +166,7 @@ class AIProcessor:
                 ],
                 max_tokens=800,
                 temperature=0.2,  # Lower temperature for more consistent responses
+                timeout=30,  # Add timeout
             )
 
             ai_response = response.choices[0].message.content.strip()
@@ -133,37 +179,28 @@ class AIProcessor:
                 action = result.get('action', 'unknown')
                 logger.info(
                     f"✅ AI Understanding: {result.get('understood_intent', 'N/A')} (confidence: {confidence}, action: {action})")
+                
+                # Reset failure counter on success
+                self._reset_failure_counter()
                 return result
             else:
                 logger.error("❌ Failed to parse or validate AI response")
-                return None
+                self._handle_ai_failure(Exception("Invalid AI response format"))
+                return self._generate_fallback_response(user_message, current_step, context)
 
         except Exception as e:
-            error_msg = str(e)
-            if "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower() or "429" in error_msg:
-                logger.warning("⚠️ OpenAI quota exceeded, falling back to enhanced processing")
-                self.quota_exceeded_time = time.time()
-                return None
-            elif "rate limit" in error_msg.lower():
-                logger.warning("⚠️ OpenAI rate limit hit, falling back to enhanced processing")
-                self.quota_exceeded_time = time.time()
-                return None
-            else:
-                logger.error(f"❌ AI understanding error: {error_msg}")
-                return None
+            self._handle_ai_failure(e)
+            return self._generate_fallback_response(user_message, current_step, context)
 
     def understand_message(self, user_message: str, current_step: str, context: Dict) -> Optional[Dict]:
-        """Standard message understanding (fallback when menu awareness not needed)"""
+        """Standard message understanding with enhanced reliability"""
         if not self.client:
-            return None
+            return self._generate_fallback_response(user_message, current_step, context)
 
-        # Check quota cache first
-        if self.quota_exceeded_time:
-            time_since_quota_error = time.time() - self.quota_exceeded_time
-            if time_since_quota_error < self.quota_cache_duration:
-                return None
-            else:
-                self.quota_exceeded_time = None
+        # Check availability
+        if not self.is_available():
+            logger.warning("AI temporarily unavailable, using fallback")
+            return self._generate_fallback_response(user_message, current_step, context)
 
         try:
             # Pre-process message for better understanding
@@ -182,6 +219,7 @@ class AIProcessor:
                 ],
                 max_tokens=800,
                 temperature=0.1,
+                timeout=30,  # Add timeout
             )
 
             ai_response = response.choices[0].message.content.strip()
@@ -191,24 +229,71 @@ class AIProcessor:
 
             if result:
                 logger.info(f"✅ AI Understanding: {result['understood_intent']} (confidence: {result['confidence']})")
+                
+                # Reset failure counter on success
+                self._reset_failure_counter()
                 return result
             else:
                 logger.error("❌ Failed to parse or validate AI response")
-                return None
+                self._handle_ai_failure(Exception("Invalid AI response format"))
+                return self._generate_fallback_response(user_message, current_step, context)
 
         except Exception as e:
-            error_msg = str(e)
-            if "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower() or "429" in error_msg:
-                logger.warning("⚠️ OpenAI quota exceeded")
-                self.quota_exceeded_time = time.time()
-                return None
-            elif "rate limit" in error_msg.lower():
-                logger.warning("⚠️ OpenAI rate limit hit")
-                self.quota_exceeded_time = time.time()
-                return None
-            else:
-                logger.error(f"❌ AI understanding error: {error_msg}")
-                return None
+            self._handle_ai_failure(e)
+            return self._generate_fallback_response(user_message, current_step, context)
+
+    def _generate_fallback_response(self, user_message: str, current_step: str, context: Dict) -> Dict:
+        """Generate fallback response when AI is not available"""
+        logger.info(f"🔄 Generating fallback response for step: {current_step}")
+        
+        # Enhanced fallback logic based on current step
+        fallback_result = {
+            'understood_intent': 'fallback_processing',
+            'confidence': 'low',
+            'action': 'fallback',
+            'extracted_data': {},
+            'fallback_used': True
+        }
+        
+        # Step-specific fallback processing
+        if current_step == 'waiting_for_language':
+            language = self.extract_language_preference(user_message)
+            if language:
+                fallback_result.update({
+                    'action': 'language_selection',
+                    'extracted_data': {'language': language},
+                    'confidence': 'medium'
+                })
+        
+        elif current_step == 'waiting_for_quantity':
+            quantity = self.extract_number_from_text(user_message)
+            if quantity and 1 <= quantity <= 50:
+                fallback_result.update({
+                    'action': 'quantity_selection',
+                    'extracted_data': {'quantity': quantity},
+                    'confidence': 'medium'
+                })
+        
+        elif current_step == 'waiting_for_additional':
+            yes_no = self.detect_yes_no(user_message, context.get('language', 'arabic'))
+            if yes_no:
+                fallback_result.update({
+                    'action': 'yes_no',
+                    'extracted_data': {'yes_no': yes_no},
+                    'confidence': 'medium'
+                })
+        
+        elif current_step == 'waiting_for_confirmation':
+            yes_no = self.detect_yes_no(user_message, context.get('language', 'arabic'))
+            if yes_no:
+                fallback_result.update({
+                    'action': 'yes_no',
+                    'extracted_data': {'yes_no': yes_no},
+                    'confidence': 'medium'
+                })
+        
+        logger.info(f"✅ Fallback response generated: {fallback_result['action']}")
+        return fallback_result
 
     def _preprocess_message(self, message: str) -> str:
         """Preprocess message for better AI understanding"""
