@@ -693,3 +693,65 @@ class ThreadSafeDatabaseManager:
         }
 
         return next_step in allowed_transitions.get(current_step, [])
+
+    def get_current_order(self, phone_number: str) -> Optional[Dict]:
+        """Get current order for a user (alias for get_user_order)"""
+        return self.get_user_order(phone_number)
+
+    def get_order_history(self, phone_number: str = None, limit: int = 50) -> List[Dict]:
+        """Get order history with thread safety"""
+        try:
+            with self.get_db_connection() as conn:
+                conn.row_factory = sqlite3.Row
+
+                if phone_number:
+                    cursor = conn.execute("""
+                        SELECT * FROM completed_orders 
+                        WHERE phone_number = ?
+                        ORDER BY completed_at DESC
+                        LIMIT ?
+                    """, (phone_number, limit))
+                else:
+                    cursor = conn.execute("""
+                        SELECT * FROM completed_orders 
+                        ORDER BY completed_at DESC
+                        LIMIT ?
+                    """, (limit,))
+
+                return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"❌ Error getting order history: {e}")
+            return []
+
+    def cancel_order(self, phone_number: str) -> bool:
+        """Cancel order for a user with thread safety"""
+        try:
+            with self.get_db_connection() as conn:
+                # Delete current order
+                conn.execute("""
+                    DELETE FROM user_orders WHERE phone_number = ?
+                """, (phone_number,))
+                
+                # Delete order details
+                conn.execute("""
+                    DELETE FROM order_details WHERE phone_number = ?
+                """, (phone_number,))
+                
+                # Reset session to initial state
+                conn.execute("""
+                    UPDATE user_sessions 
+                    SET current_step = 'waiting_for_language',
+                        selected_main_category = NULL,
+                        selected_sub_category = NULL,
+                        selected_item = NULL,
+                        last_activity = datetime('now')
+                    WHERE phone_number = ?
+                """, (phone_number,))
+                
+                conn.commit()
+                logger.info(f"✅ Order cancelled for {phone_number}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Error cancelling order: {e}")
+            return False
