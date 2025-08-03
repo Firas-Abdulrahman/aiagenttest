@@ -408,18 +408,16 @@ EXAMPLES FOR {current_step}:
 
     @staticmethod
     def get_order_confirmation_template(language: str, order_id: str, total_amount: int) -> str:
-        """Get order confirmation template"""
+        """Get order confirmation template - UPDATED to remove emojis and specific sentences"""
         if language == 'arabic':
-            template = f"شكراً لك! تم وضع طلبك بنجاح. سنقوم بإشعارك بمجرد أن يصبح جاهزاً.\n\n"
-            template += f"تفاصيل الطلب:\n"
+            template = f"تم تأكيد طلبك بنجاح!\n\n"
             template += f"رقم الطلب: {order_id}\n"
-            template += f"السعر الإجمالي: {total_amount} دينار\n\n"
-            template += f"مجموعك هو {total_amount} دينار. الرجاء دفع هذا المبلغ للكاشير عند المنضدة."
+            template += f"المبلغ الإجمالي: {total_amount} دينار\n\n"
+            template += f"شكراً لك لاختيار مقهى هيف!"
         else:
-            template = f"Thank you! Your order has been placed successfully. We'll notify you once it's ready.\n\n"
-            template += f"Order Details:\n"
+            template = f"Your order has been confirmed successfully!\n\n"
             template += f"Order ID: {order_id}\n"
-            template += f"Total Price: {total_amount} IQD\n\n"
-            template += f"Your total is {total_amount} IQD. Please pay this amount to the cashier at the counter."
+            template += f"Total Amount: {total_amount} IQD\n\n"
+            template += f"Thank you for choosing Hef Cafe!"
 
         return template

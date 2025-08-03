@@ -87,19 +87,17 @@ class OrderFormatter:
 
     @staticmethod
     def format_order_confirmation(order_id: str, total_amount: int, language: str = 'arabic') -> str:
-        """Format order confirmation message"""
+        """Format order confirmation message - UPDATED"""
         if language == 'arabic':
-            message = f"🎉 تم تأكيد طلبك بنجاح!\n\n"
-            message += f" رقم الطلب: {order_id}\n"
-            message += f" المبلغ الإجمالي: {total_amount} دينار\n\n"
-            message += f" سنقوم بإشعارك عندما يصبح طلبك جاهزاً\n"
-            message += f"شكراً لك لاختيار مقهى هيف! ☕"
+            message = f"تم تأكيد طلبك بنجاح!\n\n"
+            message += f"رقم الطلب: {order_id}\n"
+            message += f"المبلغ الإجمالي: {total_amount} دينار\n\n"
+            message += f"شكراً لك لاختيار مقهى هيف!"
         else:
-            message = f"🎉 Your order has been confirmed successfully!\n\n"
-            message += f" Order ID: {order_id}\n"
-            message += f" Total Amount: {total_amount} IQD\n\n"
-            message += f" We'll notify you when your order is ready\n"
-            message += f"Thank you for choosing Hef Cafe! "
+            message = f"Your order has been confirmed successfully!\n\n"
+            message += f"Order ID: {order_id}\n"
+            message += f"Total Amount: {total_amount} IQD\n\n"
+            message += f"Thank you for choosing Hef Cafe!"
 
         return message
 

@@ -538,20 +538,17 @@ class MessageHandler:
                 order_id = self.db.complete_order(phone_number)
 
                 if order_id:
+                    # Replace this part:
                     if language == 'arabic':
-                        response = f"🎉 تم تأكيد طلبك بنجاح!\n\n"
-                        response += f"📋 رقم الطلب: {order_id}\n"
-                        response += f"💰 المبلغ الإجمالي: {total_amount} دينار\n\n"
-                        response += f"⏰ سنقوم بإشعارك عندما يصبح طلبك جاهزاً\n"
-                        response += f"💳 الرجاء دفع المبلغ للكاشير عند المنضدة\n\n"
-                        response += f"شكراً لك لاختيار مقهى هيف! ☕"
+                        response = f"تم تأكيد طلبك بنجاح!\n\n"
+                        response += f"رقم الطلب: {order_id}\n"
+                        response += f"المبلغ الإجمالي: {total_amount} دينار\n\n"
+                        response += f"شكراً لك لاختيار مقهى هيف!"
                     else:
-                        response = f"🎉 Your order has been confirmed successfully!\n\n"
-                        response += f"📋 Order ID: {order_id}\n"
-                        response += f"💰 Total Amount: {total_amount} IQD\n\n"
-                        response += f"⏰ We'll notify you when your order is ready\n"
-                        response += f"💳 Please pay the amount to the cashier at the counter\n\n"
-                        response += f"Thank you for choosing Hef Cafe! ☕"
+                        response = f"Your order has been confirmed successfully!\n\n"
+                        response += f"Order ID: {order_id}\n"
+                        response += f"Total Amount: {total_amount} IQD\n\n"
+                        response += f"Thank you for choosing Hef Cafe!"
 
                     return self._create_response(response)
                 else:
