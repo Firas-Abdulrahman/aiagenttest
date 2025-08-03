@@ -461,10 +461,253 @@ class EnhancedMessageHandler:
         """Fallback to structured message processing when AI is not available"""
         logger.info(f"🔄 Using structured processing for: '{text}' at step '{current_step}'")
         
-        # This would contain the original structured logic from handlers.py
-        # For now, return a simple fallback
         language = user_context.get('language', 'arabic')
-        return self._create_response(self._get_fallback_message(current_step, language))
+        
+        # Handle different steps with structured logic
+        if current_step == 'waiting_for_language':
+            return self._handle_structured_language_selection(phone_number, text, session)
+            
+        elif current_step == 'waiting_for_category':
+            return self._handle_structured_category_selection(phone_number, text, session, user_context)
+            
+        elif current_step == 'waiting_for_sub_category':
+            return self._handle_structured_sub_category_selection(phone_number, text, session, user_context)
+            
+        elif current_step == 'waiting_for_item':
+            return self._handle_structured_item_selection(phone_number, text, session, user_context)
+            
+        elif current_step == 'waiting_for_quantity':
+            return self._handle_structured_quantity_selection(phone_number, text, session, user_context)
+            
+        elif current_step == 'waiting_for_additional':
+            return self._handle_structured_additional_selection(phone_number, text, session, user_context)
+            
+        else:
+            return self._create_response(self._get_fallback_message(current_step, language))
+
+    def _handle_structured_language_selection(self, phone_number: str, text: str, session: Dict) -> Dict:
+        """Handle language selection with structured logic"""
+        text_lower = text.lower().strip()
+        
+        if any(word in text_lower for word in ['مرحبا', 'السلام', 'هلا', 'hello', 'hi']):
+            # Default to Arabic for Arabic greetings
+            if any(word in text_lower for word in ['مرحبا', 'السلام', 'هلا']):
+                language = 'arabic'
+            else:
+                language = 'english'
+                
+            # Update session
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_category', language,
+                session.get('customer_name')
+            )
+            
+            return self._show_main_categories(phone_number, language)
+        
+        return self._create_response("الرجاء إرسال 'مرحبا' للبدء\nPlease send 'hello' to start")
+
+    def _handle_structured_category_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle category selection with structured logic"""
+        language = user_context.get('language', 'arabic')
+        
+        # Try to extract number
+        try:
+            category_num = int(text.strip())
+            categories = self.db.get_main_categories()
+            
+            if 1 <= category_num <= len(categories):
+                selected_category = categories[category_num - 1]
+                
+                # Update session
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_sub_category', language,
+                    session.get('customer_name'),
+                    selected_main_category=selected_category['id']
+                )
+                
+                return self._show_sub_categories(phone_number, selected_category, language)
+            else:
+                return self._create_response(f"الرقم غير صحيح. الرجاء اختيار من 1 إلى {len(categories)}")
+                
+        except ValueError:
+            # Try to match by name
+            categories = self.db.get_main_categories()
+            matched_category = self._match_category_by_name(text, categories, language)
+            
+            if matched_category:
+                # Update session
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_sub_category', language,
+                    session.get('customer_name'),
+                    selected_main_category=matched_category['id']
+                )
+                
+                return self._show_sub_categories(phone_number, matched_category, language)
+            else:
+                return self._create_response("الرجاء اختيار رقم من القائمة أو كتابة اسم الفئة")
+
+    def _handle_structured_sub_category_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle sub-category selection with structured logic"""
+        language = user_context.get('language', 'arabic')
+        main_category_id = session.get('selected_main_category')
+        
+        if not main_category_id:
+            return self._create_response("خطأ في النظام. الرجاء البدء من جديد")
+        
+        # Try to extract number
+        try:
+            sub_category_num = int(text.strip())
+            sub_categories = self.db.get_sub_categories(main_category_id)
+            
+            if 1 <= sub_category_num <= len(sub_categories):
+                selected_sub_category = sub_categories[sub_category_num - 1]
+                
+                # Update session
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_item', language,
+                    session.get('customer_name'),
+                    selected_main_category=main_category_id,
+                    selected_sub_category=selected_sub_category['id']
+                )
+                
+                return self._show_sub_category_items(phone_number, selected_sub_category, language)
+            else:
+                return self._create_response(f"الرقم غير صحيح. الرجاء اختيار من 1 إلى {len(sub_categories)}")
+                
+        except ValueError:
+            # Try to match by name
+            sub_categories = self.db.get_sub_categories(main_category_id)
+            matched_sub_category = self._match_category_by_name(text, sub_categories, language)
+            
+            if matched_sub_category:
+                # Update session
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_item', language,
+                    session.get('customer_name'),
+                    selected_main_category=main_category_id,
+                    selected_sub_category=matched_sub_category['id']
+                )
+                
+                return self._show_sub_category_items(phone_number, matched_sub_category, language)
+            else:
+                return self._create_response("الرجاء اختيار رقم من القائمة أو كتابة اسم الفئة الفرعية")
+
+    def _handle_structured_item_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle item selection with structured logic"""
+        language = user_context.get('language', 'arabic')
+        sub_category_id = session.get('selected_sub_category')
+        
+        if not sub_category_id:
+            return self._create_response("خطأ في النظام. الرجاء البدء من جديد")
+        
+        # Try to extract number
+        try:
+            item_num = int(text.strip())
+            items = self.db.get_sub_category_items(sub_category_id)
+            
+            if 1 <= item_num <= len(items):
+                selected_item = items[item_num - 1]
+                
+                # Update session
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_quantity', language,
+                    session.get('customer_name'),
+                    selected_main_category=session.get('selected_main_category'),
+                    selected_sub_category=sub_category_id,
+                    selected_item=selected_item['id']
+                )
+                
+                return self._show_quantity_selection(phone_number, selected_item, language)
+            else:
+                return self._create_response(f"الرقم غير صحيح. الرجاء اختيار من 1 إلى {len(items)}")
+                
+        except ValueError:
+            # Try to match by name
+            items = self.db.get_sub_category_items(sub_category_id)
+            matched_item = self._match_item_by_name(text, items, language)
+            
+            if matched_item:
+                # Update session
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_quantity', language,
+                    session.get('customer_name'),
+                    selected_main_category=session.get('selected_main_category'),
+                    selected_sub_category=sub_category_id,
+                    selected_item=matched_item['id']
+                )
+                
+                return self._show_quantity_selection(phone_number, matched_item, language)
+            else:
+                return self._create_response("الرجاء اختيار رقم من القائمة أو كتابة اسم المنتج")
+
+    def _handle_structured_quantity_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle quantity selection with structured logic"""
+        language = user_context.get('language', 'arabic')
+        item_id = session.get('selected_item')
+        
+        if not item_id:
+            return self._create_response("خطأ في النظام. الرجاء البدء من جديد")
+        
+        # Extract number from text
+        import re
+        numbers = re.findall(r'\d+', text)
+        
+        if numbers:
+            quantity = int(numbers[0])
+            if quantity > 0:
+                # Add item to order
+                success = self.db.add_item_to_order(phone_number, item_id, quantity)
+                
+                if success:
+                    # Update session
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_additional', language,
+                        session.get('customer_name')
+                    )
+                    
+                    if language == 'arabic':
+                        message = f"تم إضافة المنتج إلى طلبك\n"
+                        message += "هل تريد إضافة المزيد من الأصناف؟\n\n"
+                        message += "1. نعم\n"
+                        message += "2. لا"
+                    else:
+                        message = f"Item added to your order\n"
+                        message += "Would you like to add more items?\n\n"
+                        message += "1. Yes\n"
+                        message += "2. No"
+                    
+                    return self._create_response(message)
+                else:
+                    return self._create_response("حدث خطأ في إضافة المنتج. الرجاء المحاولة مرة أخرى")
+        
+        return self._create_response("الرجاء إدخال عدد صحيح")
+
+    def _handle_structured_additional_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle additional item selection with structured logic"""
+        language = user_context.get('language', 'arabic')
+        
+        # Check for yes/no
+        text_lower = text.lower().strip()
+        
+        if any(word in text_lower for word in ['نعم', 'yes', '1']):
+            # Reset to category selection
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_category', language,
+                session.get('customer_name')
+            )
+            
+            return self._show_main_categories(phone_number, language)
+            
+        elif any(word in text_lower for word in ['لا', 'no', '2']):
+            # Move to service selection
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_service', language,
+                session.get('customer_name')
+            )
+            
+            return self._show_service_selection(phone_number, language)
+        
+        return self._create_response("الرجاء الرد بـ '1' لإضافة المزيد أو '2' للمتابعة")
 
     # Helper methods for UI generation
     def _show_main_categories(self, phone_number: str, language: str) -> Dict:

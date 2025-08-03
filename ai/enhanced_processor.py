@@ -385,6 +385,9 @@ Response: {{
                 if json_match:
                     ai_response = json_match.group(0)
             
+            # Fix common JSON issues
+            ai_response = self._fix_json_format(ai_response)
+            
             result = json.loads(ai_response)
             
             # Validate required fields
@@ -404,6 +407,31 @@ Response: {{
             logger.error(f"❌ JSON parsing error: {e}")
             logger.error(f"AI Response was: {ai_response}")
             return None
+
+    def _fix_json_format(self, json_str: str) -> str:
+        """Fix common JSON formatting issues"""
+        try:
+            import re
+            
+            # Remove trailing commas before closing braces/brackets
+            json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
+            
+            # Fix empty values (key with no value)
+            json_str = re.sub(r':\s*,', ': null,', json_str)
+            json_str = re.sub(r':\s*([}\]])', r': null\1', json_str)
+            
+            # Fix multiple commas
+            json_str = re.sub(r',+', ',', json_str)
+            
+            # Fix missing commas between properties
+            json_str = re.sub(r'}(\s*)"', r'},\1"', json_str)
+            json_str = re.sub(r'(\d+)(\s*)"', r'\1,\2"', json_str)
+            
+            return json_str
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Error fixing JSON format: {e}")
+            return json_str
 
     def _validate_enhanced_result(self, result: Dict, current_step: str, user_message: str) -> bool:
         """Validate enhanced AI result for current step"""
