@@ -109,9 +109,47 @@ class EnhancedMessageHandler:
         if current_step == 'waiting_for_category':
             context['available_categories'] = self.db.get_main_categories()
         elif current_step == 'waiting_for_sub_category' and session.get('selected_main_category'):
-            context['available_categories'] = self.db.get_sub_categories(session['selected_main_category'])
+            main_cat_id = session['selected_main_category']
+            logger.info(f"🔍 Debug _build_user_context: main_cat_id type={type(main_cat_id)}, value={main_cat_id}")
+            
+            # Ensure main_cat_id is an integer
+            if isinstance(main_cat_id, dict):
+                logger.warning(f"⚠️ main_cat_id is a dict in _build_user_context: {main_cat_id}")
+                main_cat_id = main_cat_id.get('id', main_cat_id)
+                logger.info(f"🔧 Converted main_cat_id to: {main_cat_id}")
+            elif not isinstance(main_cat_id, int):
+                logger.warning(f"⚠️ main_cat_id is not int in _build_user_context: {type(main_cat_id)} = {main_cat_id}")
+                try:
+                    main_cat_id = int(main_cat_id)
+                    logger.info(f"🔧 Converted main_cat_id to int: {main_cat_id}")
+                except (ValueError, TypeError):
+                    logger.error(f"❌ Cannot convert main_cat_id to int in _build_user_context: {main_cat_id}")
+                    context['available_categories'] = []
+                else:
+                    context['available_categories'] = self.db.get_sub_categories(main_cat_id)
+            else:
+                context['available_categories'] = self.db.get_sub_categories(main_cat_id)
         elif current_step == 'waiting_for_item' and session.get('selected_sub_category'):
-            context['current_category_items'] = self.db.get_sub_category_items(session['selected_sub_category'])
+            sub_cat_id = session['selected_sub_category']
+            logger.info(f"🔍 Debug _build_user_context: sub_cat_id type={type(sub_cat_id)}, value={sub_cat_id}")
+            
+            # Ensure sub_cat_id is an integer
+            if isinstance(sub_cat_id, dict):
+                logger.warning(f"⚠️ sub_cat_id is a dict in _build_user_context: {sub_cat_id}")
+                sub_cat_id = sub_cat_id.get('id', sub_cat_id)
+                logger.info(f"🔧 Converted sub_cat_id to: {sub_cat_id}")
+            elif not isinstance(sub_cat_id, int):
+                logger.warning(f"⚠️ sub_cat_id is not int in _build_user_context: {type(sub_cat_id)} = {sub_cat_id}")
+                try:
+                    sub_cat_id = int(sub_cat_id)
+                    logger.info(f"🔧 Converted sub_cat_id to int: {sub_cat_id}")
+                except (ValueError, TypeError):
+                    logger.error(f"❌ Cannot convert sub_cat_id to int in _build_user_context: {sub_cat_id}")
+                    context['current_category_items'] = []
+                else:
+                    context['current_category_items'] = self.db.get_sub_category_items(sub_cat_id)
+            else:
+                context['current_category_items'] = self.db.get_sub_category_items(sub_cat_id)
 
         return context
 
@@ -185,9 +223,24 @@ class EnhancedMessageHandler:
         if suggested_sub_category and current_step == 'waiting_for_sub_category':
             # Get the suggested sub-category
             main_category_id = session.get('selected_main_category')
+            logger.info(f"🔍 Debug: main_category_id type={type(main_category_id)}, value={main_category_id}")
             if not main_category_id:
                 logger.error(f"❌ No selected_main_category in session for {phone_number}")
                 return self._create_response("خطأ في النظام. الرجاء البدء من جديد")
+            
+            # Ensure main_category_id is an integer
+            if isinstance(main_category_id, dict):
+                logger.warning(f"⚠️ main_category_id is a dict: {main_category_id}")
+                main_category_id = main_category_id.get('id', main_category_id)
+                logger.info(f"🔧 Converted main_category_id to: {main_category_id}")
+            elif not isinstance(main_category_id, int):
+                logger.warning(f"⚠️ main_category_id is not int: {type(main_category_id)} = {main_category_id}")
+                try:
+                    main_category_id = int(main_category_id)
+                    logger.info(f"🔧 Converted main_category_id to int: {main_category_id}")
+                except (ValueError, TypeError):
+                    logger.error(f"❌ Cannot convert main_category_id to int: {main_category_id}")
+                    return self._create_response("خطأ في النظام. الرجاء البدء من جديد")
                 
             sub_categories = self.db.get_sub_categories(main_category_id)
             logger.info(f"🔍 Sub-category selection: suggested={suggested_sub_category}, available={len(sub_categories)}")
@@ -277,7 +330,24 @@ class EnhancedMessageHandler:
 
         if item_id:
             # Direct item ID selection
-            items = self.db.get_sub_category_items(session.get('selected_sub_category'))
+            sub_category_id = session.get('selected_sub_category')
+            logger.info(f"🔍 Debug _handle_ai_item_selection: sub_category_id type={type(sub_category_id)}, value={sub_category_id}")
+            
+            # Ensure sub_category_id is an integer
+            if isinstance(sub_category_id, dict):
+                logger.warning(f"⚠️ sub_category_id is a dict in _handle_ai_item_selection: {sub_category_id}")
+                sub_category_id = sub_category_id.get('id', sub_category_id)
+                logger.info(f"🔧 Converted sub_category_id to: {sub_category_id}")
+            elif not isinstance(sub_category_id, int):
+                logger.warning(f"⚠️ sub_category_id is not int in _handle_ai_item_selection: {type(sub_category_id)} = {sub_category_id}")
+                try:
+                    sub_category_id = int(sub_category_id)
+                    logger.info(f"🔧 Converted sub_category_id to int: {sub_category_id}")
+                except (ValueError, TypeError):
+                    logger.error(f"❌ Cannot convert sub_category_id to int in _handle_ai_item_selection: {sub_category_id}")
+                    return self._create_response("خطأ في النظام. الرجاء المحاولة مرة أخرى")
+            
+            items = self.db.get_sub_category_items(sub_category_id)
             if 1 <= item_id <= len(items):
                 selected_item = items[item_id - 1]
                 
@@ -294,7 +364,24 @@ class EnhancedMessageHandler:
 
         elif item_name:
             # Item name matching
-            items = self.db.get_sub_category_items(session.get('selected_sub_category'))
+            sub_category_id = session.get('selected_sub_category')
+            logger.info(f"🔍 Debug _handle_ai_item_selection (item_name): sub_category_id type={type(sub_category_id)}, value={sub_category_id}")
+            
+            # Ensure sub_category_id is an integer
+            if isinstance(sub_category_id, dict):
+                logger.warning(f"⚠️ sub_category_id is a dict in _handle_ai_item_selection (item_name): {sub_category_id}")
+                sub_category_id = sub_category_id.get('id', sub_category_id)
+                logger.info(f"🔧 Converted sub_category_id to: {sub_category_id}")
+            elif not isinstance(sub_category_id, int):
+                logger.warning(f"⚠️ sub_category_id is not int in _handle_ai_item_selection (item_name): {type(sub_category_id)} = {sub_category_id}")
+                try:
+                    sub_category_id = int(sub_category_id)
+                    logger.info(f"🔧 Converted sub_category_id to int: {sub_category_id}")
+                except (ValueError, TypeError):
+                    logger.error(f"❌ Cannot convert sub_category_id to int in _handle_ai_item_selection (item_name): {sub_category_id}")
+                    return self._create_response("خطأ في النظام. الرجاء المحاولة مرة أخرى")
+            
+            items = self.db.get_sub_category_items(sub_category_id)
             matched_item = self._match_item_by_name(item_name, items, language)
             
             if matched_item:
@@ -329,7 +416,24 @@ class EnhancedMessageHandler:
             # First, try to find the item in the current context
             if current_step == 'waiting_for_item' and session.get('selected_sub_category'):
                 # We're already at item selection step, try to match in current sub-category
-                items = self.db.get_sub_category_items(session['selected_sub_category'])
+                sub_category_id = session['selected_sub_category']
+                logger.info(f"🔍 Debug _handle_intelligent_item_selection: sub_category_id type={type(sub_category_id)}, value={sub_category_id}")
+                
+                # Ensure sub_category_id is an integer
+                if isinstance(sub_category_id, dict):
+                    logger.warning(f"⚠️ sub_category_id is a dict in _handle_intelligent_item_selection: {sub_category_id}")
+                    sub_category_id = sub_category_id.get('id', sub_category_id)
+                    logger.info(f"🔧 Converted sub_category_id to: {sub_category_id}")
+                elif not isinstance(sub_category_id, int):
+                    logger.warning(f"⚠️ sub_category_id is not int in _handle_intelligent_item_selection: {type(sub_category_id)} = {sub_category_id}")
+                    try:
+                        sub_category_id = int(sub_category_id)
+                        logger.info(f"🔧 Converted sub_category_id to int: {sub_category_id}")
+                    except (ValueError, TypeError):
+                        logger.error(f"❌ Cannot convert sub_category_id to int in _handle_intelligent_item_selection: {sub_category_id}")
+                        return self._create_response("خطأ في النظام. الرجاء المحاولة مرة أخرى")
+                
+                items = self.db.get_sub_category_items(sub_category_id)
                 matched_item = self._match_item_by_name(item_name, items, language)
                 
                 if matched_item:
@@ -668,6 +772,22 @@ class EnhancedMessageHandler:
         if number_match:
             try:
                 sub_category_num = int(number_match.group())
+                
+                # Ensure main_category_id is an integer
+                logger.info(f"🔍 Debug _handle_structured_sub_category_selection: main_category_id type={type(main_category_id)}, value={main_category_id}")
+                if isinstance(main_category_id, dict):
+                    logger.warning(f"⚠️ main_category_id is a dict in _handle_structured_sub_category_selection: {main_category_id}")
+                    main_category_id = main_category_id.get('id', main_category_id)
+                    logger.info(f"🔧 Converted main_category_id to: {main_category_id}")
+                elif not isinstance(main_category_id, int):
+                    logger.warning(f"⚠️ main_category_id is not int in _handle_structured_sub_category_selection: {type(main_category_id)} = {main_category_id}")
+                    try:
+                        main_category_id = int(main_category_id)
+                        logger.info(f"🔧 Converted main_category_id to int: {main_category_id}")
+                    except (ValueError, TypeError):
+                        logger.error(f"❌ Cannot convert main_category_id to int in _handle_structured_sub_category_selection: {main_category_id}")
+                        return self._create_response("خطأ في النظام. الرجاء المحاولة مرة أخرى")
+                
                 sub_categories = self.db.get_sub_categories(main_category_id)
                 
                 logger.info(f"🔢 Extracted sub-category number: {sub_category_num} from '{text}'")
@@ -691,6 +811,20 @@ class EnhancedMessageHandler:
                 pass  # Fall through to name matching
         
         # Try to match by name
+        # Ensure main_category_id is an integer (reuse the same logic)
+        if isinstance(main_category_id, dict):
+            logger.warning(f"⚠️ main_category_id is a dict in _handle_structured_sub_category_selection (name matching): {main_category_id}")
+            main_category_id = main_category_id.get('id', main_category_id)
+            logger.info(f"🔧 Converted main_category_id to: {main_category_id}")
+        elif not isinstance(main_category_id, int):
+            logger.warning(f"⚠️ main_category_id is not int in _handle_structured_sub_category_selection (name matching): {type(main_category_id)} = {main_category_id}")
+            try:
+                main_category_id = int(main_category_id)
+                logger.info(f"🔧 Converted main_category_id to int: {main_category_id}")
+            except (ValueError, TypeError):
+                logger.error(f"❌ Cannot convert main_category_id to int in _handle_structured_sub_category_selection (name matching): {main_category_id}")
+                return self._create_response("خطأ في النظام. الرجاء المحاولة مرة أخرى")
+        
         sub_categories = self.db.get_sub_categories(main_category_id)
         matched_sub_category = self._match_category_by_name(text, sub_categories, language)
         
@@ -719,6 +853,22 @@ class EnhancedMessageHandler:
         # Try to extract number
         try:
             item_num = int(text.strip())
+            
+            # Ensure sub_category_id is an integer
+            logger.info(f"🔍 Debug _handle_structured_item_selection: sub_category_id type={type(sub_category_id)}, value={sub_category_id}")
+            if isinstance(sub_category_id, dict):
+                logger.warning(f"⚠️ sub_category_id is a dict in _handle_structured_item_selection: {sub_category_id}")
+                sub_category_id = sub_category_id.get('id', sub_category_id)
+                logger.info(f"🔧 Converted sub_category_id to: {sub_category_id}")
+            elif not isinstance(sub_category_id, int):
+                logger.warning(f"⚠️ sub_category_id is not int in _handle_structured_item_selection: {type(sub_category_id)} = {sub_category_id}")
+                try:
+                    sub_category_id = int(sub_category_id)
+                    logger.info(f"🔧 Converted sub_category_id to int: {sub_category_id}")
+                except (ValueError, TypeError):
+                    logger.error(f"❌ Cannot convert sub_category_id to int in _handle_structured_item_selection: {sub_category_id}")
+                    return self._create_response("خطأ في النظام. الرجاء المحاولة مرة أخرى")
+            
             items = self.db.get_sub_category_items(sub_category_id)
             
             if 1 <= item_num <= len(items):
@@ -739,6 +889,20 @@ class EnhancedMessageHandler:
                 
         except ValueError:
             # Try to match by name
+            # Ensure sub_category_id is an integer (reuse the same logic)
+            if isinstance(sub_category_id, dict):
+                logger.warning(f"⚠️ sub_category_id is a dict in _handle_structured_item_selection (name matching): {sub_category_id}")
+                sub_category_id = sub_category_id.get('id', sub_category_id)
+                logger.info(f"🔧 Converted sub_category_id to: {sub_category_id}")
+            elif not isinstance(sub_category_id, int):
+                logger.warning(f"⚠️ sub_category_id is not int in _handle_structured_item_selection (name matching): {type(sub_category_id)} = {sub_category_id}")
+                try:
+                    sub_category_id = int(sub_category_id)
+                    logger.info(f"🔧 Converted sub_category_id to int: {sub_category_id}")
+                except (ValueError, TypeError):
+                    logger.error(f"❌ Cannot convert sub_category_id to int in _handle_structured_item_selection (name matching): {sub_category_id}")
+                    return self._create_response("خطأ في النظام. الرجاء المحاولة مرة أخرى")
+            
             items = self.db.get_sub_category_items(sub_category_id)
             logger.info(f"🔍 Matching item '{text}' against {len(items)} items in sub-category {sub_category_id}")
             
@@ -943,6 +1107,22 @@ class EnhancedMessageHandler:
 
     def _show_sub_categories(self, phone_number: str, main_category_id: int, language: str) -> Dict:
         """Show sub-categories for a main category"""
+        logger.info(f"🔍 Debug _show_sub_categories: main_category_id type={type(main_category_id)}, value={main_category_id}")
+        
+        # Ensure main_category_id is an integer
+        if isinstance(main_category_id, dict):
+            logger.warning(f"⚠️ main_category_id is a dict in _show_sub_categories: {main_category_id}")
+            main_category_id = main_category_id.get('id', main_category_id)
+            logger.info(f"🔧 Converted main_category_id to: {main_category_id}")
+        elif not isinstance(main_category_id, int):
+            logger.warning(f"⚠️ main_category_id is not int in _show_sub_categories: {type(main_category_id)} = {main_category_id}")
+            try:
+                main_category_id = int(main_category_id)
+                logger.info(f"🔧 Converted main_category_id to int: {main_category_id}")
+            except (ValueError, TypeError):
+                logger.error(f"❌ Cannot convert main_category_id to int in _show_sub_categories: {main_category_id}")
+                return self._create_response("خطأ في النظام. الرجاء المحاولة مرة أخرى")
+        
         sub_categories = self.db.get_sub_categories(main_category_id)
         
         if not sub_categories:
@@ -963,7 +1143,24 @@ class EnhancedMessageHandler:
 
     def _show_sub_category_items(self, phone_number: str, sub_category: Dict, language: str) -> Dict:
         """Show items for selected sub-category"""
-        items = self.db.get_sub_category_items(sub_category['id'])
+        sub_category_id = sub_category['id']
+        logger.info(f"🔍 Debug _show_sub_category_items: sub_category_id type={type(sub_category_id)}, value={sub_category_id}")
+        
+        # Ensure sub_category_id is an integer
+        if isinstance(sub_category_id, dict):
+            logger.warning(f"⚠️ sub_category_id is a dict in _show_sub_category_items: {sub_category_id}")
+            sub_category_id = sub_category_id.get('id', sub_category_id)
+            logger.info(f"🔧 Converted sub_category_id to: {sub_category_id}")
+        elif not isinstance(sub_category_id, int):
+            logger.warning(f"⚠️ sub_category_id is not int in _show_sub_category_items: {type(sub_category_id)} = {sub_category_id}")
+            try:
+                sub_category_id = int(sub_category_id)
+                logger.info(f"🔧 Converted sub_category_id to int: {sub_category_id}")
+            except (ValueError, TypeError):
+                logger.error(f"❌ Cannot convert sub_category_id to int in _show_sub_category_items: {sub_category_id}")
+                return self._create_response("خطأ في النظام. الرجاء المحاولة مرة أخرى")
+        
+        items = self.db.get_sub_category_items(sub_category_id)
         
         if language == 'arabic':
             message = f"قائمة {sub_category['name_ar']}:\n\n"
