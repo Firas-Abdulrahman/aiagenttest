@@ -655,12 +655,12 @@ class EnhancedMessageHandler:
                 return self._create_response("الرجاء اختيار رقم من القائمة أو كتابة اسم الفئة")
 
     def _handle_structured_sub_category_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
-        """Handle sub-category selection with structured logic"""
+        """Handle sub-category selection with enhanced number extraction"""
         language = user_context.get('language', 'arabic')
         main_category_id = session.get('selected_main_category')
         
         if not main_category_id:
-            return self._create_response("خطأ في النظام. الرجاء البدء من جديد")
+            return self._create_response("خطأ في النظام. الرجاء المحاولة مرة أخرى.")
         
         # Try to extract number from mixed input (e.g., "4 iced tea" -> "4")
         import re
@@ -705,7 +705,8 @@ class EnhancedMessageHandler:
             
             return self._show_sub_category_items(phone_number, matched_sub_category, language)
         else:
-            return self._create_response("الرجاء اختيار رقم من القائمة أو كتابة اسم الفئة الفرعية")
+            # Show available sub-categories
+            return self._show_sub_categories(phone_number, main_category_id, language)
 
     def _handle_structured_item_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
         """Handle item selection with structured logic"""
@@ -866,44 +867,44 @@ class EnhancedMessageHandler:
         return self._create_response("الرجاء الرد بـ '1' لإضافة المزيد أو '2' للمتابعة")
 
     def _handle_structured_fresh_start_choice(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
-        """Handle fresh start choice after order completion"""
+        """Handle user's choice for fresh start after order"""
         language = user_context.get('language', 'arabic')
-        text_lower = text.lower().strip()
         
-        # Arabic choices
-        arabic_new_order = ['1', 'جديد', 'جديدة', 'بدء', 'بداية', 'طلب جديد']
-        arabic_keep_order = ['2', 'احتفاظ', 'احتفظ', 'ابقى', 'ابق', 'اضافة', 'أضف']
+        # Extract number from input
+        import re
+        number_match = re.search(r'\d+', text)
+        if number_match:
+            choice = int(number_match.group())
+            
+            if choice == 1:
+                # Start new order - clear everything
+                self.db.cancel_order(phone_number)
+                self.db.delete_session(phone_number)
+                
+                if language == 'arabic':
+                    return self._create_response("ممتاز! اختر من القائمة الرئيسية:\n\n1. المشروبات الباردة\n2. المشروبات الحارة\n3. الحلويات والمعجنات\n\nالرجاء اختيار الفئة المطلوبة")
+                else:
+                    return self._create_response("Great! Choose from the main menu:\n\n1. Cold Drinks\n2. Hot Drinks\n3. Pastries & Sweets\n\nPlease select the required category")
+            
+            elif choice == 2:
+                # Keep previous order - restore to confirmation step
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_confirmation', language,
+                    session.get('customer_name')
+                )
+                
+                # Get current order and show confirmation
+                current_order = self.db.get_current_order(phone_number)
+                if current_order:
+                    return self._show_order_confirmation(phone_number, current_order, language)
+                else:
+                    return self._create_response("لا يوجد طلب سابق للاحتفاظ به.")
         
-        # English choices
-        english_new_order = ['1', 'new', 'start', 'begin', 'fresh', 'cancel']
-        english_keep_order = ['2', 'keep', 'add', 'more', 'continue']
-        
+        # Invalid choice
         if language == 'arabic':
-            if any(word in text_lower for word in arabic_new_order):
-                # Cancel previous order and start fresh
-                self.db.cancel_order(phone_number)
-                self.db.delete_session(phone_number)
-                logger.info(f"🔄 Fresh start: cancelled previous order for {phone_number}")
-                return self._show_main_categories(phone_number, language)
-            elif any(word in text_lower for word in arabic_keep_order):
-                # Keep previous order and add more items
-                logger.info(f"🔄 Fresh start: keeping previous order for {phone_number}")
-                return self._show_main_categories(phone_number, language)
-            else:
-                return self._create_response("الرجاء اختيار:\n1️⃣ بدء طلب جديد\n2️⃣ الاحتفاظ بالطلب السابق")
+            return self._create_response("الرجاء اختيار 1 لبدء طلب جديد أو 2 للاحتفاظ بالطلب السابق")
         else:
-            if any(word in text_lower for word in english_new_order):
-                # Cancel previous order and start fresh
-                self.db.cancel_order(phone_number)
-                self.db.delete_session(phone_number)
-                logger.info(f"🔄 Fresh start: cancelled previous order for {phone_number}")
-                return self._show_main_categories(phone_number, language)
-            elif any(word in text_lower for word in english_keep_order):
-                # Keep previous order and add more items
-                logger.info(f"🔄 Fresh start: keeping previous order for {phone_number}")
-                return self._show_main_categories(phone_number, language)
-            else:
-                return self._create_response("Please choose:\n1️⃣ Start new order\n2️⃣ Keep previous order")
+            return self._create_response("Please choose 1 to start new order or 2 to keep previous order")
 
     # Helper methods for UI generation
     def _show_main_categories(self, phone_number: str, language: str) -> Dict:
@@ -939,6 +940,26 @@ class EnhancedMessageHandler:
             message += "\nPlease select the required sub-category"
         
         return self._create_response(message)
+
+    def _show_sub_categories(self, phone_number: str, main_category_id: int, language: str) -> Dict:
+        """Show sub-categories for a main category"""
+        sub_categories = self.db.get_sub_categories(main_category_id)
+        
+        if not sub_categories:
+            return self._create_response("لا توجد فئات فرعية متاحة.")
+        
+        if language == 'arabic':
+            response = "قائمة الفئات الفرعية:\n\n"
+            for i, sub_category in enumerate(sub_categories, 1):
+                response += f"{i}. {sub_category['sub_category_name_ar']}\n"
+            response += "\nالرجاء اختيار الفئة الفرعية المطلوبة"
+        else:
+            response = "Sub-categories:\n\n"
+            for i, sub_category in enumerate(sub_categories, 1):
+                response += f"{i}. {sub_category['sub_category_name_en']}\n"
+            response += "\nPlease select the required sub-category"
+        
+        return self._create_response(response)
 
     def _show_sub_category_items(self, phone_number: str, sub_category: Dict, language: str) -> Dict:
         """Show items for selected sub-category"""
@@ -1016,6 +1037,33 @@ class EnhancedMessageHandler:
         
         return self._create_response(message)
 
+    def _show_order_confirmation(self, phone_number: str, order: Dict, language: str) -> Dict:
+        """Show order confirmation with current items"""
+        if language == 'arabic':
+            response = "إليك ملخص طلبك:\n\n"
+            response += "الأصناف:\n"
+            
+            for item in order.get('items', []):
+                response += f"• {item['item_name_ar']} × {item['quantity']} - {item['total_price']} دينار\n"
+            
+            response += f"\nالخدمة: {order.get('service_type', 'غير محدد')}"
+            response += f"\nالمكان: {order.get('location', 'غير محدد')}"
+            response += f"\nالسعر الإجمالي: {order.get('total_amount', 0)} دينار\n\n"
+            response += "هل تريد تأكيد هذا الطلب؟\n\n1. نعم\n2. لا"
+        else:
+            response = "Here's your order summary:\n\n"
+            response += "Items:\n"
+            
+            for item in order.get('items', []):
+                response += f"• {item['item_name_en']} × {item['quantity']} - {item['total_price']} IQD\n"
+            
+            response += f"\nService: {order.get('service_type', 'Not specified')}"
+            response += f"\nLocation: {order.get('location', 'Not specified')}"
+            response += f"\nTotal Amount: {order.get('total_amount', 0)} IQD\n\n"
+            response += "Do you want to confirm this order?\n\n1. Yes\n2. No"
+        
+        return self._create_response(response)
+
     def _confirm_order(self, phone_number: str, session: Dict, user_context: Dict) -> Dict:
         """Confirm order"""
         # Complete the order
@@ -1057,26 +1105,17 @@ class EnhancedMessageHandler:
     def _handle_fresh_start_after_order(self, phone_number: str, session: Dict, user_context: Dict) -> Dict:
         """Handle fresh start after order completion"""
         language = user_context.get('language', 'arabic')
-        customer_name = session.get('customer_name', 'Customer')
         
-        if language == 'arabic':
-            message = f"مرحباً {customer_name}! 🎉\n\n"
-            message += "شكراً لك على طلبك السابق! هل تريد:\n\n"
-            message += "1️⃣ بدء طلب جديد (سيتم إلغاء الطلب السابق)\n"
-            message += "2️⃣ الاحتفاظ بالطلب السابق وإضافة المزيد\n\n"
-            message += "اختر رقم 1 أو 2، أو قل لي ما تريد!"
-        else:
-            message = f"Hello {customer_name}! 🎉\n\n"
-            message += "Thank you for your previous order! Would you like to:\n\n"
-            message += "1️⃣ Start a new order (previous order will be cancelled)\n"
-            message += "2️⃣ Keep the previous order and add more items\n\n"
-            message += "Choose 1 or 2, or tell me what you want!"
-        
-        # Update session to wait for fresh start choice
+        # Update session to fresh start choice step
         self.db.create_or_update_session(
             phone_number, 'waiting_for_fresh_start_choice', language,
-            customer_name
+            session.get('customer_name')
         )
+        
+        if language == 'arabic':
+            message = "مرحباً! هل تريد:\n\n1️⃣ بدء طلب جديد\n2️⃣ الاحتفاظ بالطلب السابق"
+        else:
+            message = "Hello! Would you like to:\n\n1️⃣ Start new order\n2️⃣ Keep previous order"
         
         return self._create_response(message)
 
@@ -1096,7 +1135,7 @@ class EnhancedMessageHandler:
         return None
 
     def _match_item_by_name(self, text: str, items: list, language: str) -> Optional[Dict]:
-        """Match item by name"""
+        """Match item by name with enhanced partial matching"""
         # Clean the input - remove numbers and extra spaces
         import re
         cleaned_text = re.sub(r'\d+', '', text).strip()
@@ -1138,36 +1177,38 @@ class EnhancedMessageHandler:
         logger.info(f"❌ No match found for '{text}' (cleaned: '{cleaned_text}')")
         return None
 
-    def _get_fallback_message(self, current_step: str, language: str) -> str:
-        """Get fallback message for current step"""
-        if language == 'arabic':
-            messages = {
-                'waiting_for_language': 'الرجاء اختيار لغتك المفضلة:\n1. العربية\n2. English',
-                'waiting_for_category': 'الرجاء اختيار من القائمة:\n1. المشروبات الباردة\n2. المشروبات الحارة\n3. الحلويات والمعجنات',
-                'waiting_for_sub_category': 'الرجاء اختيار الفئة الفرعية المطلوبة',
-                'waiting_for_item': 'الرجاء اختيار المنتج المطلوب',
-                'waiting_for_quantity': 'كم الكمية المطلوبة؟',
-                'waiting_for_additional': 'هل تريد إضافة المزيد من الأصناف؟\n1. نعم\n2. لا',
-                'waiting_for_service': 'هل تريد طلبك للتناول في المقهى أم للتوصيل؟\n1. تناول في المقهى\n2. توصيل',
-                'waiting_for_location': 'الرجاء تحديد رقم الطاولة (1-7) أو العنوان',
-                'waiting_for_confirmation': 'هل تريد تأكيد هذا الطلب؟\n1. نعم\n2. لا',
-                'waiting_for_fresh_start_choice': 'هل تريد:\n1️⃣ بدء طلب جديد\n2️⃣ الاحتفاظ بالطلب السابق'
-            }
-        else:
-            messages = {
-                'waiting_for_language': 'Please select your preferred language:\n1. العربية (Arabic)\n2. English',
-                'waiting_for_category': 'Please select from the menu:\n1. Cold Drinks\n2. Hot Drinks\n3. Pastries & Sweets',
-                'waiting_for_sub_category': 'Please select the required sub-category',
-                'waiting_for_item': 'Please select the required item',
-                'waiting_for_quantity': 'How many would you like?',
-                'waiting_for_additional': 'Would you like to add more items?\n1. Yes\n2. No',
-                'waiting_for_service': 'Do you want your order for dine-in or delivery?\n1. Dine-in\n2. Delivery',
-                'waiting_for_location': 'Please provide your table number (1-7) or address',
-                'waiting_for_confirmation': 'Would you like to confirm this order?\n1. Yes\n2. No',
-                'waiting_for_fresh_start_choice': 'Would you like to:\n1️⃣ Start new order\n2️⃣ Keep previous order'
-            }
+    def _get_fallback_message(self, step: str, language: str) -> str:
+        """Get fallback message for unknown step"""
+        messages = {
+            # Arabic
+            'waiting_for_language': 'الرجاء اختيار اللغة:\n1. العربية\n2. English',
+            'waiting_for_category': 'الرجاء اختيار الفئة المطلوبة',
+            'waiting_for_sub_category': 'الرجاء اختيار الفئة الفرعية المطلوبة',
+            'waiting_for_item': 'الرجاء اختيار المنتج المطلوب',
+            'waiting_for_quantity': 'الرجاء إدخال الكمية المطلوبة',
+            'waiting_for_additional': 'هل تريد إضافة المزيد من الأصناف؟\n1. نعم\n2. لا',
+            'waiting_for_service': 'هل تريد طلبك للتناول في المقهى أم للتوصيل؟\n1. تناول في المقهى\n2. توصيل',
+            'waiting_for_location': 'الرجاء تحديد رقم الطاولة (1-7):',
+            'waiting_for_confirmation': 'هل تريد تأكيد هذا الطلب؟\n1. نعم\n2. لا',
+            'waiting_for_fresh_start_choice': 'هل تريد:\n1️⃣ بدء طلب جديد\n2️⃣ الاحتفاظ بالطلب السابق',
+            
+            # English
+            'waiting_for_language_en': 'Please select language:\n1. العربية\n2. English',
+            'waiting_for_category_en': 'Please select the required category',
+            'waiting_for_sub_category_en': 'Please select the required sub-category',
+            'waiting_for_item_en': 'Please select the required item',
+            'waiting_for_quantity_en': 'Please enter the required quantity',
+            'waiting_for_additional_en': 'Do you want to add more items?\n1. Yes\n2. No',
+            'waiting_for_service_en': 'Do you want your order for dine-in or delivery?\n1. Dine-in\n2. Delivery',
+            'waiting_for_location_en': 'Please specify table number (1-7):',
+            'waiting_for_confirmation_en': 'Do you want to confirm this order?\n1. Yes\n2. No',
+            'waiting_for_fresh_start_choice_en': 'Would you like to:\n1️⃣ Start new order\n2️⃣ Keep previous order'
+        }
         
-        return messages.get(current_step, 'Please provide a valid response.')
+        if language == 'arabic':
+            return messages.get(step, 'عذراً، حدث خطأ. الرجاء المحاولة مرة أخرى.')
+        else:
+            return messages.get(f"{step}_en", 'Sorry, an error occurred. Please try again.')
 
     def _should_reset_session(self, session: Dict, user_message: str) -> bool:
         """Check if session should be reset due to timeout or greeting"""

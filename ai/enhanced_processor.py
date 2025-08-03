@@ -128,36 +128,92 @@ class EnhancedAIProcessor:
             return self._generate_enhanced_fallback(user_message, current_step, user_context, language)
 
     def _get_enhanced_system_prompt(self) -> str:
-        """Get enhanced system prompt for natural language understanding"""
-        return """You are an intelligent AI assistant for Hef Cafe's WhatsApp ordering bot with deep workflow integration.
+        """Get enhanced system prompt for OpenAI"""
+        return """You are an intelligent WhatsApp bot for a café ordering system. Your role is to understand natural language requests and guide users through the ordering process.
 
-Your capabilities:
-1. NATURAL LANGUAGE UNDERSTANDING: Understand user requests in Arabic and English
-2. CONTEXT AWARENESS: Know the current conversation step and user's order history
-3. INTELLIGENT SUGGESTIONS: Suggest appropriate menu items based on user preferences
-4. CROSS-STEP ITEM SELECTION: Handle item requests at any step by finding them across the menu
-5. WORKFLOW GUIDANCE: Guide users through the ordering process naturally
-6. FALLBACK HANDLING: Provide helpful responses when understanding is unclear
+CORE PRINCIPLES:
+1. **Natural Language Understanding (NLU)**: Understand user intent regardless of how they express it
+2. **Context Awareness**: Always consider the current conversation step and user's previous choices
+3. **Intelligent Suggestions**: Provide helpful suggestions based on user preferences and menu knowledge
+4. **Workflow Guidance**: Guide users through the ordering process step by step
+5. **Cross-Step Item Selection**: Allow users to mention specific items at any step and intelligently route them
+6. **Fresh Start Flow**: Handle post-order greetings with options to start new or keep previous order
 
-Key principles:
-- Always respond in the user's preferred language
-- Provide context-aware suggestions
-- Maintain conversation flow naturally
-- Handle both structured (numbers) and unstructured (natural language) inputs
-- Be helpful and friendly while being efficient
+MENU STRUCTURE:
+- Main Categories: Cold Drinks, Hot Drinks, Pastries & Sweets
+- Sub-Categories: Specific types within each main category
+- Items: Individual products with prices
+
+CONVERSATION FLOW:
+1. Language Selection → 2. Main Category → 3. Sub-Category → 4. Item Selection → 5. Quantity → 6. Additional Items → 7. Service Type → 8. Location → 9. Confirmation
+
+AI RESPONSE FORMAT:
+Always respond with valid JSON in this exact format:
+{
+    "understood_intent": "Brief description of what user wants",
+    "confidence": "high/medium/low",
+    "action": "action_type",
+    "extracted_data": {
+        // Action-specific data
+    },
+    "response_message": "Brief response to user"
+}
+
+AVAILABLE ACTIONS:
+- language_selection: User is choosing language
+- category_selection: User is selecting main category
+- intelligent_suggestion: AI suggests category/sub-category based on preferences
+- item_selection: User is selecting specific item
+- quantity_selection: User is specifying quantity
+- yes_no: User is answering yes/no question
+- service_selection: User is choosing service type
+- location_input: User is providing location
+- confirmation: User is confirming order
+- show_menu: User wants to see menu
+- help_request: User needs help
+
+IMPORTANT RULES:
 - When user mentions a specific item (e.g., "موهيتو", "coffee"), use "item_selection" action regardless of current step
 - When user mentions preferences (e.g., "cold", "sweet"), use "intelligent_suggestion" action
 - IMPORTANT: For mixed input like "4 iced tea" at sub-category step, extract the number (4) for sub-category selection, not item selection
 - Numbers in sub-category step should be treated as sub-category selection, not item selection
+- Numbers in item step should be treated as item ID selection
+- Always maintain conversation flow and provide helpful guidance
+- If confidence is low, extract basic information and let the system handle the rest
 
-Respond with clean JSON that includes:
-- understood_intent: Clear description of what user wants
-- confidence: high/medium/low
-- action: The specific action to take
-- extracted_data: Relevant data for the action
-- response_message: Natural response to user
-- clarification_needed: Whether you need more information
-- clarification_question: Question to ask if clarification needed"""
+EXAMPLES:
+User: "اريد موهيتو" (at any step)
+Response: {
+    "understood_intent": "User wants to order a mojito",
+    "confidence": "high",
+    "action": "item_selection",
+    "extracted_data": {
+        "item_name": "موهيتو"
+    },
+    "response_message": "Perfect! I'll help you order a mojito."
+}
+
+User: "4 iced tea" (at sub-category step)
+Response: {
+    "understood_intent": "User wants to select sub-category number 4 (Iced Tea)",
+    "confidence": "high",
+    "action": "intelligent_suggestion",
+    "extracted_data": {
+        "suggested_sub_category": 4
+    },
+    "response_message": "Perfect! I'll show you the Iced Tea options."
+}
+
+User: "شيء بارد" (at category step)
+Response: {
+    "understood_intent": "User wants something cold",
+    "confidence": "high",
+    "action": "intelligent_suggestion",
+    "extracted_data": {
+        "suggested_category": "Cold Drinks"
+    },
+    "response_message": "Great choice! Let me show you our cold drinks."
+}"""
 
     def _build_enhanced_context(self, current_step: str, user_context: Dict, language: str) -> Dict:
         """Build comprehensive context for AI understanding"""
@@ -210,7 +266,7 @@ Respond with clean JSON that includes:
         conversation_context = self._format_conversation_context(context)
         
         # Get step-specific guidance
-        step_guidance = self._get_step_guidance(current_step, context)
+        step_guidance = self._get_step_guidance()
         
         return f"""ENHANCED NATURAL LANGUAGE UNDERSTANDING REQUEST
 ==================================================
@@ -228,7 +284,7 @@ CONVERSATION CONTEXT:
 {conversation_context}
 
 STEP-SPECIFIC GUIDANCE:
-{step_guidance}
+{step_guidance.get(current_step, "No specific guidance for this step")}
 
 TASK: Analyze the user's message and provide intelligent understanding with appropriate action.
 
@@ -358,21 +414,21 @@ Response: {{
             
         return "\n".join(parts) if parts else "No specific context available"
 
-    def _get_step_guidance(self, current_step: str, context: Dict) -> str:
-        """Get step-specific guidance for AI understanding"""
-        guidance = {
+    def _get_step_guidance(self) -> Dict[str, str]:
+        """Get step-specific guidance for AI"""
+        return {
             'waiting_for_language': """
-                - Detect language preference from user input
-                - Accept: Arabic words, English words, numbers 1-2
-                - Default to Arabic if unclear
-                - Response: Welcome message in detected language
+                - Accept: language keywords, numbers (1-2)
+                - Arabic indicators: "مرحبا", "السلام عليكم", "أهلا", "عربي", "1"
+                - English indicators: "hello", "hi", "english", "2"
+                - Response: Confirm language and show main categories
             """,
             
-            'waiting_for_main_category': """
-                - Accept: numbers 1-3, category names, natural language preferences
-                - Natural language examples: "cold drinks", "something hot", "food", "sweets"
-                - Intelligent suggestions based on preferences
-                - Response: Show appropriate categories or sub-categories
+            'waiting_for_category': """
+                - Accept: numbers (1-3), category names, preferences
+                - Numbers: 1=Cold Drinks, 2=Hot Drinks, 3=Pastries & Sweets
+                - Natural language: "cold", "hot", "sweet", "drink", "pastry"
+                - Response: Show sub-categories for selected main category
             """,
             
             'waiting_for_sub_category': """
@@ -392,39 +448,46 @@ Response: {{
             """,
             
             'waiting_for_quantity': """
-                - Accept: numbers 1-50, word numbers, Arabic numerals
-                - Numbers are ALWAYS quantities in this step
-                - Response: Confirm quantity and ask if they want more
+                - Accept: numbers (1-50), Arabic numerals, Arabic number words
+                - Convert Arabic numerals (٠-٩) and Arabic words (خمسة, عشرة) to English digits
+                - Response: Confirm quantity and ask if user wants to add more items
             """,
             
             'waiting_for_additional': """
-                - Accept: yes/no responses in any form
-                - Arabic: نعم, لا, ايوه, لا هاهية
-                - English: yes, no, yeah, nope
-                - Numbers: 1=yes, 2=no
-                - Response: Show main menu again or proceed to service
+                - Accept: yes/no responses, numbers (1-2)
+                - Yes indicators: "نعم", "اي", "yes", "1", "add", "more"
+                - No indicators: "لا", "no", "2", "finish", "done"
+                - Response: If yes, show main categories; if no, proceed to service selection
             """,
             
             'waiting_for_service': """
-                - Accept: service type preferences
-                - Dine-in: "dine in", "في المقهى", "table", "طاولة"
-                - Delivery: "delivery", "توصيل", "home", "بيت"
-                - Response: Ask for location details
+                - Accept: service type preferences, numbers (1-2)
+                - Dine-in: "في المقهى", "داخل", "dine", "1"
+                - Delivery: "توصيل", "delivery", "2"
+                - Response: Ask for location (table number or address)
             """,
             
             'waiting_for_location': """
                 - Accept: table numbers (1-7), addresses, location descriptions
-                - Support Arabic numerals for table numbers
+                - For dine-in: expect table number
+                - For delivery: expect address or location
                 - Response: Show order summary and ask for confirmation
             """,
             
             'waiting_for_confirmation': """
-                - Accept: yes/no responses for order confirmation
-                - Response: Complete order or cancel based on choice
+                - Accept: yes/no responses, numbers (1-2)
+                - Yes indicators: "نعم", "اي", "yes", "1", "confirm"
+                - No indicators: "لا", "no", "2", "cancel"
+                - Response: If yes, confirm order; if no, cancel and start fresh
+            """,
+            
+            'waiting_for_fresh_start_choice': """
+                - Accept: numbers (1-2), fresh start preferences
+                - 1: Start new order (cancel previous)
+                - 2: Keep previous order
+                - Response: Execute the chosen action
             """
         }
-        
-        return guidance.get(current_step, "No specific guidance for this step")
 
     def _parse_enhanced_response(self, ai_response: str, current_step: str, user_message: str) -> Optional[Dict]:
         """Parse and validate enhanced AI response"""
