@@ -35,6 +35,7 @@ class EnhancedMessageHandler:
             user_context = self._build_user_context(phone_number, session, current_step)
 
             # AI-First Processing: Try AI understanding first
+            logger.info(f"🔍 AI Status: ai={self.ai is not None}, available={self.ai.is_available() if self.ai else False}")
             if self.ai and self.ai.is_available():
                 logger.info(f"🧠 Using enhanced AI for message: '{text}' at step '{current_step}'")
                 ai_result = self.ai.understand_natural_language(
@@ -46,9 +47,12 @@ class EnhancedMessageHandler:
                 
                 # Handle AI result
                 if ai_result and ai_result.get('confidence') != 'low':
+                    logger.info(f"✅ AI result: {ai_result.get('action')} with confidence {ai_result.get('confidence')}")
                     return self._handle_ai_result(phone_number, ai_result, session, user_context)
                 else:
-                    logger.info("🔄 AI confidence low, falling back to structured processing")
+                    logger.info(f"🔄 AI confidence low ({ai_result.get('confidence') if ai_result else 'None'}), falling back to structured processing")
+            else:
+                logger.info(f"⚠️ AI not available (ai: {self.ai is not None}, available: {self.ai.is_available() if self.ai else False}), using structured processing")
 
             # Fallback to structured processing
             return self._handle_structured_message(phone_number, text, current_step, session, user_context)
@@ -624,9 +628,16 @@ class EnhancedMessageHandler:
         except ValueError:
             # Try to match by name
             items = self.db.get_sub_category_items(sub_category_id)
+            logger.info(f"🔍 Matching item '{text}' against {len(items)} items in sub-category {sub_category_id}")
+            
+            # Log available items for debugging
+            for i, item in enumerate(items[:5]):  # Show first 5 items
+                logger.info(f"  Item {i+1}: {item['item_name_ar']} (ID: {item['id']})")
+            
             matched_item = self._match_item_by_name(text, items, language)
             
             if matched_item:
+                logger.info(f"✅ Matched item: {matched_item['item_name_ar']} (ID: {matched_item['id']})")
                 # Update session
                 self.db.create_or_update_session(
                     phone_number, 'waiting_for_quantity', language,
@@ -645,24 +656,56 @@ class EnhancedMessageHandler:
         language = user_context.get('language', 'arabic')
         item_id = session.get('selected_item')
         
+        logger.info(f"🔢 Processing quantity selection: text='{text}', item_id={item_id}")
+        
         if not item_id:
+            logger.error(f"❌ No selected_item in session for {phone_number}")
             return self._create_response("خطأ في النظام. الرجاء البدء من جديد")
         
-        # Extract number from text
+        # Extract number from text (including Arabic numerals)
         import re
-        numbers = re.findall(r'\d+', text)
+        
+        # Convert Arabic numerals to English
+        arabic_to_english = {
+            '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+            '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'
+        }
+        
+        processed_text = text
+        for arabic, english in arabic_to_english.items():
+            processed_text = processed_text.replace(arabic, english)
+        
+        # Also handle Arabic words for numbers
+        arabic_number_words = {
+            'صفر': '0', 'واحد': '1', 'اثنين': '2', 'ثلاثة': '3', 'اربعة': '4',
+            'خمسة': '5', 'ستة': '6', 'سبعة': '7', 'ثمانية': '8', 'تسعة': '9',
+            'عشرة': '10', 'احدى عشر': '11', 'اثنا عشر': '12'
+        }
+        
+        for arabic_word, english_num in arabic_number_words.items():
+            if arabic_word in processed_text.lower():
+                processed_text = processed_text.replace(arabic_word, english_num)
+        
+        # Extract numbers
+        numbers = re.findall(r'\d+', processed_text)
+        
+        logger.info(f"🔢 Number extraction: original='{text}', processed='{processed_text}', found={numbers}")
         
         if numbers:
             quantity = int(numbers[0])
-            if quantity > 0:
+            logger.info(f"🔢 Extracted quantity: {quantity}")
+            if quantity > 0 and quantity <= 50:  # Reasonable limit
                 # Add item to order
                 success = self.db.add_item_to_order(phone_number, item_id, quantity)
                 
                 if success:
-                    # Update session
+                    # Update session - clear selected_item to prevent re-adding
                     self.db.create_or_update_session(
                         phone_number, 'waiting_for_additional', language,
-                        session.get('customer_name')
+                        session.get('customer_name'),
+                        selected_main_category=session.get('selected_main_category'),
+                        selected_sub_category=session.get('selected_sub_category'),
+                        selected_item=None  # Clear selected item
                     )
                     
                     if language == 'arabic':
@@ -679,8 +722,10 @@ class EnhancedMessageHandler:
                     return self._create_response(message)
                 else:
                     return self._create_response("حدث خطأ في إضافة المنتج. الرجاء المحاولة مرة أخرى")
+            else:
+                return self._create_response("الرجاء إدخال عدد صحيح بين 1 و 50")
         
-        return self._create_response("الرجاء إدخال عدد صحيح")
+        return self._create_response("الرجاء إدخال عدد صحيح (مثال: 5 أو خمسة)")
 
     def _handle_structured_additional_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
         """Handle additional item selection with structured logic"""
@@ -876,15 +921,21 @@ class EnhancedMessageHandler:
     def _match_item_by_name(self, text: str, items: list, language: str) -> Optional[Dict]:
         """Match item by name"""
         text_lower = text.lower().strip()
+        logger.info(f"🔍 Matching '{text_lower}' against {len(items)} items")
         
         for item in items:
             if language == 'arabic':
-                if text_lower in item['item_name_ar'].lower():
+                item_name_lower = item['item_name_ar'].lower()
+                logger.info(f"  Checking: '{text_lower}' in '{item_name_lower}' = {text_lower in item_name_lower}")
+                if text_lower in item_name_lower:
                     return item
             else:
-                if text_lower in item['item_name_en'].lower():
+                item_name_lower = item['item_name_en'].lower()
+                logger.info(f"  Checking: '{text_lower}' in '{item_name_lower}' = {text_lower in item_name_lower}")
+                if text_lower in item_name_lower:
                     return item
         
+        logger.info(f"❌ No match found for '{text_lower}'")
         return None
 
     def _get_fallback_message(self, current_step: str, language: str) -> str:
