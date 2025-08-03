@@ -371,22 +371,28 @@ Response: {{
     }},
     "response_message": "Perfect! I'll show you the Iced Tea options."
 }}
-    "action": "item_selection",
-    "extracted_data": {{
-        "item_name": "coffee",
-        "item_id": null
-    }},
-    "response_message": "Great choice! I'll find coffee in our menu and get it ready for you."
-}}
 
-User: "4 iced tea" (at sub-category step)
+User: "1" (at category step)
 Response: {{
-    "understood_intent": "User wants to select sub-category number 4 (Iced Tea)",
+    "understood_intent": "User wants to select main category number 1 (Cold Drinks)",
     "confidence": "high",
     "action": "intelligent_suggestion",
     "extracted_data": {{
-        "suggested_sub_category": 4
+        "suggested_main_category": 1
     }},
+    "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!"
+}}
+
+User: "١" (Arabic numeral 1 at category step)
+Response: {{
+    "understood_intent": "User wants to select main category number 1 (Cold Drinks)",
+    "confidence": "high",
+    "action": "intelligent_suggestion",
+    "extracted_data": {{
+        "suggested_main_category": 1
+    }},
+    "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!"
+}}
     "response_message": "Perfect! I'll show you the Iced Tea options."
 }}"""
 
@@ -589,6 +595,7 @@ Response: {{
         # Step-specific validation
         validators = {
             'waiting_for_language': self._validate_language_step,
+            'waiting_for_category': self._validate_category_step,
             'waiting_for_main_category': self._validate_category_step,
             'waiting_for_sub_category': self._validate_sub_category_step,
             'waiting_for_item': self._validate_item_step,
