@@ -70,7 +70,7 @@ class EnhancedMessageHandler:
             'customer_name': session.get('customer_name', 'Customer') if session else 'Customer',
             'selected_main_category': session.get('selected_main_category'),
             'selected_sub_category': session.get('selected_sub_category'),
-            'last_selected_item': session.get('last_selected_item'),
+            'selected_item': session.get('selected_item'),
             'order_history': [],
             'current_order_items': [],
             'available_categories': [],
@@ -255,7 +255,7 @@ class EnhancedMessageHandler:
                     session.get('customer_name'),
                     selected_main_category=session.get('selected_main_category'),
                     selected_sub_category=session.get('selected_sub_category'),
-                    last_selected_item=selected_item['id']
+                    selected_item=selected_item['id']
                 )
                 
                 return self._show_quantity_selection(phone_number, selected_item, language)
@@ -272,7 +272,7 @@ class EnhancedMessageHandler:
                     session.get('customer_name'),
                     selected_main_category=session.get('selected_main_category'),
                     selected_sub_category=session.get('selected_sub_category'),
-                    last_selected_item=matched_item['id']
+                    selected_item=matched_item['id']
                 )
                 
                 return self._show_quantity_selection(phone_number, matched_item, language)
@@ -352,7 +352,7 @@ class EnhancedMessageHandler:
 
         if quantity and isinstance(quantity, int) and 1 <= quantity <= 50:
             # Add item to order
-            item_id = session.get('last_selected_item')
+            item_id = session.get('selected_item')
             if item_id:
                 success = self.db.add_item_to_order(phone_number, item_id, quantity)
                 

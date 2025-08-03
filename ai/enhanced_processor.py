@@ -169,7 +169,7 @@ Respond with clean JSON that includes:
             'current_category_items': user_context.get('current_category_items', []),
             'selected_main_category': user_context.get('selected_main_category'),
             'selected_sub_category': user_context.get('selected_sub_category'),
-            'last_selected_item': user_context.get('last_selected_item'),
+            'selected_item': user_context.get('selected_item'),
             'conversation_history': user_context.get('conversation_history', [])
         }
 
