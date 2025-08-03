@@ -10,6 +10,74 @@ logger = logging.getLogger(__name__)
 class DatabaseManager:
     """SQLite Database Manager for Cafe Workflow Control"""
 
+    def get_available_categories(self) -> List[Dict]:
+        """Get main categories for compatibility with old code"""
+        try:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT id as category_id, name_ar as category_name_ar, name_en as category_name_en
+                    FROM main_categories 
+                    WHERE available = 1
+                    ORDER BY display_order
+                """)
+                return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"❌ Error getting available categories: {e}")
+            return []
+
+    def get_category_items(self, main_category_id: int) -> List[Dict]:
+        """Get all items for a main category (all sub-categories combined)"""
+        try:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT mi.id, mi.sub_category_id, mi.main_category_id, 
+                           mi.item_name_ar, mi.item_name_en, mi.price, mi.unit, mi.available,
+                           sc.name_ar as sub_category_name_ar, sc.name_en as sub_category_name_en
+                    FROM menu_items mi
+                    JOIN sub_categories sc ON mi.sub_category_id = sc.id
+                    WHERE mi.main_category_id = ? AND mi.available = 1
+                    ORDER BY sc.display_order, mi.item_name_ar
+                """, (main_category_id,))
+                return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"❌ Error getting category items: {e}")
+            return []
+
+    def get_simplified_workflow_data(self, main_category_id: int = None):
+        """Get simplified data for the workflow"""
+        try:
+            # If no category specified, return main categories
+            if not main_category_id:
+                return {
+                    'type': 'main_categories',
+                    'data': self.get_main_categories()
+                }
+
+            # Return sub-categories for the main category
+            sub_categories = self.get_sub_categories(main_category_id)
+
+            # If only one sub-category, return items directly
+            if len(sub_categories) == 1:
+                items = self.get_sub_category_items(sub_categories[0]['id'])
+                return {
+                    'type': 'items',
+                    'sub_category': sub_categories[0],
+                    'data': items
+                }
+
+            # Multiple sub-categories, return them
+            return {
+                'type': 'sub_categories',
+                'main_category_id': main_category_id,
+                'data': sub_categories
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Error getting simplified workflow data: {e}")
+            return {'type': 'error', 'data': []}
+
     def __init__(self, db_path: str = "hef_cafe.db"):
         self.db_path = db_path
         self.init_database()
