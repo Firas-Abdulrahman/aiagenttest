@@ -424,12 +424,14 @@ class EnhancedMessageHandler:
         language = user_context.get('language')
 
         if service_type in ['dine-in', 'delivery']:
-            # Update session
+            # Update session step
             self.db.create_or_update_session(
                 phone_number, 'waiting_for_location', language,
-                session.get('customer_name'),
-                service_type=service_type
+                session.get('customer_name')
             )
+            
+            # Update order details with service type
+            self.db.update_order_details(phone_number, service_type=service_type)
             
             if service_type == 'dine-in':
                 if language == 'arabic':
@@ -452,12 +454,14 @@ class EnhancedMessageHandler:
         language = user_context.get('language')
 
         if location and len(location.strip()) > 0:
-            # Update session
+            # Update session step
             self.db.create_or_update_session(
                 phone_number, 'waiting_for_confirmation', language,
-                session.get('customer_name'),
-                location=location
+                session.get('customer_name')
             )
+            
+            # Update order details with location
+            self.db.update_order_details(phone_number, location=location)
             
             # Show order summary
             return self._show_order_summary(phone_number, session, user_context, location)

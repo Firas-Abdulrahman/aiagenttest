@@ -158,7 +158,7 @@ class AIProcessor:
                 prompt = AIPrompts.get_understanding_prompt(user_message, current_step, context)
 
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system",
                      "content": "You are a helpful AI assistant for Hef Cafe with complete menu knowledge."},
@@ -212,7 +212,7 @@ class AIProcessor:
             logger.info(f"🤖 Standard AI analyzing: '{user_message}' at step '{current_step}'")
 
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": AIPrompts.SYSTEM_PROMPT},
                     {"role": "user", "content": prompt}
