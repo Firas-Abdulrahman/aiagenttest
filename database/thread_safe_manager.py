@@ -472,6 +472,63 @@ class ThreadSafeDatabaseManager:
             logger.error(f"❌ Error getting category items: {e}")
             return []
 
+    def get_sub_categories(self, main_category_id: int) -> List[Dict]:
+        """Get sub-categories for a main category"""
+        try:
+            with self.get_db_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT id, main_category_id, name_ar, name_en, display_order, available
+                    FROM sub_categories 
+                    WHERE main_category_id = ? AND available = 1
+                    ORDER BY display_order
+                """, (main_category_id,))
+
+                sub_categories = []
+                for row in cursor.fetchall():
+                    sub_categories.append({
+                        'id': row[0],
+                        'main_category_id': row[1],
+                        'name_ar': row[2],
+                        'name_en': row[3],
+                        'display_order': row[4],
+                        'available': bool(row[5])
+                    })
+
+                return sub_categories
+        except Exception as e:
+            logger.error(f"❌ Error getting sub-categories: {e}")
+            return []
+
+    def get_sub_category_items(self, sub_category_id: int) -> List[Dict]:
+        """Get items for a specific sub-category"""
+        try:
+            with self.get_db_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT mi.id, mi.sub_category_id, mi.main_category_id, 
+                           mi.item_name_ar, mi.item_name_en, mi.price, mi.unit, mi.available
+                    FROM menu_items mi
+                    WHERE mi.sub_category_id = ? AND mi.available = 1
+                    ORDER BY mi.item_name_ar
+                """, (sub_category_id,))
+
+                items = []
+                for row in cursor.fetchall():
+                    items.append({
+                        'id': row[0],
+                        'sub_category_id': row[1],
+                        'main_category_id': row[2],
+                        'item_name_ar': row[3],
+                        'item_name_en': row[4],
+                        'price': row[5],
+                        'unit': row[6],
+                        'available': bool(row[7])
+                    })
+
+                return items
+        except Exception as e:
+            logger.error(f"❌ Error getting sub-category items: {e}")
+            return []
+
     def get_item_by_id(self, item_id: int) -> Optional[Dict]:
         """Get item by ID"""
         try:

@@ -54,6 +54,9 @@ class MessageHandler:
         elif current_step == 'waiting_for_category':  # FIXED: Use correct step name
             return self._handle_category_selection(phone_number, text, language, session)
 
+        elif current_step == 'waiting_for_sub_category':  # NEW: Handle sub-category selection
+            return self._handle_sub_category_selection(phone_number, text, language, session)
+
         elif current_step == 'waiting_for_item':
             return self._handle_item_selection(phone_number, text, language, session)
 
@@ -118,35 +121,33 @@ class MessageHandler:
         return self._create_response("خطأ في النظام\nSystem error")
 
     def _handle_category_selection(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
-        """Handle main category selection"""
+        """Handle main category selection - FIXED to show sub-categories"""
         number = self._extract_number(text)
         main_categories = self.db.get_main_categories()
 
         if number and 1 <= number <= len(main_categories):
             selected_category = main_categories[number - 1]
 
-            # Update session with selected main category
+            # Update session with selected main category and move to sub-category selection
             self.db.create_or_update_session(
-                phone_number, 'waiting_for_item', language,
+                phone_number, 'waiting_for_sub_category', language,
                 session.get('customer_name'),
                 selected_main_category=selected_category['id']
             )
 
-            # Get all items for this main category (simplified approach)
-            items = self.db.get_category_items(selected_category['id'])
+            # Get sub-categories for this main category
+            sub_categories = self.db.get_sub_categories(selected_category['id'])
 
             if language == 'arabic':
                 response = f"قائمة {selected_category['name_ar']}:\n\n"
-                for i, item in enumerate(items, 1):
-                    response += f"{i}. {item['item_name_ar']}\n"
-                    response += f"   السعر: {item['price']} دينار\n\n"
-                response += "الرجاء اختيار المنتج المطلوب"
+                for i, sub_cat in enumerate(sub_categories, 1):
+                    response += f"{i}. {sub_cat['name_ar']}\n"
+                response += "\nالرجاء اختيار الفئة الفرعية المطلوبة"
             else:
                 response = f"{selected_category['name_en']} Menu:\n\n"
-                for i, item in enumerate(items, 1):
-                    response += f"{i}. {item['item_name_en']}\n"
-                    response += f"   Price: {item['price']} IQD\n\n"
-                response += "Please select the required item"
+                for i, sub_cat in enumerate(sub_categories, 1):
+                    response += f"{i}. {sub_cat['name_en']}\n"
+                response += "\nPlease choose the sub-category"
 
             return self._create_response(response)
 
@@ -162,14 +163,69 @@ class MessageHandler:
 
         return self._create_response(response)
 
-    def _handle_item_selection(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
-        """Handle item selection"""
+    def _handle_sub_category_selection(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
+        """Handle sub-category selection - NEW"""
         selected_main_category_id = session.get('selected_main_category')
-
+        
         if not selected_main_category_id:
             return self._create_response("خطأ في النظام\nSystem error")
 
-        items = self.db.get_category_items(selected_main_category_id)
+        number = self._extract_number(text)
+        sub_categories = self.db.get_sub_categories(selected_main_category_id)
+
+        if number and 1 <= number <= len(sub_categories):
+            selected_sub_category = sub_categories[number - 1]
+
+            # Update session with selected sub-category and move to item selection
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_item', language,
+                session.get('customer_name'),
+                selected_main_category=selected_main_category_id,
+                selected_sub_category=selected_sub_category['id']
+            )
+
+            # Get items for this sub-category
+            items = self.db.get_sub_category_items(selected_sub_category['id'])
+
+            if language == 'arabic':
+                response = f"قائمة {selected_sub_category['name_ar']}:\n\n"
+                for i, item in enumerate(items, 1):
+                    response += f"{i}. {item['item_name_ar']}\n"
+                    response += f"   السعر: {item['price']} دينار\n\n"
+                response += "الرجاء اختيار المنتج المطلوب"
+            else:
+                response = f"{selected_sub_category['name_en']} Menu:\n\n"
+                for i, item in enumerate(items, 1):
+                    response += f"{i}. {item['item_name_en']}\n"
+                    response += f"   Price: {item['price']} IQD\n\n"
+                response += "Please select the required item"
+
+            return self._create_response(response)
+
+        # Invalid selection - show sub-categories again
+        main_categories = self.db.get_main_categories()
+        current_main_category = next((cat for cat in main_categories if cat['id'] == selected_main_category_id), None)
+
+        if language == 'arabic':
+            response = f"الرقم غير صحيح. الرجاء اختيار من قائمة {current_main_category['name_ar'] if current_main_category else 'الفئة'}:\n\n"
+            for i, sub_cat in enumerate(sub_categories, 1):
+                response += f"{i}. {sub_cat['name_ar']}\n"
+        else:
+            response = f"Invalid number. Please choose from {current_main_category['name_en'] if current_main_category else 'category'} menu:\n\n"
+            for i, sub_cat in enumerate(sub_categories, 1):
+                response += f"{i}. {sub_cat['name_en']}\n"
+
+        return self._create_response(response)
+
+    def _handle_item_selection(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
+        """Handle item selection - UPDATED to work with sub-categories"""
+        selected_sub_category_id = session.get('selected_sub_category')
+
+        if not selected_sub_category_id:
+            return self._create_response("خطأ في النظام\nSystem error")
+
+        # Get items for the selected sub-category
+        items = self.db.get_sub_category_items(selected_sub_category_id)
         number = self._extract_number(text)
 
         if number and 1 <= number <= len(items):
@@ -179,7 +235,8 @@ class MessageHandler:
             self.db.create_or_update_session(
                 phone_number, 'waiting_for_quantity', language,
                 session.get('customer_name'),
-                selected_main_category=selected_main_category_id,
+                selected_main_category=session.get('selected_main_category'),
+                selected_sub_category=selected_sub_category_id,
                 selected_item=selected_item['id']
             )
 
@@ -195,15 +252,15 @@ class MessageHandler:
             return self._create_response(response)
 
         # Invalid selection - show items again
-        main_categories = self.db.get_main_categories()
-        current_main_category = next((cat for cat in main_categories if cat['id'] == selected_main_category_id), None)
+        sub_categories = self.db.get_sub_categories(session.get('selected_main_category'))
+        current_sub_category = next((sub_cat for sub_cat in sub_categories if sub_cat['id'] == selected_sub_category_id), None)
 
         if language == 'arabic':
-            response = f"الرقم غير صحيح. الرجاء اختيار من قائمة {current_main_category['name_ar'] if current_main_category else 'الفئة'}:\n\n"
+            response = f"الرقم غير صحيح. الرجاء اختيار من قائمة {current_sub_category['name_ar'] if current_sub_category else 'الفئة'}:\n\n"
             for i, item in enumerate(items, 1):
                 response += f"{i}. {item['item_name_ar']} - {item['price']} دينار\n"
         else:
-            response = f"Invalid number. Please choose from {current_main_category['name_en'] if current_main_category else 'category'} menu:\n\n"
+            response = f"Invalid number. Please choose from {current_sub_category['name_en'] if current_sub_category else 'category'} menu:\n\n"
             for i, item in enumerate(items, 1):
                 response += f"{i}. {item['item_name_en']} - {item['price']} IQD\n"
 

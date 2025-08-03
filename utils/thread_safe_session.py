@@ -78,7 +78,7 @@ class ThreadSafeSessionManager:
                 logger.debug(f"🔓 Released lock for user {phone_number}")
 
     def is_message_duplicate(self, phone_number: str, message_id: str) -> bool:
-        """Check if message was already processed (thread-safe)"""
+        """Check if message was already processed (thread-safe) - ENHANCED"""
         with self._message_cleanup_lock:
             # Clean old entries first
             current_time = time.time()
@@ -90,13 +90,26 @@ class ThreadSafeSessionManager:
             for msg_id in to_remove:
                 del self._processed_messages[msg_id]
 
-            # Check for duplicate
-            key = f"{phone_number}:{message_id}"
-            if key in self._processed_messages:
-                return True
+            # Check for duplicate using multiple keys
+            keys_to_check = [
+                f"{phone_number}:{message_id}",
+                f"{phone_number}:{message_id}:{int(current_time)}",  # Add timestamp for extra uniqueness
+                f"{phone_number}:{message_id[:20]}"  # Check partial message ID
+            ]
+            
+            for key in keys_to_check:
+                if key in self._processed_messages:
+                    logger.warning(f"🔄 Duplicate message detected: {key}")
+                    return True
 
-            # Mark as processed
-            self._processed_messages[key] = current_time
+            # Mark as processed with multiple keys for better deduplication
+            primary_key = f"{phone_number}:{message_id}"
+            self._processed_messages[primary_key] = current_time
+            
+            # Also mark with timestamp for extra protection
+            timestamp_key = f"{phone_number}:{message_id}:{int(current_time)}"
+            self._processed_messages[timestamp_key] = current_time
+            
             return False
 
     def get_user_state(self, phone_number: str) -> Optional[UserWorkflowState]:

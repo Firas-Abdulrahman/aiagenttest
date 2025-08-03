@@ -80,11 +80,23 @@ class ThreadSafeWhatsAppWorkflow:
             self.ai = None
             try:
                 from ai.processor import AIProcessor
-                ai_config = self.config.get('ai_config', {
+                
+                # Fix boolean configuration handling
+                ai_disable_on_quota = self.config.get('ai_disable_on_quota', True)
+                ai_fallback_enabled = self.config.get('ai_fallback_enabled', True)
+                
+                # Convert string values to boolean if needed
+                if isinstance(ai_disable_on_quota, str):
+                    ai_disable_on_quota = ai_disable_on_quota.lower() == 'true'
+                if isinstance(ai_fallback_enabled, str):
+                    ai_fallback_enabled = ai_fallback_enabled.lower() == 'true'
+                
+                ai_config = {
                     'ai_quota_cache_duration': int(self.config.get('ai_quota_cache_duration', 300)),
-                    'ai_disable_on_quota': self.config.get('ai_disable_on_quota', 'true').lower() == 'true',
-                    'ai_fallback_enabled': self.config.get('ai_fallback_enabled', 'true').lower() == 'true'
-                })
+                    'ai_disable_on_quota': ai_disable_on_quota,
+                    'ai_fallback_enabled': ai_fallback_enabled
+                }
+                
                 if self.config.get('openai_api_key'):
                     self.ai = AIProcessor(self.config.get('openai_api_key'), ai_config, self.db)
                     logger.info("✅ AI processor initialized with enhanced reliability")
