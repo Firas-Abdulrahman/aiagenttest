@@ -76,10 +76,11 @@ class ThreadSafeWhatsAppWorkflow:
             self.whatsapp = WhatsAppClient(self.config)
             logger.info("✅ WhatsApp client initialized with enhanced reliability")
 
-            # AI processor (optional) with enhanced reliability
+            # Enhanced AI processor with deep workflow integration
             self.ai = None
             try:
-                from ai.processor import AIProcessor
+                # Try to use enhanced AI processor first
+                from ai.enhanced_processor import EnhancedAIProcessor
                 
                 # Fix boolean configuration handling
                 ai_disable_on_quota = self.config.get('ai_disable_on_quota', True)
@@ -98,14 +99,30 @@ class ThreadSafeWhatsAppWorkflow:
                 }
                 
                 if self.config.get('openai_api_key'):
-                    self.ai = AIProcessor(self.config.get('openai_api_key'), ai_config, self.db)
-                    logger.info("✅ AI processor initialized with enhanced reliability")
+                    self.ai = EnhancedAIProcessor(
+                        api_key=self.config.get('openai_api_key'),
+                        config=ai_config,
+                        database_manager=self.db
+                    )
+                    logger.info("✅ Enhanced AI processor initialized with deep workflow integration")
                 else:
-                    logger.info("ℹ️ AI processor disabled (no API key)")
+                    logger.warning("⚠️ OpenAI API key not provided, enhanced AI features disabled")
+                    
             except ImportError:
-                logger.warning("⚠️ AI processor not available")
-            except Exception as e:
-                logger.error(f"❌ Error initializing AI processor: {e}")
+                # Fallback to standard AI processor
+                try:
+                    from ai.processor import AIProcessor
+                    
+                    if self.config.get('openai_api_key'):
+                        self.ai = AIProcessor(self.config.get('openai_api_key'), ai_config, self.db)
+                        logger.info("✅ Standard AI processor initialized (enhanced processor not available)")
+                    else:
+                        logger.warning("⚠️ OpenAI API key not provided, AI features disabled")
+                except ImportError:
+                    logger.warning("⚠️ AI processor not available, running without AI features")
+                except Exception as e:
+                    logger.error(f"❌ Error initializing AI processor: {e}")
+                    self.ai = None
 
             # Thread-safe message handler
             self.handler = ThreadSafeMessageHandler(self.db, self.ai, None)

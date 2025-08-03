@@ -10,6 +10,7 @@ from datetime import datetime
 from utils.thread_safe_session import session_manager
 from database.thread_safe_manager import ThreadSafeDatabaseManager
 from workflow.handlers import MessageHandler
+from workflow.enhanced_handlers import EnhancedMessageHandler
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,19 @@ class ThreadSafeMessageHandler:
         
         # Initialize the main message handler
         self.main_handler = MessageHandler(database_manager, ai_processor, action_executor)
+        
+        # Initialize enhanced handler if enhanced AI processor is available
+        try:
+            from ai.enhanced_processor import EnhancedAIProcessor
+            if isinstance(ai_processor, EnhancedAIProcessor):
+                self.enhanced_handler = EnhancedMessageHandler(database_manager, ai_processor, action_executor)
+                logger.info("✅ Enhanced message handler initialized with AI integration")
+            else:
+                self.enhanced_handler = None
+                logger.info("ℹ️ Standard message handler initialized (enhanced AI not available)")
+        except ImportError:
+            self.enhanced_handler = None
+            logger.info("ℹ️ Standard message handler initialized (enhanced processor not available)")
 
     def handle_message(self, message_data: Dict[str, Any]) -> Dict[str, Any]:
         """Main message handling with thread safety and user isolation"""
@@ -79,8 +93,13 @@ class ThreadSafeMessageHandler:
             # Log conversation
             self.db.log_conversation(phone_number, 'user_message', text, current_step=current_step)
 
-            # Use the main handler to process the message
-            response = self.main_handler.handle_message(message_data)
+            # Use enhanced handler if available, otherwise fall back to main handler
+            if hasattr(self, 'enhanced_handler') and self.enhanced_handler:
+                logger.info(f"🧠 Using enhanced AI handler for {phone_number}")
+                response = self.enhanced_handler.handle_message(message_data)
+            else:
+                logger.info(f"🤖 Using standard handler for {phone_number}")
+                response = self.main_handler.handle_message(message_data)
 
             # Log response
             self.db.log_conversation(phone_number, 'bot_response', response.get('content', ''))

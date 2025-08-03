@@ -121,7 +121,7 @@ class MessageHandler:
         return self._create_response("خطأ في النظام\nSystem error")
 
     def _handle_category_selection(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
-        """Handle main category selection - FIXED to show sub-categories"""
+        """Handle main category selection - FIXED to show sub-categories with better validation"""
         number = self._extract_number(text)
         main_categories = self.db.get_main_categories()
 
@@ -151,15 +151,17 @@ class MessageHandler:
 
             return self._create_response(response)
 
-        # Invalid selection
+        # Invalid selection - show categories again with better error message
         if language == 'arabic':
-            response = "الرقم غير صحيح. الرجاء اختيار من القائمة:\n\n"
+            response = "الرجاء اختيار رقم صحيح من القائمة:\n\n"
             for i, cat in enumerate(main_categories, 1):
                 response += f"{i}. {cat['name_ar']}\n"
+            response += f"\nأرسلت: '{text}' - الرجاء اختيار رقم من 1 إلى {len(main_categories)}"
         else:
-            response = "Invalid number. Please choose from the menu:\n\n"
+            response = "Please choose a valid number from the menu:\n\n"
             for i, cat in enumerate(main_categories, 1):
                 response += f"{i}. {cat['name_en']}\n"
+            response += f"\nYou sent: '{text}' - Please choose a number from 1 to {len(main_categories)}"
 
         return self._create_response(response)
 
@@ -207,13 +209,15 @@ class MessageHandler:
         current_main_category = next((cat for cat in main_categories if cat['id'] == selected_main_category_id), None)
 
         if language == 'arabic':
-            response = f"الرقم غير صحيح. الرجاء اختيار من قائمة {current_main_category['name_ar'] if current_main_category else 'الفئة'}:\n\n"
+            response = f"الرجاء اختيار رقم صحيح من قائمة {current_main_category['name_ar'] if current_main_category else 'الفئة'}:\n\n"
             for i, sub_cat in enumerate(sub_categories, 1):
                 response += f"{i}. {sub_cat['name_ar']}\n"
+            response += f"\nأرسلت: '{text}' - الرجاء اختيار رقم من 1 إلى {len(sub_categories)}"
         else:
-            response = f"Invalid number. Please choose from {current_main_category['name_en'] if current_main_category else 'category'} menu:\n\n"
+            response = f"Please choose a valid number from {current_main_category['name_en'] if current_main_category else 'category'} menu:\n\n"
             for i, sub_cat in enumerate(sub_categories, 1):
                 response += f"{i}. {sub_cat['name_en']}\n"
+            response += f"\nYou sent: '{text}' - Please choose a number from 1 to {len(sub_categories)}"
 
         return self._create_response(response)
 
@@ -256,13 +260,15 @@ class MessageHandler:
         current_sub_category = next((sub_cat for sub_cat in sub_categories if sub_cat['id'] == selected_sub_category_id), None)
 
         if language == 'arabic':
-            response = f"الرقم غير صحيح. الرجاء اختيار من قائمة {current_sub_category['name_ar'] if current_sub_category else 'الفئة'}:\n\n"
+            response = f"الرجاء اختيار رقم صحيح من قائمة {current_sub_category['name_ar'] if current_sub_category else 'الفئة'}:\n\n"
             for i, item in enumerate(items, 1):
                 response += f"{i}. {item['item_name_ar']} - {item['price']} دينار\n"
+            response += f"\nأرسلت: '{text}' - الرجاء اختيار رقم من 1 إلى {len(items)}"
         else:
-            response = f"Invalid number. Please choose from {current_sub_category['name_en'] if current_sub_category else 'category'} menu:\n\n"
+            response = f"Please choose a valid number from {current_sub_category['name_en'] if current_sub_category else 'category'} menu:\n\n"
             for i, item in enumerate(items, 1):
                 response += f"{i}. {item['item_name_en']} - {item['price']} IQD\n"
+            response += f"\nYou sent: '{text}' - Please choose a number from 1 to {len(items)}"
 
         return self._create_response(response)
 
@@ -304,18 +310,31 @@ class MessageHandler:
 
     # Helper methods
     def _detect_language(self, text: str) -> Optional[str]:
-        """Detect language from text"""
+        """Detect language from text - ENHANCED to handle incomplete inputs"""
         text_lower = text.lower().strip()
 
-        # Arabic indicators
-        if any(indicator in text_lower for indicator in ['عربي', 'العربية', 'مرحبا', 'أهلا', 'اريد', '1', '١']):
-            return 'arabic'
+        # Arabic indicators (including partial matches)
+        arabic_indicators = [
+            'عربي', 'العربية', 'مرحبا', 'مرحبت', 'أهلا', 'اريد', 'بدي', '1', '١',
+            'مرح', 'أهل', 'عرب', 'ار', 'بد'
+        ]
 
         # English indicators
-        if any(indicator in text_lower for indicator in ['english', 'hello', 'hi', '2', '٢']):
-            return 'english'
+        english_indicators = [
+            'english', 'hello', 'hi', 'want', 'need', '2', '٢'
+        ]
 
-        # Default to Arabic if unclear
+        # Check for Arabic indicators first (including partial matches)
+        for indicator in arabic_indicators:
+            if indicator in text_lower:
+                return 'arabic'
+
+        # Check for English indicators
+        for indicator in english_indicators:
+            if indicator in text_lower:
+                return 'english'
+
+        # Default to Arabic if unclear (most users are Arabic speakers)
         return 'arabic'
 
     def _convert_arabic_numerals(self, text: str) -> str:
@@ -331,17 +350,23 @@ class MessageHandler:
         return text
 
     def _extract_number(self, text: str) -> Optional[int]:
-        """Extract number from text"""
+        """Extract number from text - ENHANCED to handle Arabic characters"""
         import re
 
         # Convert Arabic numerals first
         text = self._convert_arabic_numerals(text)
-
+        
+        # Clean the text - remove Arabic commas, dots, and other punctuation
+        text = re.sub(r'[،,\.\s]+', '', text)  # Remove Arabic comma, regular comma, dots, spaces
+        
         # Find numbers
         numbers = re.findall(r'\d+', text)
 
         if numbers:
-            return int(numbers[0])
+            number = int(numbers[0])
+            # Reasonable validation
+            if 1 <= number <= 100:
+                return number
 
         return None
 

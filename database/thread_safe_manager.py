@@ -650,9 +650,17 @@ class ThreadSafeDatabaseManager:
 
     def log_conversation(self, phone_number: str, message_type: str, content: str,
                          ai_response: str = None, current_step: str = None):
-        """Log conversation for analytics (non-blocking)"""
+        """Log conversation for analytics (non-blocking) - FIXED"""
         try:
             with self.get_db_connection() as conn:
+                # First ensure user session exists to avoid foreign key constraint
+                conn.execute("""
+                    INSERT OR IGNORE INTO user_sessions 
+                    (phone_number, current_step, updated_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                """, (phone_number, current_step or 'waiting_for_language'))
+                
+                # Now log the conversation
                 conn.execute("""
                     INSERT INTO conversation_log 
                     (phone_number, message_type, content, ai_response, current_step)
@@ -661,6 +669,7 @@ class ThreadSafeDatabaseManager:
                 conn.commit()
         except Exception as e:
             logger.error(f"❌ Error logging conversation: {e}")
+            # Don't fail the main operation if logging fails
 
     def validate_step_transition(self, phone_number: str, next_step: str) -> bool:
         """Validate step transition"""
