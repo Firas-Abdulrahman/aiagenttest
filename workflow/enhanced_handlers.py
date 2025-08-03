@@ -187,6 +187,8 @@ class EnhancedMessageHandler:
             return self._handle_ai_show_menu(phone_number, session, user_context)
         elif action == 'help_request':
             return self._handle_ai_help_request(phone_number, session, user_context)
+        elif action == 'back_navigation':
+            return self._handle_back_navigation(phone_number, session, user_context)
         else:
             logger.warning(f"⚠️ Unknown AI action: {action}")
             return self._create_response(self._get_fallback_message(current_step, user_context.get('language', 'arabic')))
@@ -460,6 +462,7 @@ class EnhancedMessageHandler:
                         logger.info(f"✅ Found item '{item_name}' in sub-category '{sub_cat['name_ar']}'")
                         
                         # Update session to reflect the found item's context
+                        logger.info(f"🔧 Setting selected_item to {matched_item['id']} for item '{matched_item['item_name_ar']}'")
                         self.db.create_or_update_session(
                             phone_number, 'waiting_for_quantity', language,
                             session.get('customer_name'),
@@ -489,6 +492,7 @@ class EnhancedMessageHandler:
         if quantity and isinstance(quantity, int) and 1 <= quantity <= 50:
             # Add item to order
             item_id = session.get('selected_item')
+            logger.info(f"🔧 Adding to order: item_id={item_id}, quantity={quantity} for {phone_number}")
             if item_id:
                 success = self.db.add_item_to_order(phone_number, item_id, quantity)
                 
@@ -659,6 +663,73 @@ class EnhancedMessageHandler:
 
         help_message = help_messages.get(current_step, 'I can help you with your order. What would you like to know?')
         return self._create_response(help_message)
+
+    def _handle_back_navigation(self, phone_number: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle back navigation request"""
+        current_step = user_context.get('current_step')
+        language = user_context.get('language', 'arabic')
+        
+        logger.info(f"🔙 Back navigation requested from step: {current_step}")
+        
+        # Define step transitions for going back
+        back_transitions = {
+            'waiting_for_sub_category': 'waiting_for_category',
+            'waiting_for_item': 'waiting_for_sub_category', 
+            'waiting_for_quantity': 'waiting_for_item',
+            'waiting_for_additional': 'waiting_for_quantity',
+            'waiting_for_service': 'waiting_for_category',  # Go back to main menu
+            'waiting_for_location': 'waiting_for_service',
+            'waiting_for_confirmation': 'waiting_for_location'
+        }
+        
+        previous_step = back_transitions.get(current_step)
+        
+        if not previous_step:
+            # Can't go back further
+            if language == 'arabic':
+                message = "لا يمكن الرجوع أكثر من ذلك. هذه هي البداية."
+            else:
+                message = "Cannot go back further. This is the beginning."
+            return self._create_response(message)
+        
+        # Clear appropriate session data and navigate back
+        if previous_step == 'waiting_for_category':
+            self.db.create_or_update_session(
+                phone_number, previous_step, language,
+                session.get('customer_name'),
+                selected_main_category=None,
+                selected_sub_category=None,
+                selected_item=None
+            )
+            return self._show_main_categories(phone_number, language)
+            
+        elif previous_step == 'waiting_for_sub_category':
+            self.db.create_or_update_session(
+                phone_number, previous_step, language,
+                session.get('customer_name'),
+                selected_main_category=session.get('selected_main_category'),
+                selected_sub_category=None,
+                selected_item=None
+            )
+            main_category_id = session.get('selected_main_category')
+            if main_category_id:
+                main_categories = self.db.get_main_categories()
+                for cat in main_categories:
+                    if cat['id'] == main_category_id:
+                        return self._show_sub_categories(phone_number, cat, language)
+            return self._show_main_categories(phone_number, language)
+            
+        # Default: update step and show appropriate message
+        self.db.create_or_update_session(
+            phone_number, previous_step, language,
+            session.get('customer_name')
+        )
+        
+        if language == 'arabic':
+            message = "تم الرجوع للخطوة السابقة"
+        else:
+            message = "Returned to previous step"
+        return self._create_response(message)
 
     def _handle_structured_message(self, phone_number: str, text: str, current_step: str, session: Dict, user_context: Dict) -> Dict:
         """Fallback to structured message processing when AI is not available"""
@@ -1079,12 +1150,12 @@ class EnhancedMessageHandler:
             message = "ممتاز! اختر من القائمة الرئيسية:\n\n"
             for i, cat in enumerate(categories, 1):
                 message += f"{i}. {cat['name_ar']}\n"
-            message += "\nالرجاء اختيار الفئة المطلوبة"
+            message += "\nالرجاء اختيار الفئة المطلوبة\n\n🔙 اكتب 'رجوع' للعودة للخطوة السابقة"
         else:
             message = "Great! Choose from the main menu:\n\n"
             for i, cat in enumerate(categories, 1):
                 message += f"{i}. {cat['name_en']}\n"
-            message += "\nPlease select the required category"
+            message += "\nPlease select the required category\n\n🔙 Type 'back' to go to previous step"
         
         return self._create_response(message)
 
@@ -1119,12 +1190,12 @@ class EnhancedMessageHandler:
             message = f"قائمة {category_name_ar}:\n\n"
             for i, sub_cat in enumerate(sub_categories, 1):
                 message += f"{i}. {sub_cat['name_ar']}\n"
-            message += "\nالرجاء اختيار الفئة الفرعية المطلوبة"
+            message += "\nالرجاء اختيار الفئة الفرعية المطلوبة\n\n🔙 اكتب 'رجوع' للعودة للخطوة السابقة"
         else:
             message = f"{category_name_en} Menu:\n\n"
             for i, sub_cat in enumerate(sub_categories, 1):
                 message += f"{i}. {sub_cat['name_en']}\n"
-            message += "\nPlease select the required sub-category"
+            message += "\nPlease select the required sub-category\n\n🔙 Type 'back' to go to previous step"
         
         return self._create_response(message)
 
@@ -1321,13 +1392,22 @@ class EnhancedMessageHandler:
         return None
 
     def _match_item_by_name(self, text: str, items: list, language: str) -> Optional[Dict]:
-        """Match item by name with enhanced partial matching"""
+        """Match item by name with enhanced partial matching and energy drink handling"""
         # Clean the input - remove numbers and extra spaces
         import re
         cleaned_text = re.sub(r'\d+', '', text).strip()
         text_lower = cleaned_text.lower().strip()
         
         logger.info(f"🔍 Matching '{text}' (cleaned: '{cleaned_text}') against {len(items)} items")
+        
+        # Special handling for energy drinks
+        energy_terms = ['طاقة', 'مشروب طاقة', 'مشروبات طاقة', 'ريد بول', 'red bull', 'monster', 'energy drink', 'energy']
+        if any(term in text_lower for term in energy_terms):
+            for item in items:
+                item_name_lower = item['item_name_ar'].lower() if language == 'arabic' else item['item_name_en'].lower()
+                if any(energy_term in item_name_lower for energy_term in ['طاقة', 'energy']):
+                    logger.info(f"✅ Energy drink match: '{item_name_lower}'")
+                    return item
         
         # First try exact substring matching
         for item in items:

@@ -139,10 +139,30 @@ CORE PRINCIPLES:
 5. **Cross-Step Item Selection**: Allow users to mention specific items at any step and intelligently route them
 6. **Fresh Start Flow**: Handle post-order greetings with options to start new or keep previous order
 
-MENU STRUCTURE:
-- Main Categories: Cold Drinks, Hot Drinks, Pastries & Sweets
-- Sub-Categories: Specific types within each main category
-- Items: Individual products with prices
+DETAILED MENU STRUCTURE:
+Main Category 1 - Cold Drinks (المشروبات الباردة):
+  1. Iced Coffee (ايس كوفي) - Contains: Americano, Iced Coffee, Mocha, Latte variants
+  2. Frappuccino (فرابتشينو) - Contains: Various frappuccino flavors
+  3. Milkshake (ميلك شيك) - Contains: Various milkshake flavors
+  4. Iced Tea (شاي مثلج) - Contains: Various iced tea types
+  5. Fresh Juices (عصائر طازجة) - Contains: Orange, Apple, Mixed juices
+  6. Mojito (موهيتو) - Contains: Classic mojito variants
+  7. Energy Drinks (مشروبات الطاقة) - Contains: Red Bull, Monster, etc.
+
+Main Category 2 - Hot Drinks (المشروبات الحارة):
+  1. Coffee & Espresso (قهوة واسبرسو) - Contains: Espresso, Turkish coffee, etc.
+  2. Latte & Special Drinks (لاتيه ومشروبات خاصة) - Contains: Various latte types
+  3. Other Hot Drinks (مشروبات ساخنة أخرى) - Contains: Tea, hot chocolate, etc.
+
+Main Category 3 - Pastries & Sweets (الحلويات والمعجنات):
+  Various pastries, cakes, and sweet items
+
+ARABIC TERM MAPPING (CRITICAL):
+- "طاقة" or "مشروب طاقة" = Energy Drinks (Sub-category 7 of Cold Drinks)
+- "كوفي" or "قهوة" = Coffee-related items (Multiple sub-categories)
+- "بارد" = Cold drinks (Main category 1)
+- "ساخن" or "حار" = Hot drinks (Main category 2)
+- "حلو" or "حلويات" = Pastries & Sweets (Main category 3)
 
 CONVERSATION FLOW:
 1. Language Selection → 2. Main Category → 3. Sub-Category → 4. Item Selection → 5. Quantity → 6. Additional Items → 7. Service Type → 8. Location → 9. Confirmation
@@ -171,6 +191,7 @@ AVAILABLE ACTIONS:
 - confirmation: User is confirming order
 - show_menu: User wants to see menu
 - help_request: User needs help
+- back_navigation: User wants to go back to previous step
 
 IMPORTANT RULES:
 - When user mentions a specific item (e.g., "موهيتو", "coffee"), use "item_selection" action regardless of current step
@@ -180,6 +201,7 @@ IMPORTANT RULES:
 - Numbers in item step should be treated as item ID selection
 - Always maintain conversation flow and provide helpful guidance
 - If confidence is low, extract basic information and let the system handle the rest
+- BACK NAVIGATION: Detect back requests ("رجوع", "back", "السابق", "previous") and use "back_navigation" action
 
 EXAMPLES:
 User: "اريد موهيتو" (at any step)
@@ -292,7 +314,7 @@ RESPOND WITH CLEAN JSON:
 {{
     "understood_intent": "Clear description of what user wants",
     "confidence": "high/medium/low",
-    "action": "intelligent_suggestion/language_selection/category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu/help_request",
+    "action": "intelligent_suggestion/language_selection/category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu/help_request/back_navigation",
     "extracted_data": {{
         "language": "arabic/english/null",
         "suggested_main_category": "number or null",
@@ -393,7 +415,58 @@ Response: {{
     }},
     "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!"
 }}
-    "response_message": "Perfect! I'll show you the Iced Tea options."
+
+User: "طاقة" (at sub-category step)
+Response: {{
+    "understood_intent": "User wants energy drinks",
+    "confidence": "high",
+    "action": "intelligent_suggestion",
+    "extracted_data": {{
+        "suggested_sub_category": 7
+    }},
+    "response_message": "فهمت أنك تريد مشروبات الطاقة! سأعرض لك خياراتنا من مشروبات الطاقة المتاحة"
+}}
+
+User: "مشروب طاقة" (at item step)
+Response: {{
+    "understood_intent": "User wants an energy drink",
+    "confidence": "high",
+    "action": "item_selection",
+    "extracted_data": {{
+        "item_name": "مشروب طاقة"
+    }},
+    "response_message": "ممتاز! سأجد لك مشروب الطاقة في قائمتنا"
+}}
+
+User: "1" (at service step)
+Response: {{
+    "understood_intent": "User wants dine-in service",
+    "confidence": "high",
+    "action": "service_selection",
+    "extracted_data": {{
+        "service_type": "dine-in"
+    }},
+    "response_message": "ممتاز! لقد اخترت التناول في المقهى. الرجاء تحديد رقم الطاولة (1-7):"
+}}
+
+User: "2" (at service step)
+Response: {{
+    "understood_intent": "User wants delivery service",
+    "confidence": "high",
+    "action": "service_selection",
+    "extracted_data": {{
+        "service_type": "delivery"
+    }},
+    "response_message": "ممتاز! لقد اخترت خدمة التوصيل. الرجاء مشاركة موقعك وأي تعليمات خاصة:"
+}}
+
+User: "رجوع" (at any step)
+Response: {{
+    "understood_intent": "User wants to go back to previous step",
+    "confidence": "high",
+    "action": "back_navigation",
+    "extracted_data": {{}},
+    "response_message": "سأعيدك إلى الخطوة السابقة"
 }}"""
 
     def _format_conversation_context(self, context: Dict) -> str:
@@ -438,11 +511,14 @@ Response: {{
             """,
             
             'waiting_for_sub_category': """
-                - Accept: numbers, sub-category names, specific item requests
+                - Accept: numbers (1-7 for Cold Drinks), sub-category names, specific item requests
+                - Cold Drinks has 7 sub-categories: 1=Iced Coffee, 2=Frappuccino, 3=Milkshake, 4=Iced Tea, 5=Fresh Juices, 6=Mojito, 7=Energy Drinks
+                - Hot Drinks has 3 sub-categories: 1=Coffee & Espresso, 2=Latte & Special Drinks, 3=Other Hot Drinks
                 - IMPORTANT: If user provides mixed input like "4 iced tea", extract the number (4) for sub-category selection
                 - If user asks for specific item (e.g., "موهيتو", "coffee", "iced tea"), use action "item_selection"
                 - If user asks for sub-category type (e.g., "عصائر", "hot drinks"), use action "intelligent_suggestion"
                 - If user provides just a number, use action "intelligent_suggestion" with suggested_sub_category
+                - NEVER suggest sub-category numbers higher than 7 for Cold Drinks or 3 for Hot Drinks
                 - Response: For items, directly show quantity selection; for categories, show sub-category items
             """,
             

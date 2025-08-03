@@ -238,7 +238,7 @@ class ThreadSafeDatabaseManager:
                 logger.error(f"❌ Error updating session for {phone_number}: {e}")
                 return False
 
-    def delete_session(self, phone_number: str) -> bool:
+    def delete_session(self, phone_number: str, only_session: bool = False) -> bool:
         """Delete user session with thread safety"""
         with session_manager.user_session_lock(phone_number):
             try:
@@ -249,10 +249,14 @@ class ThreadSafeDatabaseManager:
                 with self.get_db_connection() as conn:
                     conn.execute("BEGIN IMMEDIATE TRANSACTION")
 
-                    # Delete all related data
-                    conn.execute("DELETE FROM user_orders WHERE phone_number = ?", (phone_number,))
-                    conn.execute("DELETE FROM order_details WHERE phone_number = ?", (phone_number,))
-                    conn.execute("DELETE FROM user_sessions WHERE phone_number = ?", (phone_number,))
+                    if only_session:
+                        # Only delete session record (for when orders already cleaned up)
+                        conn.execute("DELETE FROM user_sessions WHERE phone_number = ?", (phone_number,))
+                    else:
+                        # Delete all related data in proper order to avoid foreign key constraints
+                        conn.execute("DELETE FROM user_orders WHERE phone_number = ?", (phone_number,))
+                        conn.execute("DELETE FROM order_details WHERE phone_number = ?", (phone_number,))
+                        conn.execute("DELETE FROM user_sessions WHERE phone_number = ?", (phone_number,))
 
                     conn.commit()
 
@@ -315,9 +319,12 @@ class ThreadSafeDatabaseManager:
                 cursor = conn.execute("""
                     SELECT uo.id, uo.phone_number, uo.menu_item_id, uo.quantity, 
                            uo.subtotal, uo.special_requests, uo.added_at,
-                           mi.item_name_ar, mi.item_name_en, mi.price, mi.unit
+                           COALESCE(mi.item_name_ar, 'Unknown Item') as item_name_ar, 
+                           COALESCE(mi.item_name_en, 'Unknown Item') as item_name_en, 
+                           COALESCE(mi.price, 0) as price, 
+                           COALESCE(mi.unit, 'piece') as unit
                     FROM user_orders uo
-                    JOIN menu_items mi ON uo.menu_item_id = mi.id
+                    LEFT JOIN menu_items mi ON uo.menu_item_id = mi.id
                     WHERE uo.phone_number = ?
                     ORDER BY uo.added_at
                 """, (phone_number,))
@@ -405,8 +412,8 @@ class ThreadSafeDatabaseManager:
 
                     conn.commit()
 
-                # Clear session
-                self.delete_session(phone_number)
+                # Clear session (orders already deleted above)
+                self.delete_session(phone_number, only_session=True)
 
                 logger.info(f"✅ Order {order_id} completed for {phone_number}")
                 return order_id
