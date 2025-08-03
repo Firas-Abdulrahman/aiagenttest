@@ -135,8 +135,9 @@ Your capabilities:
 1. NATURAL LANGUAGE UNDERSTANDING: Understand user requests in Arabic and English
 2. CONTEXT AWARENESS: Know the current conversation step and user's order history
 3. INTELLIGENT SUGGESTIONS: Suggest appropriate menu items based on user preferences
-4. WORKFLOW GUIDANCE: Guide users through the ordering process naturally
-5. FALLBACK HANDLING: Provide helpful responses when understanding is unclear
+4. CROSS-STEP ITEM SELECTION: Handle item requests at any step by finding them across the menu
+5. WORKFLOW GUIDANCE: Guide users through the ordering process naturally
+6. FALLBACK HANDLING: Provide helpful responses when understanding is unclear
 
 Key principles:
 - Always respond in the user's preferred language
@@ -144,6 +145,8 @@ Key principles:
 - Maintain conversation flow naturally
 - Handle both structured (numbers) and unstructured (natural language) inputs
 - Be helpful and friendly while being efficient
+- When user mentions a specific item (e.g., "موهيتو", "coffee"), use "item_selection" action regardless of current step
+- When user mentions preferences (e.g., "cold", "sweet"), use "intelligent_suggestion" action
 
 Respond with clean JSON that includes:
 - understood_intent: Clear description of what user wants
@@ -274,6 +277,30 @@ Response: {{
         "suggested_sub_category": 2
     }},
     "response_message": "I understand you want something sweet! Great choice. I recommend our Frappuccinos - they're deliciously sweet and refreshing:\\n\\n1. Cold Drinks (includes Frappuccinos)\\n2. Hot Drinks\\n3. Pastries & Sweets\\n\\nChoose option 1 for cold sweet drinks or 3 for sweet pastries!"
+}}
+
+User: "موهيتو" (at sub-category step)
+Response: {{
+    "understood_intent": "User wants a mojito drink",
+    "confidence": "high",
+    "action": "item_selection",
+    "extracted_data": {{
+        "item_name": "موهيتو",
+        "item_id": null
+    }},
+    "response_message": "ممتاز! سأجد لك موهيتو في قائمتنا وأحضره لك مباشرة."
+}}
+
+User: "coffee" (at sub-category step)
+Response: {{
+    "understood_intent": "User wants coffee",
+    "confidence": "high", 
+    "action": "item_selection",
+    "extracted_data": {{
+        "item_name": "coffee",
+        "item_id": null
+    }},
+    "response_message": "Great! I'll find coffee in our menu and get it ready for you right away."
 }}"""
 
     def _format_conversation_context(self, context: Dict) -> str:
@@ -319,8 +346,9 @@ Response: {{
             
             'waiting_for_sub_category': """
                 - Accept: numbers, sub-category names, specific item requests
-                - If user asks for specific item, suggest the appropriate sub-category
-                - Response: Show items in selected sub-category
+                - If user asks for specific item (e.g., "موهيتو", "coffee"), use action "item_selection"
+                - If user asks for sub-category type (e.g., "عصائر", "hot drinks"), use action "intelligent_suggestion"
+                - Response: For items, directly show quantity selection; for categories, show sub-category items
             """,
             
             'waiting_for_item': """
@@ -367,6 +395,9 @@ Response: {{
     def _parse_enhanced_response(self, ai_response: str, current_step: str, user_message: str) -> Optional[Dict]:
         """Parse and validate enhanced AI response"""
         try:
+            # Debug: Log the raw AI response
+            logger.info(f"🔍 Raw AI Response: {ai_response}")
+            
             # Clean the response
             if ai_response.startswith('```json'):
                 ai_response = ai_response.replace('```json', '').replace('```', '').strip()
@@ -387,6 +418,8 @@ Response: {{
             
             # Fix common JSON issues
             ai_response = self._fix_json_format(ai_response)
+            
+            logger.info(f"🔧 Fixed JSON: {ai_response}")
             
             result = json.loads(ai_response)
             
@@ -423,9 +456,23 @@ Response: {{
             # Fix multiple commas
             json_str = re.sub(r',+', ',', json_str)
             
-            # Fix missing commas between properties
+            # Fix missing commas between properties - improved pattern
             json_str = re.sub(r'}(\s*)"', r'},\1"', json_str)
             json_str = re.sub(r'(\d+)(\s*)"', r'\1,\2"', json_str)
+            json_str = re.sub(r'("[\w\s]+")(\s*)"', r'\1,\2"', json_str)
+            json_str = re.sub(r'(true|false|null)(\s*)"', r'\1,\2"', json_str)
+            
+            # Fix missing quotes around property names
+            json_str = re.sub(r'([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1 "\2":', json_str)
+            
+            # Fix trailing commas in arrays and objects
+            json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
+            
+            # Fix missing closing braces/brackets
+            if json_str.count('{') > json_str.count('}'):
+                json_str += '}'
+            if json_str.count('[') > json_str.count(']'):
+                json_str += ']'
             
             return json_str
             

@@ -99,52 +99,39 @@ class EnhancedMessageHandler:
         """Handle AI understanding result with appropriate actions"""
         action = ai_result.get('action')
         extracted_data = ai_result.get('extracted_data', {})
-        response_message = ai_result.get('response_message', '')
-        language = user_context.get('language', 'arabic')
+        current_step = user_context.get('current_step')
 
-        logger.info(f"🤖 AI Action: {action} with data: {extracted_data}")
+        logger.info(f"🎯 AI Action: {action} at step {current_step}")
 
-        try:
-            if action == 'intelligent_suggestion':
-                return self._handle_intelligent_suggestion(phone_number, ai_result, session, user_context)
+        # Handle intelligent suggestions (items/categories) that can work across steps
+        if action == 'intelligent_suggestion':
+            return self._handle_intelligent_suggestion(phone_number, ai_result, session, user_context)
 
-            elif action == 'language_selection':
-                return self._handle_ai_language_selection(phone_number, extracted_data, session)
-
-            elif action == 'category_selection':
-                return self._handle_ai_category_selection(phone_number, extracted_data, session, user_context)
-
-            elif action == 'item_selection':
-                return self._handle_ai_item_selection(phone_number, extracted_data, session, user_context)
-
-            elif action == 'quantity_selection':
-                return self._handle_ai_quantity_selection(phone_number, extracted_data, session, user_context)
-
-            elif action == 'yes_no':
-                return self._handle_ai_yes_no(phone_number, extracted_data, session, user_context)
-
-            elif action == 'service_selection':
-                return self._handle_ai_service_selection(phone_number, extracted_data, session, user_context)
-
-            elif action == 'location_input':
-                return self._handle_ai_location_input(phone_number, extracted_data, session, user_context)
-
-            elif action == 'confirmation':
-                return self._handle_ai_confirmation(phone_number, extracted_data, session, user_context)
-
-            elif action == 'show_menu':
-                return self._handle_ai_show_menu(phone_number, session, user_context)
-
-            elif action == 'help_request':
-                return self._handle_ai_help_request(phone_number, session, user_context)
-
-            else:
-                logger.warning(f"⚠️ Unknown AI action: {action}")
-                return self._create_response(response_message or self._get_fallback_message(user_context['current_step'], language))
-
-        except Exception as e:
-            logger.error(f"❌ Error handling AI result: {e}")
-            return self._create_response(self._get_fallback_message(user_context['current_step'], language))
+        # Handle specific step-based actions
+        if action == 'language_selection':
+            return self._handle_ai_language_selection(phone_number, extracted_data, session)
+        elif action == 'category_selection':
+            return self._handle_ai_category_selection(phone_number, extracted_data, session, user_context)
+        elif action == 'item_selection':
+            # Special handling for item selection - can work across different steps
+            return self._handle_intelligent_item_selection(phone_number, extracted_data, session, user_context)
+        elif action == 'quantity_selection':
+            return self._handle_ai_quantity_selection(phone_number, extracted_data, session, user_context)
+        elif action == 'yes_no':
+            return self._handle_ai_yes_no(phone_number, extracted_data, session, user_context)
+        elif action == 'service_selection':
+            return self._handle_ai_service_selection(phone_number, extracted_data, session, user_context)
+        elif action == 'location_input':
+            return self._handle_ai_location_input(phone_number, extracted_data, session, user_context)
+        elif action == 'confirmation':
+            return self._handle_ai_confirmation(phone_number, extracted_data, session, user_context)
+        elif action == 'show_menu':
+            return self._handle_ai_show_menu(phone_number, session, user_context)
+        elif action == 'help_request':
+            return self._handle_ai_help_request(phone_number, session, user_context)
+        else:
+            logger.warning(f"⚠️ Unknown AI action: {action}")
+            return self._create_response(self._get_fallback_message(current_step, user_context.get('language', 'arabic')))
 
     def _handle_intelligent_suggestion(self, phone_number: str, ai_result: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle intelligent suggestions from AI"""
@@ -292,6 +279,72 @@ class EnhancedMessageHandler:
 
         return self._create_response(self._get_fallback_message('waiting_for_item', language))
 
+    def _handle_intelligent_item_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
+        """Handle intelligent item selection that can work across different steps"""
+        item_name = extracted_data.get('item_name')
+        item_id = extracted_data.get('item_id')
+        language = user_context.get('language', 'arabic')
+        current_step = user_context.get('current_step')
+        
+        logger.info(f"🧠 Intelligent item selection: '{item_name}' at step '{current_step}'")
+        
+        # If we have a direct item ID, use it
+        if item_id:
+            return self._handle_ai_item_selection(phone_number, extracted_data, session, user_context)
+        
+        # If we have an item name, we need to find it intelligently
+        if item_name:
+            # First, try to find the item in the current context
+            if current_step == 'waiting_for_item' and session.get('selected_sub_category'):
+                # We're already at item selection step, try to match in current sub-category
+                items = self.db.get_sub_category_items(session['selected_sub_category'])
+                matched_item = self._match_item_by_name(item_name, items, language)
+                
+                if matched_item:
+                    logger.info(f"✅ Found item '{item_name}' in current sub-category")
+                    return self._handle_ai_item_selection(phone_number, {
+                        'item_id': None,
+                        'item_name': item_name
+                    }, session, user_context)
+            
+            # If not found in current context, search across all sub-categories
+            logger.info(f"🔍 Searching for item '{item_name}' across all sub-categories")
+            
+            # Get all main categories and search through their sub-categories
+            main_categories = self.db.get_main_categories()
+            
+            for main_cat in main_categories:
+                sub_categories = self.db.get_sub_categories(main_cat['id'])
+                
+                for sub_cat in sub_categories:
+                    items = self.db.get_sub_category_items(sub_cat['id'])
+                    matched_item = self._match_item_by_name(item_name, items, language)
+                    
+                    if matched_item:
+                        logger.info(f"✅ Found item '{item_name}' in sub-category '{sub_cat['name_ar']}'")
+                        
+                        # Update session to reflect the found item's context
+                        self.db.create_or_update_session(
+                            phone_number, 'waiting_for_quantity', language,
+                            session.get('customer_name'),
+                            selected_main_category=main_cat['id'],
+                            selected_sub_category=sub_cat['id'],
+                            selected_item=matched_item['id']
+                        )
+                        
+                        # Show quantity selection for the found item
+                        return self._show_quantity_selection(phone_number, matched_item, language)
+            
+            # Item not found anywhere
+            logger.warning(f"❌ Item '{item_name}' not found in any sub-category")
+            if language == 'arabic':
+                return self._create_response(f"عذراً، لم نجد '{item_name}' في قائمتنا. الرجاء اختيار من القائمة المتاحة.")
+            else:
+                return self._create_response(f"Sorry, we couldn't find '{item_name}' in our menu. Please select from the available options.")
+        
+        # Fallback to regular item selection
+        return self._handle_ai_item_selection(phone_number, extracted_data, session, user_context)
+
     def _handle_ai_quantity_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle AI quantity selection"""
         quantity = extracted_data.get('quantity')
@@ -301,27 +354,33 @@ class EnhancedMessageHandler:
             # Add item to order
             item_id = session.get('last_selected_item')
             if item_id:
-                self.db.add_item_to_order(phone_number, item_id, quantity)
+                success = self.db.add_item_to_order(phone_number, item_id, quantity)
                 
-                # Update session
-                self.db.create_or_update_session(
-                    phone_number, 'waiting_for_additional', language,
-                    session.get('customer_name'),
-                    selected_main_category=session.get('selected_main_category'),
-                    selected_sub_category=session.get('selected_sub_category')
-                )
-                
-                # Get item details for confirmation
-                items = self.db.get_sub_category_items(session.get('selected_sub_category'))
-                selected_item = next((item for item in items if item['id'] == item_id), None)
-                
-                if selected_item:
-                    if language == 'arabic':
-                        message = f"تم إضافة {selected_item['item_name_ar']} × {quantity} إلى طلبك\n\nهل تريد إضافة المزيد من الأصناف؟\n\n1. نعم\n2. لا"
-                    else:
-                        message = f"Added {selected_item['item_name_en']} × {quantity} to your order\n\nWould you like to add more items?\n\n1. Yes\n2. No"
+                if success:
+                    # Update session - clear selected_item to prevent re-adding
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_additional', language,
+                        session.get('customer_name'),
+                        selected_main_category=session.get('selected_main_category'),
+                        selected_sub_category=session.get('selected_sub_category'),
+                        selected_item=None  # Clear selected item
+                    )
                     
-                    return self._create_response(message)
+                    # Get item details for confirmation
+                    items = self.db.get_sub_category_items(session.get('selected_sub_category'))
+                    selected_item = next((item for item in items if item['id'] == item_id), None)
+                    
+                    if selected_item:
+                        if language == 'arabic':
+                            message = f"تم إضافة {selected_item['item_name_ar']} × {quantity} إلى طلبك\n\nهل تريد إضافة المزيد من الأصناف؟\n\n1. نعم\n2. لا"
+                        else:
+                            message = f"Added {selected_item['item_name_en']} × {quantity} to your order\n\nWould you like to add more items?\n\n1. Yes\n2. No"
+                        
+                        return self._create_response(message)
+                else:
+                    return self._create_response("حدث خطأ في إضافة المنتج. الرجاء المحاولة مرة أخرى")
+            else:
+                return self._create_response("خطأ في النظام. الرجاء البدء من جديد")
 
         return self._create_response(self._get_fallback_message('waiting_for_quantity', language))
 
