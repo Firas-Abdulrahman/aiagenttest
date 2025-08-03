@@ -147,6 +147,8 @@ Key principles:
 - Be helpful and friendly while being efficient
 - When user mentions a specific item (e.g., "موهيتو", "coffee"), use "item_selection" action regardless of current step
 - When user mentions preferences (e.g., "cold", "sweet"), use "intelligent_suggestion" action
+- IMPORTANT: For mixed input like "4 iced tea" at sub-category step, extract the number (4) for sub-category selection, not item selection
+- Numbers in sub-category step should be treated as sub-category selection, not item selection
 
 Respond with clean JSON that includes:
 - understood_intent: Clear description of what user wants
@@ -294,13 +296,42 @@ Response: {{
 User: "coffee" (at sub-category step)
 Response: {{
     "understood_intent": "User wants coffee",
-    "confidence": "high", 
+    "confidence": "high",
     "action": "item_selection",
     "extracted_data": {{
         "item_name": "coffee",
         "item_id": null
     }},
-    "response_message": "Great! I'll find coffee in our menu and get it ready for you right away."
+    "response_message": "Perfect! I'll find coffee in our menu and get it for you directly."
+}}
+
+User: "4 iced tea" (at sub-category step)
+Response: {{
+    "understood_intent": "User wants to select sub-category number 4 (Iced Tea)",
+    "confidence": "high",
+    "action": "intelligent_suggestion",
+    "extracted_data": {{
+        "suggested_sub_category": 4
+    }},
+    "response_message": "Perfect! I'll show you the Iced Tea options."
+}}
+    "action": "item_selection",
+    "extracted_data": {{
+        "item_name": "coffee",
+        "item_id": null
+    }},
+    "response_message": "Great choice! I'll find coffee in our menu and get it ready for you."
+}}
+
+User: "4 iced tea" (at sub-category step)
+Response: {{
+    "understood_intent": "User wants to select sub-category number 4 (Iced Tea)",
+    "confidence": "high",
+    "action": "intelligent_suggestion",
+    "extracted_data": {{
+        "suggested_sub_category": 4
+    }},
+    "response_message": "Perfect! I'll show you the Iced Tea options."
 }}"""
 
     def _format_conversation_context(self, context: Dict) -> str:
@@ -346,15 +377,18 @@ Response: {{
             
             'waiting_for_sub_category': """
                 - Accept: numbers, sub-category names, specific item requests
-                - If user asks for specific item (e.g., "موهيتو", "coffee"), use action "item_selection"
+                - IMPORTANT: If user provides mixed input like "4 iced tea", extract the number (4) for sub-category selection
+                - If user asks for specific item (e.g., "موهيتو", "coffee", "iced tea"), use action "item_selection"
                 - If user asks for sub-category type (e.g., "عصائر", "hot drinks"), use action "intelligent_suggestion"
+                - If user provides just a number, use action "intelligent_suggestion" with suggested_sub_category
                 - Response: For items, directly show quantity selection; for categories, show sub-category items
             """,
             
             'waiting_for_item': """
-                - Accept: numbers, item names, descriptions
-                - Support partial matching and synonyms
-                - Response: Confirm selection and ask for quantity
+                - Accept: numbers (which are item IDs), item names, descriptions.
+                - IMPORTANT: If user provides a number, it is ALWAYS an item ID for selection.
+                - Support partial matching and synonyms for item names.
+                - Response: Confirm selection and ask for quantity.
             """,
             
             'waiting_for_quantity': """

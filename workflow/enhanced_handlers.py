@@ -29,6 +29,26 @@ class EnhancedMessageHandler:
 
             # Get current session
             session = self.db.get_user_session(phone_number)
+            
+            # Check for session reset (fresh start intent or timeout)
+            should_reset = self._should_reset_session(session, text)
+            if should_reset:
+                logger.info(f"🔄 Resetting session for {phone_number} due to fresh start intent or timeout")
+                
+                # Special case: If we're in confirmation step and user sends greeting, 
+                # use fresh start flow instead of just clearing
+                if session and session.get('current_step') == 'waiting_for_confirmation':
+                    logger.info(f"🔄 Using fresh start flow for post-order greeting")
+                    return self._handle_fresh_start_after_order(phone_number, session, user_context)
+                else:
+                    # Clear any existing order and session completely
+                    self.db.cancel_order(phone_number)
+                    self.db.delete_session(phone_number)
+                    session = None
+                    logger.info(f"✅ Session and order cleared for {phone_number}")
+            else:
+                logger.info(f"📋 Session check for {phone_number}: should_reset={should_reset}, current_step={session.get('current_step') if session else 'None'}")
+            
             current_step = session.get('current_step') if session else 'waiting_for_language'
 
             # Build comprehensive user context
@@ -140,6 +160,8 @@ class EnhancedMessageHandler:
         language = user_context.get('language', 'arabic')
         current_step = user_context.get('current_step')
 
+        logger.info(f"🧠 Intelligent suggestion: step={current_step}, data={extracted_data}")
+
         # Handle main category suggestions
         suggested_main_category = extracted_data.get('suggested_main_category')
         if suggested_main_category and current_step == 'waiting_for_category':
@@ -162,7 +184,14 @@ class EnhancedMessageHandler:
         suggested_sub_category = extracted_data.get('suggested_sub_category')
         if suggested_sub_category and current_step == 'waiting_for_sub_category':
             # Get the suggested sub-category
-            sub_categories = self.db.get_sub_categories(session.get('selected_main_category'))
+            main_category_id = session.get('selected_main_category')
+            if not main_category_id:
+                logger.error(f"❌ No selected_main_category in session for {phone_number}")
+                return self._create_response("خطأ في النظام. الرجاء البدء من جديد")
+                
+            sub_categories = self.db.get_sub_categories(main_category_id)
+            logger.info(f"🔍 Sub-category selection: suggested={suggested_sub_category}, available={len(sub_categories)}")
+            
             if 1 <= suggested_sub_category <= len(sub_categories):
                 selected_sub_category = sub_categories[suggested_sub_category - 1]
                 
@@ -170,12 +199,15 @@ class EnhancedMessageHandler:
                 self.db.create_or_update_session(
                     phone_number, 'waiting_for_item', language,
                     session.get('customer_name'),
-                    selected_main_category=session.get('selected_main_category'),
+                    selected_main_category=main_category_id,
                     selected_sub_category=selected_sub_category['id']
                 )
                 
                 # Show items
                 return self._show_sub_category_items(phone_number, selected_sub_category, language)
+            else:
+                logger.warning(f"⚠️ Invalid sub-category number: {suggested_sub_category}, max: {len(sub_categories)}")
+                return self._create_response(f"الرقم غير صحيح. الرجاء اختيار من 1 إلى {len(sub_categories)}")
 
         # If no specific suggestions, use the AI's response message
         if response_message:
@@ -549,6 +581,9 @@ class EnhancedMessageHandler:
         elif current_step == 'waiting_for_additional':
             return self._handle_structured_additional_selection(phone_number, text, session, user_context)
             
+        elif current_step == 'waiting_for_fresh_start_choice':
+            return self._handle_structured_fresh_start_choice(phone_number, text, session, user_context)
+            
         else:
             return self._create_response(self._get_fallback_message(current_step, language))
 
@@ -556,22 +591,28 @@ class EnhancedMessageHandler:
         """Handle language selection with structured logic"""
         text_lower = text.lower().strip()
         
-        if any(word in text_lower for word in ['مرحبا', 'السلام', 'هلا', 'hello', 'hi']):
-            # Default to Arabic for Arabic greetings
-            if any(word in text_lower for word in ['مرحبا', 'السلام', 'هلا']):
-                language = 'arabic'
-            else:
-                language = 'english'
-                
-            # Update session
-            self.db.create_or_update_session(
-                phone_number, 'waiting_for_category', language,
-                session.get('customer_name')
-            )
-            
-            return self._show_main_categories(phone_number, language)
+        # Check for Arabic greetings first
+        arabic_greetings = ['مرحبا', 'السلام', 'هلا', 'أهلا', 'السلام عليكم']
+        english_greetings = ['hello', 'hi', 'hey', 'good morning', 'good afternoon']
         
-        return self._create_response("الرجاء إرسال 'مرحبا' للبدء\nPlease send 'hello' to start")
+        if any(greeting in text_lower for greeting in arabic_greetings):
+            language = 'arabic'
+            logger.info(f"🌍 Arabic language detected for greeting: '{text}'")
+        elif any(greeting in text_lower for greeting in english_greetings):
+            language = 'english'
+            logger.info(f"🌍 English language detected for greeting: '{text}'")
+        else:
+            # Default to Arabic for unknown input
+            language = 'arabic'
+            logger.info(f"🌍 Defaulting to Arabic for input: '{text}'")
+                
+        # Update session
+        self.db.create_or_update_session(
+            phone_number, 'waiting_for_category', language,
+            session.get('customer_name')
+        )
+        
+        return self._show_main_categories(phone_number, language)
 
     def _handle_structured_category_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
         """Handle category selection with structured logic"""
@@ -621,43 +662,50 @@ class EnhancedMessageHandler:
         if not main_category_id:
             return self._create_response("خطأ في النظام. الرجاء البدء من جديد")
         
-        # Try to extract number
-        try:
-            sub_category_num = int(text.strip())
-            sub_categories = self.db.get_sub_categories(main_category_id)
+        # Try to extract number from mixed input (e.g., "4 iced tea" -> "4")
+        import re
+        number_match = re.search(r'\d+', text)
+        if number_match:
+            try:
+                sub_category_num = int(number_match.group())
+                sub_categories = self.db.get_sub_categories(main_category_id)
+                
+                logger.info(f"🔢 Extracted sub-category number: {sub_category_num} from '{text}'")
+                
+                if 1 <= sub_category_num <= len(sub_categories):
+                    selected_sub_category = sub_categories[sub_category_num - 1]
+                    
+                    # Update session
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_item', language,
+                        session.get('customer_name'),
+                        selected_main_category=main_category_id,
+                        selected_sub_category=selected_sub_category['id']
+                    )
+                    
+                    return self._show_sub_category_items(phone_number, selected_sub_category, language)
+                else:
+                    return self._create_response(f"الرقم غير صحيح. الرجاء اختيار من 1 إلى {len(sub_categories)}")
+                    
+            except ValueError:
+                pass  # Fall through to name matching
+        
+        # Try to match by name
+        sub_categories = self.db.get_sub_categories(main_category_id)
+        matched_sub_category = self._match_category_by_name(text, sub_categories, language)
+        
+        if matched_sub_category:
+            # Update session
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_item', language,
+                session.get('customer_name'),
+                selected_main_category=main_category_id,
+                selected_sub_category=matched_sub_category['id']
+            )
             
-            if 1 <= sub_category_num <= len(sub_categories):
-                selected_sub_category = sub_categories[sub_category_num - 1]
-                
-                # Update session
-                self.db.create_or_update_session(
-                    phone_number, 'waiting_for_item', language,
-                    session.get('customer_name'),
-                    selected_main_category=main_category_id,
-                    selected_sub_category=selected_sub_category['id']
-                )
-                
-                return self._show_sub_category_items(phone_number, selected_sub_category, language)
-            else:
-                return self._create_response(f"الرقم غير صحيح. الرجاء اختيار من 1 إلى {len(sub_categories)}")
-                
-        except ValueError:
-            # Try to match by name
-            sub_categories = self.db.get_sub_categories(main_category_id)
-            matched_sub_category = self._match_category_by_name(text, sub_categories, language)
-            
-            if matched_sub_category:
-                # Update session
-                self.db.create_or_update_session(
-                    phone_number, 'waiting_for_item', language,
-                    session.get('customer_name'),
-                    selected_main_category=main_category_id,
-                    selected_sub_category=matched_sub_category['id']
-                )
-                
-                return self._show_sub_category_items(phone_number, matched_sub_category, language)
-            else:
-                return self._create_response("الرجاء اختيار رقم من القائمة أو كتابة اسم الفئة الفرعية")
+            return self._show_sub_category_items(phone_number, matched_sub_category, language)
+        else:
+            return self._create_response("الرجاء اختيار رقم من القائمة أو كتابة اسم الفئة الفرعية")
 
     def _handle_structured_item_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
         """Handle item selection with structured logic"""
@@ -817,6 +865,46 @@ class EnhancedMessageHandler:
         
         return self._create_response("الرجاء الرد بـ '1' لإضافة المزيد أو '2' للمتابعة")
 
+    def _handle_structured_fresh_start_choice(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle fresh start choice after order completion"""
+        language = user_context.get('language', 'arabic')
+        text_lower = text.lower().strip()
+        
+        # Arabic choices
+        arabic_new_order = ['1', 'جديد', 'جديدة', 'بدء', 'بداية', 'طلب جديد']
+        arabic_keep_order = ['2', 'احتفاظ', 'احتفظ', 'ابقى', 'ابق', 'اضافة', 'أضف']
+        
+        # English choices
+        english_new_order = ['1', 'new', 'start', 'begin', 'fresh', 'cancel']
+        english_keep_order = ['2', 'keep', 'add', 'more', 'continue']
+        
+        if language == 'arabic':
+            if any(word in text_lower for word in arabic_new_order):
+                # Cancel previous order and start fresh
+                self.db.cancel_order(phone_number)
+                self.db.delete_session(phone_number)
+                logger.info(f"🔄 Fresh start: cancelled previous order for {phone_number}")
+                return self._show_main_categories(phone_number, language)
+            elif any(word in text_lower for word in arabic_keep_order):
+                # Keep previous order and add more items
+                logger.info(f"🔄 Fresh start: keeping previous order for {phone_number}")
+                return self._show_main_categories(phone_number, language)
+            else:
+                return self._create_response("الرجاء اختيار:\n1️⃣ بدء طلب جديد\n2️⃣ الاحتفاظ بالطلب السابق")
+        else:
+            if any(word in text_lower for word in english_new_order):
+                # Cancel previous order and start fresh
+                self.db.cancel_order(phone_number)
+                self.db.delete_session(phone_number)
+                logger.info(f"🔄 Fresh start: cancelled previous order for {phone_number}")
+                return self._show_main_categories(phone_number, language)
+            elif any(word in text_lower for word in english_keep_order):
+                # Keep previous order and add more items
+                logger.info(f"🔄 Fresh start: keeping previous order for {phone_number}")
+                return self._show_main_categories(phone_number, language)
+            else:
+                return self._create_response("Please choose:\n1️⃣ Start new order\n2️⃣ Keep previous order")
+
     # Helper methods for UI generation
     def _show_main_categories(self, phone_number: str, language: str) -> Dict:
         """Show main categories"""
@@ -966,6 +1054,32 @@ class EnhancedMessageHandler:
         
         return self._create_response(message)
 
+    def _handle_fresh_start_after_order(self, phone_number: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle fresh start after order completion"""
+        language = user_context.get('language', 'arabic')
+        customer_name = session.get('customer_name', 'Customer')
+        
+        if language == 'arabic':
+            message = f"مرحباً {customer_name}! 🎉\n\n"
+            message += "شكراً لك على طلبك السابق! هل تريد:\n\n"
+            message += "1️⃣ بدء طلب جديد (سيتم إلغاء الطلب السابق)\n"
+            message += "2️⃣ الاحتفاظ بالطلب السابق وإضافة المزيد\n\n"
+            message += "اختر رقم 1 أو 2، أو قل لي ما تريد!"
+        else:
+            message = f"Hello {customer_name}! 🎉\n\n"
+            message += "Thank you for your previous order! Would you like to:\n\n"
+            message += "1️⃣ Start a new order (previous order will be cancelled)\n"
+            message += "2️⃣ Keep the previous order and add more items\n\n"
+            message += "Choose 1 or 2, or tell me what you want!"
+        
+        # Update session to wait for fresh start choice
+        self.db.create_or_update_session(
+            phone_number, 'waiting_for_fresh_start_choice', language,
+            customer_name
+        )
+        
+        return self._create_response(message)
+
     # Utility methods
     def _match_category_by_name(self, text: str, categories: list, language: str) -> Optional[Dict]:
         """Match category by name"""
@@ -983,9 +1097,14 @@ class EnhancedMessageHandler:
 
     def _match_item_by_name(self, text: str, items: list, language: str) -> Optional[Dict]:
         """Match item by name"""
-        text_lower = text.lower().strip()
-        logger.info(f"🔍 Matching '{text_lower}' against {len(items)} items")
+        # Clean the input - remove numbers and extra spaces
+        import re
+        cleaned_text = re.sub(r'\d+', '', text).strip()
+        text_lower = cleaned_text.lower().strip()
         
+        logger.info(f"🔍 Matching '{text}' (cleaned: '{cleaned_text}') against {len(items)} items")
+        
+        # First try exact substring matching
         for item in items:
             if language == 'arabic':
                 item_name_lower = item['item_name_ar'].lower()
@@ -998,7 +1117,25 @@ class EnhancedMessageHandler:
                 if text_lower in item_name_lower:
                     return item
         
-        logger.info(f"❌ No match found for '{text_lower}'")
+        # If no exact match, try word-based matching
+        text_words = set(text_lower.split())
+        for item in items:
+            if language == 'arabic':
+                item_name_lower = item['item_name_ar'].lower()
+                item_words = set(item_name_lower.split())
+                # Check if any word from input matches any word in item name
+                if text_words & item_words:  # Intersection
+                    logger.info(f"  Word match found: {text_words} ∩ {item_words} = {text_words & item_words}")
+                    return item
+            else:
+                item_name_lower = item['item_name_en'].lower()
+                item_words = set(item_name_lower.split())
+                # Check if any word from input matches any word in item name
+                if text_words & item_words:  # Intersection
+                    logger.info(f"  Word match found: {text_words} ∩ {item_words} = {text_words & item_words}")
+                    return item
+        
+        logger.info(f"❌ No match found for '{text}' (cleaned: '{cleaned_text}')")
         return None
 
     def _get_fallback_message(self, current_step: str, language: str) -> str:
@@ -1013,7 +1150,8 @@ class EnhancedMessageHandler:
                 'waiting_for_additional': 'هل تريد إضافة المزيد من الأصناف؟\n1. نعم\n2. لا',
                 'waiting_for_service': 'هل تريد طلبك للتناول في المقهى أم للتوصيل؟\n1. تناول في المقهى\n2. توصيل',
                 'waiting_for_location': 'الرجاء تحديد رقم الطاولة (1-7) أو العنوان',
-                'waiting_for_confirmation': 'هل تريد تأكيد هذا الطلب؟\n1. نعم\n2. لا'
+                'waiting_for_confirmation': 'هل تريد تأكيد هذا الطلب؟\n1. نعم\n2. لا',
+                'waiting_for_fresh_start_choice': 'هل تريد:\n1️⃣ بدء طلب جديد\n2️⃣ الاحتفاظ بالطلب السابق'
             }
         else:
             messages = {
@@ -1025,10 +1163,70 @@ class EnhancedMessageHandler:
                 'waiting_for_additional': 'Would you like to add more items?\n1. Yes\n2. No',
                 'waiting_for_service': 'Do you want your order for dine-in or delivery?\n1. Dine-in\n2. Delivery',
                 'waiting_for_location': 'Please provide your table number (1-7) or address',
-                'waiting_for_confirmation': 'Would you like to confirm this order?\n1. Yes\n2. No'
+                'waiting_for_confirmation': 'Would you like to confirm this order?\n1. Yes\n2. No',
+                'waiting_for_fresh_start_choice': 'Would you like to:\n1️⃣ Start new order\n2️⃣ Keep previous order'
             }
         
         return messages.get(current_step, 'Please provide a valid response.')
+
+    def _should_reset_session(self, session: Dict, user_message: str) -> bool:
+        """Check if session should be reset due to timeout or greeting"""
+        if not session:
+            logger.debug("🔄 No session found, no reset needed")
+            return False
+
+        # Check session timeout (30 minutes)
+        last_update = session.get('updated_at')
+        if last_update:
+            try:
+                from datetime import datetime, timezone
+                # Handle both ISO format and simple format
+                if 'Z' in last_update:
+                    last_update_time = datetime.fromisoformat(last_update.replace('Z', '+00:00'))
+                else:
+                    last_update_time = datetime.fromisoformat(last_update)
+                
+                # Make both datetimes timezone-aware for comparison
+                now = datetime.now(timezone.utc)
+                if last_update_time.tzinfo is None:
+                    last_update_time = last_update_time.replace(tzinfo=timezone.utc)
+                
+                time_diff = now - last_update_time
+                if time_diff.total_seconds() > 1800:  # 30 minutes
+                    logger.info(f"⏰ Session timeout detected: {time_diff.total_seconds()} seconds")
+                    return True
+            except Exception as e:
+                logger.warning(f"⚠️ Error parsing session time: {e}")
+                return True
+
+        # Check for greeting words that might indicate a fresh start
+        greeting_words = ['مرحبا', 'السلام عليكم', 'أهلا', 'hello', 'hi', 'hey']
+        user_lower = user_message.lower().strip()
+        current_step = session.get('current_step')
+
+        logger.debug(f"🔍 Session reset check: message='{user_message}', current_step='{current_step}'")
+
+        # Special case: If we're in confirmation step and user sends a greeting, 
+        # it means they want a fresh start after order completion
+        if (current_step == 'waiting_for_confirmation' and 
+            any(greeting in user_lower for greeting in greeting_words) and
+            len(user_message.strip()) <= 15):
+            logger.info(f"🔄 Post-order fresh start detected for message: '{user_message}'")
+            return True
+
+        # Only reset if it's clearly a greeting and not at language selection step
+        # Also, don't reset if we're in confirmation step and user says yes/no
+        if (any(greeting in user_lower for greeting in greeting_words) and
+                len(user_message.strip()) <= 15 and  # Allow slightly longer greetings
+                current_step not in ['waiting_for_language', 'waiting_for_category', 'waiting_for_confirmation'] and
+                # Make sure it's not just a number or other input
+                not user_message.strip().isdigit() and
+                not any(char.isdigit() for char in user_message)):
+            logger.info(f"🔄 Fresh start intent detected for message: '{user_message}' at step '{current_step}'")
+            return True
+
+        logger.debug(f"❌ No reset needed for message: '{user_message}' at step '{current_step}'")
+        return False
 
     def _extract_customer_name(self, message_data: Dict) -> str:
         """Extract customer name from message data"""
@@ -1038,7 +1236,6 @@ class EnhancedMessageHandler:
     def _create_response(self, content: str) -> Dict[str, Any]:
         """Create response structure"""
         return {
-            'response_type': 'text',
-            'content': content,
-            'timestamp': datetime.now().isoformat()
+            'type': 'text',
+            'content': content
         } 
