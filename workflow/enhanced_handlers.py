@@ -1088,58 +1088,47 @@ class EnhancedMessageHandler:
         
         return self._create_response(message)
 
-    def _show_sub_categories(self, phone_number: str, main_category: Dict, language: str) -> Dict:
+    def _show_sub_categories(self, phone_number: str, main_category, language: str) -> Dict:
         """Show sub-categories for selected main category"""
-        sub_categories = self.db.get_sub_categories(main_category['id'])
+        # Handle both Dict and int inputs
+        if isinstance(main_category, dict):
+            main_category_id = main_category['id']
+            category_name_ar = main_category['name_ar']
+            category_name_en = main_category['name_en']
+        else:
+            # Assume it's an integer ID
+            main_category_id = main_category
+            # Get category details from database
+            main_categories = self.db.get_main_categories()
+            selected_category = None
+            for cat in main_categories:
+                if cat['id'] == main_category_id:
+                    selected_category = cat
+                    break
+            
+            if selected_category:
+                category_name_ar = selected_category['name_ar']
+                category_name_en = selected_category['name_en']
+            else:
+                category_name_ar = "فئة غير معروفة"
+                category_name_en = "Unknown Category"
+        
+        sub_categories = self.db.get_sub_categories(main_category_id)
         
         if language == 'arabic':
-            message = f"قائمة {main_category['name_ar']}:\n\n"
+            message = f"قائمة {category_name_ar}:\n\n"
             for i, sub_cat in enumerate(sub_categories, 1):
                 message += f"{i}. {sub_cat['name_ar']}\n"
             message += "\nالرجاء اختيار الفئة الفرعية المطلوبة"
         else:
-            message = f"{main_category['name_en']} Menu:\n\n"
+            message = f"{category_name_en} Menu:\n\n"
             for i, sub_cat in enumerate(sub_categories, 1):
                 message += f"{i}. {sub_cat['name_en']}\n"
             message += "\nPlease select the required sub-category"
         
         return self._create_response(message)
 
-    def _show_sub_categories(self, phone_number: str, main_category_id: int, language: str) -> Dict:
-        """Show sub-categories for a main category"""
-        logger.info(f"🔍 Debug _show_sub_categories: main_category_id type={type(main_category_id)}, value={main_category_id}")
-        
-        # Ensure main_category_id is an integer
-        if isinstance(main_category_id, dict):
-            logger.warning(f"⚠️ main_category_id is a dict in _show_sub_categories: {main_category_id}")
-            main_category_id = main_category_id.get('id', main_category_id)
-            logger.info(f"🔧 Converted main_category_id to: {main_category_id}")
-        elif not isinstance(main_category_id, int):
-            logger.warning(f"⚠️ main_category_id is not int in _show_sub_categories: {type(main_category_id)} = {main_category_id}")
-            try:
-                main_category_id = int(main_category_id)
-                logger.info(f"🔧 Converted main_category_id to int: {main_category_id}")
-            except (ValueError, TypeError):
-                logger.error(f"❌ Cannot convert main_category_id to int in _show_sub_categories: {main_category_id}")
-                return self._create_response("خطأ في النظام. الرجاء المحاولة مرة أخرى")
-        
-        sub_categories = self.db.get_sub_categories(main_category_id)
-        
-        if not sub_categories:
-            return self._create_response("لا توجد فئات فرعية متاحة.")
-        
-        if language == 'arabic':
-            response = "قائمة الفئات الفرعية:\n\n"
-            for i, sub_category in enumerate(sub_categories, 1):
-                response += f"{i}. {sub_category['sub_category_name_ar']}\n"
-            response += "\nالرجاء اختيار الفئة الفرعية المطلوبة"
-        else:
-            response = "Sub-categories:\n\n"
-            for i, sub_category in enumerate(sub_categories, 1):
-                response += f"{i}. {sub_category['sub_category_name_en']}\n"
-            response += "\nPlease select the required sub-category"
-        
-        return self._create_response(response)
+
 
     def _show_sub_category_items(self, phone_number: str, sub_category: Dict, language: str) -> Dict:
         """Show items for selected sub-category"""
