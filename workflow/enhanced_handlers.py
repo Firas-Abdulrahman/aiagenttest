@@ -192,6 +192,8 @@ class EnhancedMessageHandler:
             return self._handle_ai_help_request(phone_number, session, user_context)
         elif action == 'back_navigation':
             return self._handle_back_navigation(phone_number, session, user_context)
+        elif action == 'conversational_response':
+            return self._handle_conversational_response(phone_number, ai_result, session, user_context)
         else:
             logger.warning(f"⚠️ Unknown AI action: {action}")
             return self._create_response(self._get_fallback_message(current_step, user_context.get('language', 'arabic')))
@@ -734,6 +736,31 @@ class EnhancedMessageHandler:
             message = "Returned to previous step"
         return self._create_response(message)
 
+    def _handle_conversational_response(self, phone_number: str, ai_result: Dict, session: Dict, user_context: Dict) -> Dict:
+        """Handle conversational responses that need acknowledgment"""
+        response_message = ai_result.get('response_message', '')
+        
+        # If AI provided a response, use it (it should include the redirect)
+        if response_message:
+            return self._create_response(response_message)
+        
+        # Fallback: acknowledge and redirect based on current step
+        current_step = user_context.get('current_step')
+        language = user_context.get('language', 'arabic')
+        
+        if language == 'arabic':
+            if current_step == 'waiting_for_confirmation':
+                message = "الحمد لله، بخير! شكراً لسؤالك. الآن، هل تريد تأكيد طلبك؟\n\n1. نعم\n2. لا"
+            else:
+                message = "شكراً لك! دعنا نكمل طلبك."
+        else:
+            if current_step == 'waiting_for_confirmation':
+                message = "I'm doing well, thank you for asking! Now, would you like to confirm your order?\n\n1. Yes\n2. No"
+            else:
+                message = "Thank you! Let's continue with your order."
+        
+        return self._create_response(message)
+
     def _handle_structured_message(self, phone_number: str, text: str, current_step: str, session: Dict, user_context: Dict) -> Dict:
         """Fallback to structured message processing when AI is not available"""
         logger.info(f"🔄 Using structured processing for: '{text}' at step '{current_step}'")
@@ -842,7 +869,10 @@ class EnhancedMessageHandler:
         
         # Try to extract number from mixed input (e.g., "4 iced tea" -> "4")
         import re
-        number_match = re.search(r'\d+', text)
+        
+        # First convert Arabic numerals to Western numerals
+        converted_text = self._convert_arabic_numerals(text)
+        number_match = re.search(r'\d+', converted_text)
         if number_match:
             try:
                 sub_category_num = int(number_match.group())
@@ -1025,11 +1055,14 @@ class EnhancedMessageHandler:
         for arabic, english in arabic_to_english.items():
             processed_text = processed_text.replace(arabic, english)
         
-        # Also handle Arabic words for numbers
+        # Also handle Arabic words for numbers (including colloquial variants)
         arabic_number_words = {
-            'صفر': '0', 'واحد': '1', 'اثنين': '2', 'ثلاثة': '3', 'اربعة': '4',
-            'خمسة': '5', 'ستة': '6', 'سبعة': '7', 'ثمانية': '8', 'تسعة': '9',
-            'عشرة': '10', 'احدى عشر': '11', 'اثنا عشر': '12'
+            'صفر': '0', 'واحد': '1', 'اثنين': '2', 'ثنين': '2', 'اتنين': '2', 
+            'ثلاثة': '3', 'تلاتة': '3', 'اربعة': '4', 'اربع': '4',
+            'خمسة': '5', 'خمس': '5', 'ستة': '6', 'ست': '6', 
+            'سبعة': '7', 'سبع': '7', 'ثمانية': '8', 'ثمان': '8', 
+            'تسعة': '9', 'تسع': '9', 'عشرة': '10', 'عشر': '10',
+            'احدى عشر': '11', 'اثنا عشر': '12'
         }
         
         for arabic_word, english_num in arabic_number_words.items():
@@ -1108,12 +1141,24 @@ class EnhancedMessageHandler:
         """Handle user's choice for fresh start after order"""
         language = user_context.get('language', 'arabic')
         
-        # Extract number from input
+        # Extract choice from input (handle Arabic numerals and text)
         import re
-        number_match = re.search(r'\d+', text)
+        converted_text = self._convert_arabic_numerals(text)
+        text_lower = text.lower().strip()
+        
+        choice = None
+        
+        # Try numeric extraction first
+        number_match = re.search(r'\d+', converted_text)
         if number_match:
             choice = int(number_match.group())
-            
+        # Try text matching for Arabic phrases
+        elif 'جديد' in text_lower or 'بدء' in text_lower:
+            choice = 1
+        elif 'احتفاظ' in text_lower or 'سابق' in text_lower or 'keep' in text_lower.lower():
+            choice = 2
+        
+        if choice:
             if choice == 1:
                 # Start new order - clear everything
                 self.db.cancel_order(phone_number)
@@ -1125,18 +1170,14 @@ class EnhancedMessageHandler:
                     return self._create_response("Great! Choose from the main menu:\n\n1. Cold Drinks\n2. Hot Drinks\n3. Pastries & Sweets\n\nPlease select the required category")
             
             elif choice == 2:
-                # Keep previous order - restore to confirmation step
+                # Since the order was already completed, start a new order
+                # (There's no "previous order" to keep after completion)
                 self.db.create_or_update_session(
-                    phone_number, 'waiting_for_confirmation', language,
+                    phone_number, 'waiting_for_category', language,
                     session.get('customer_name')
                 )
                 
-                # Get current order and show confirmation
-                current_order = self.db.get_current_order(phone_number)
-                if current_order:
-                    return self._show_order_confirmation(phone_number, current_order, language)
-                else:
-                    return self._create_response("لا يوجد طلب سابق للاحتفاظ به.")
+                return self._show_main_categories(phone_number, language)
         
         # Invalid choice
         if language == 'arabic':
@@ -1280,7 +1321,15 @@ class EnhancedMessageHandler:
             for item in current_order['items']:
                 message += f"• {item['item_name_ar']} × {item['quantity']} - {item['subtotal']} دينار\n"
             
-            message += f"\nالخدمة: {session.get('service_type', 'غير محدد')}\n"
+            # Get service type from order details and translate it
+            service_type = current_order.get('details', {}).get('service_type', 'غير محدد')
+            if service_type == 'dine-in':
+                service_type_ar = 'تناول في المقهى'
+            elif service_type == 'delivery':
+                service_type_ar = 'توصيل'
+            else:
+                service_type_ar = 'غير محدد'
+            message += f"\nالخدمة: {service_type_ar}\n"
             message += f"المكان: {location}\n"
             message += f"السعر الإجمالي: {current_order['total']} دينار\n\n"
             message += "هل تريد تأكيد هذا الطلب؟\n\n1. نعم\n2. لا"
@@ -1290,7 +1339,9 @@ class EnhancedMessageHandler:
             for item in current_order['items']:
                 message += f"• {item['item_name_en']} × {item['quantity']} - {item['subtotal']} IQD\n"
             
-            message += f"\nService: {session.get('service_type', 'Not specified')}\n"
+            # Get service type from order details
+            service_type = current_order.get('details', {}).get('service_type', 'Not specified')
+            message += f"\nService: {service_type.title() if service_type != 'Not specified' else service_type}\n"
             message += f"Location: {location}\n"
             message += f"Total Price: {current_order['total']} IQD\n\n"
             message += "Would you like to confirm this order?\n\n1. Yes\n2. No"
@@ -1380,6 +1431,18 @@ class EnhancedMessageHandler:
         return self._create_response(message)
 
     # Utility methods
+    def _convert_arabic_numerals(self, text: str) -> str:
+        """Convert Arabic numerals to English"""
+        arabic_to_english = {
+            '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+            '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'
+        }
+
+        for arabic, english in arabic_to_english.items():
+            text = text.replace(arabic, english)
+
+        return text
+
     def _match_category_by_name(self, text: str, categories: list, language: str) -> Optional[Dict]:
         """Match category by name"""
         text_lower = text.lower().strip()

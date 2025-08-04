@@ -192,6 +192,7 @@ AVAILABLE ACTIONS:
 - show_menu: User wants to see menu
 - help_request: User needs help
 - back_navigation: User wants to go back to previous step
+- conversational_response: User makes conversational comment that needs acknowledgment
 
 IMPORTANT RULES:
 - When user mentions a specific item (e.g., "موهيتو", "coffee"), use "item_selection" action regardless of current step
@@ -314,7 +315,7 @@ RESPOND WITH CLEAN JSON:
 {{
     "understood_intent": "Clear description of what user wants",
     "confidence": "high/medium/low",
-    "action": "intelligent_suggestion/language_selection/category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu/help_request/back_navigation",
+    "action": "intelligent_suggestion/language_selection/category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu/help_request/back_navigation/conversational_response",
     "extracted_data": {{
         "language": "arabic/english/null",
         "suggested_main_category": "number or null",
@@ -467,6 +468,15 @@ Response: {{
     "action": "back_navigation",
     "extracted_data": {{}},
     "response_message": "سأعيدك إلى الخطوة السابقة"
+}}
+
+User: "كيف الحال" (at confirmation step)
+Response: {{
+    "understood_intent": "User is making conversational comment",
+    "confidence": "high",
+    "action": "conversational_response",
+    "extracted_data": {{}},
+    "response_message": "الحمد لله، بخير! شكراً لسؤالك. الآن، هل تريد تأكيد طلبك؟\\n\\n1. نعم\\n2. لا"
 }}"""
 
     def _format_conversation_context(self, context: Dict) -> str:
@@ -557,10 +567,12 @@ Response: {{
             """,
             
             'waiting_for_confirmation': """
-                - Accept: yes/no responses, numbers (1-2)
+                - Accept: yes/no responses, numbers (1-2), conversational interruptions
                 - Yes indicators: "نعم", "اي", "yes", "1", "confirm"
                 - No indicators: "لا", "no", "2", "cancel"
-                - Response: If yes, confirm order; if no, cancel and start fresh
+                - Conversational: "كيف الحال", "مرحبا", "شكرا", "hello", "how are you", "thanks"
+                - IMPORTANT: If user makes conversational comment, acknowledge it briefly then redirect to confirmation
+                - Response: If yes, confirm order; if no, cancel; if conversational, acknowledge and redirect
             """,
             
             'waiting_for_fresh_start_choice': """
