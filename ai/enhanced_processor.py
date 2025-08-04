@@ -477,6 +477,26 @@ Response: {{
     "action": "conversational_response",
     "extracted_data": {{}},
     "response_message": "الحمد لله، بخير! شكراً لسؤالك. الآن، هل تريد تأكيد طلبك؟\\n\\n1. نعم\\n2. لا"
+}}
+
+User: "اريد شراب جوكلت بارد" (at sub-category step)
+Response: {{
+    "understood_intent": "User wants cold chocolate drink",
+    "confidence": "high",
+    "action": "intelligent_suggestion",
+    "extracted_data": {{
+        "suggested_sub_category": 2
+    }},
+    "response_message": "فهمت أنك تريد شراب شوكولاتة بارد! سأعرض لك خياراتنا من فرابتشينو:"
+}}
+
+User: "اين هي" (at any step)
+Response: {{
+    "understood_intent": "User is asking where something is",
+    "confidence": "high",
+    "action": "conversational_response",
+    "extracted_data": {{}},
+    "response_message": "عذراً على عدم الوضوح. دعني أعرض لك الخيارات المتاحة مرة أخرى."
 }}"""
 
     def _format_conversation_context(self, context: Dict) -> str:

@@ -599,17 +599,47 @@ class EnhancedMessageHandler:
         language = user_context.get('language')
 
         if location and len(location.strip()) > 0:
+            # Clean location (remove trailing commas, etc.)
+            clean_location = location.strip().rstrip(',')
+            
+            # Check if this is a table number for dine-in service
+            current_order = self.db.get_current_order(phone_number)
+            service_type = None
+            if current_order and current_order.get('details'):
+                service_type = current_order['details'].get('service_type')
+            
+            if service_type == 'dine-in':
+                # Validate table number (1-7)
+                try:
+                    # Convert Arabic numerals to English
+                    clean_location = self._convert_arabic_numerals(clean_location)
+                    table_num = int(clean_location)
+                    
+                    if table_num < 1 or table_num > 7:
+                        if language == 'arabic':
+                            return self._create_response("رقم الطاولة غير صحيح. الرجاء اختيار رقم من 1 إلى 7:")
+                        else:
+                            return self._create_response("Invalid table number. Please choose a number from 1 to 7:")
+                    
+                    clean_location = str(table_num)  # Use clean number
+                    
+                except ValueError:
+                    if language == 'arabic':
+                        return self._create_response("الرجاء إدخال رقم صحيح للطاولة (1-7):")
+                    else:
+                        return self._create_response("Please enter a valid table number (1-7):")
+            
             # Update session step
             self.db.create_or_update_session(
                 phone_number, 'waiting_for_confirmation', language,
                 session.get('customer_name')
             )
             
-            # Update order details with location
-            self.db.update_order_details(phone_number, location=location)
+            # Update order details with clean location
+            self.db.update_order_details(phone_number, location=clean_location)
             
             # Show order summary
-            return self._show_order_summary(phone_number, session, user_context, location)
+            return self._show_order_summary(phone_number, session, user_context, clean_location)
 
         return self._create_response(self._get_fallback_message('waiting_for_location', language))
 
@@ -751,11 +781,29 @@ class EnhancedMessageHandler:
         if language == 'arabic':
             if current_step == 'waiting_for_confirmation':
                 message = "الحمد لله، بخير! شكراً لسؤالك. الآن، هل تريد تأكيد طلبك؟\n\n1. نعم\n2. لا"
+            elif current_step == 'waiting_for_sub_category':
+                # If user asked "where are they?", show the sub-categories again
+                main_category_id = session.get('selected_main_category')
+                if main_category_id:
+                    main_categories = self.db.get_main_categories()
+                    for cat in main_categories:
+                        if cat['id'] == main_category_id:
+                            return self._show_sub_categories(phone_number, cat, language)
+                message = "عذراً على عدم الوضوح. دعني أعرض لك الخيارات المتاحة مرة أخرى."
             else:
                 message = "شكراً لك! دعنا نكمل طلبك."
         else:
             if current_step == 'waiting_for_confirmation':
                 message = "I'm doing well, thank you for asking! Now, would you like to confirm your order?\n\n1. Yes\n2. No"
+            elif current_step == 'waiting_for_sub_category':
+                # If user asked "where are they?", show the sub-categories again
+                main_category_id = session.get('selected_main_category')
+                if main_category_id:
+                    main_categories = self.db.get_main_categories()
+                    for cat in main_categories:
+                        if cat['id'] == main_category_id:
+                            return self._show_sub_categories(phone_number, cat, language)
+                message = "Sorry for the confusion. Let me show you the available options again."
             else:
                 message = "Thank you! Let's continue with your order."
         
@@ -766,6 +814,12 @@ class EnhancedMessageHandler:
         logger.info(f"🔄 Using structured processing for: '{text}' at step '{current_step}'")
         
         language = user_context.get('language', 'arabic')
+        
+        # Check for back navigation keywords first
+        back_keywords = ['رجوع', 'back', 'السابق', 'previous', 'عودة', 'return']
+        if any(keyword in text.lower() for keyword in back_keywords):
+            logger.info(f"🔙 Back navigation detected in structured handler: '{text}'")
+            return self._handle_back_navigation(phone_number, session, user_context)
         
         # Handle different steps with structured logic
         if current_step == 'waiting_for_language':
@@ -786,8 +840,17 @@ class EnhancedMessageHandler:
         elif current_step == 'waiting_for_additional':
             return self._handle_structured_additional_selection(phone_number, text, session, user_context)
             
+        elif current_step == 'waiting_for_service':
+            return self._handle_structured_service_selection(phone_number, text, session, user_context)
+            
         elif current_step == 'waiting_for_fresh_start_choice':
             return self._handle_structured_fresh_start_choice(phone_number, text, session, user_context)
+            
+        elif current_step == 'waiting_for_location':
+            return self._handle_structured_location_input(phone_number, text, session, user_context)
+            
+        elif current_step == 'waiting_for_confirmation':
+            return self._handle_structured_confirmation(phone_number, text, session, user_context)
             
         else:
             return self._create_response(self._get_fallback_message(current_step, language))
@@ -1118,7 +1181,25 @@ class EnhancedMessageHandler:
         text_lower = text.lower().strip()
         
         if any(word in text_lower for word in ['نعم', 'yes', '1']):
-            # Reset to category selection
+            # Keep current category context and go to sub-categories
+            main_category_id = session.get('selected_main_category')
+            if main_category_id:
+                # Go back to sub-categories of current main category
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_sub_category', language,
+                    session.get('customer_name'),
+                    selected_main_category=main_category_id,
+                    selected_sub_category=None,
+                    selected_item=None
+                )
+                
+                # Get main category and show its sub-categories
+                main_categories = self.db.get_main_categories()
+                for cat in main_categories:
+                    if cat['id'] == main_category_id:
+                        return self._show_sub_categories(phone_number, cat, language)
+            
+            # Fallback: go to main categories if no current category
             self.db.create_or_update_session(
                 phone_number, 'waiting_for_category', language,
                 session.get('customer_name')
@@ -1136,6 +1217,115 @@ class EnhancedMessageHandler:
             return self._show_service_selection(phone_number, language)
         
         return self._create_response("الرجاء الرد بـ '1' لإضافة المزيد أو '2' للمتابعة")
+
+    def _handle_structured_service_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle service selection with structured logic"""
+        language = user_context.get('language', 'arabic')
+        
+        # Convert Arabic numerals to English
+        converted_text = self._convert_arabic_numerals(text)
+        text_lower = text.lower().strip()
+        
+        service_type = None
+        
+        # Check for dine-in indicators
+        if any(word in text_lower for word in ['1', 'داخل', 'في المقهى', 'dine', 'restaurant']):
+            service_type = 'dine-in'
+        # Check for delivery indicators
+        elif any(word in text_lower for word in ['2', 'توصيل', 'delivery', 'home']):
+            service_type = 'delivery'
+        
+        if service_type:
+            # Update order details
+            self.db.update_order_details(phone_number, service_type=service_type)
+            
+            # Update session step
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_location', language,
+                session.get('customer_name')
+            )
+            
+            if service_type == 'dine-in':
+                if language == 'arabic':
+                    return self._create_response("الرجاء تحديد رقم الطاولة (1-7):")
+                else:
+                    return self._create_response("Please specify table number (1-7):")
+            else:
+                if language == 'arabic':
+                    return self._create_response("الرجاء مشاركة موقعك وأي تعليمات خاصة:")
+                else:
+                    return self._create_response("Please share your location and any special instructions:")
+        
+        # Invalid input
+        if language == 'arabic':
+            return self._create_response("الرجاء اختيار نوع الخدمة:\n\n1. تناول في المقهى\n2. توصيل")
+        else:
+            return self._create_response("Please select service type:\n\n1. Dine-in\n2. Delivery")
+
+    def _handle_structured_confirmation(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle order confirmation with structured logic"""
+        language = user_context.get('language', 'arabic')
+        
+        text_lower = text.lower().strip()
+        
+        # Check for confirmation
+        if any(word in text_lower for word in ['نعم', 'yes', '1', 'تأكيد', 'confirm']):
+            return self._confirm_order(phone_number, session, user_context)
+        # Check for cancellation
+        elif any(word in text_lower for word in ['لا', 'no', '2', 'إلغاء', 'cancel']):
+            return self._cancel_order(phone_number, session, user_context)
+        
+        # Invalid input
+        if language == 'arabic':
+            return self._create_response("الرجاء الرد بـ 'نعم' للتأكيد أو 'لا' للإلغاء")
+        else:
+            return self._create_response("Please reply with 'yes' to confirm or 'no' to cancel")
+
+    def _handle_structured_location_input(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle location input with structured logic"""
+        language = user_context.get('language', 'arabic')
+        
+        # Clean location (remove trailing commas, etc.)
+        clean_location = text.strip().rstrip(',')
+        
+        # Check if this is a table number for dine-in service
+        current_order = self.db.get_current_order(phone_number)
+        service_type = None
+        if current_order and current_order.get('details'):
+            service_type = current_order['details'].get('service_type')
+        
+        if service_type == 'dine-in':
+            # Validate table number (1-7)
+            try:
+                # Convert Arabic numerals to English
+                clean_location = self._convert_arabic_numerals(clean_location)
+                table_num = int(clean_location)
+                
+                if table_num < 1 or table_num > 7:
+                    if language == 'arabic':
+                        return self._create_response("رقم الطاولة غير صحيح. الرجاء اختيار رقم من 1 إلى 7:")
+                    else:
+                        return self._create_response("Invalid table number. Please choose a number from 1 to 7:")
+                
+                clean_location = str(table_num)  # Use clean number
+                
+            except ValueError:
+                if language == 'arabic':
+                    return self._create_response("الرجاء إدخال رقم صحيح للطاولة (1-7):")
+                else:
+                    return self._create_response("Please enter a valid table number (1-7):")
+        
+        # Update session step
+        self.db.create_or_update_session(
+            phone_number, 'waiting_for_confirmation', language,
+            session.get('customer_name')
+        )
+        
+        # Update order details with clean location
+        self.db.update_order_details(phone_number, location=clean_location)
+        
+        # Show order summary
+        return self._show_order_summary(phone_number, session, user_context, clean_location)
 
     def _handle_structured_fresh_start_choice(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
         """Handle user's choice for fresh start after order"""
