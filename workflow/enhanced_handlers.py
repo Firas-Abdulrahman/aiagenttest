@@ -30,6 +30,10 @@ class EnhancedMessageHandler:
             # Get current session
             session = self.db.get_user_session(phone_number)
             
+            # Build initial user context (may be updated after session reset)
+            current_step = session.get('current_step') if session else 'waiting_for_language'
+            user_context = self._build_user_context(phone_number, session, current_step)
+            
             # Check for session reset (fresh start intent or timeout)
             should_reset = self._should_reset_session(session, text)
             if should_reset:
@@ -46,13 +50,12 @@ class EnhancedMessageHandler:
                     self.db.delete_session(phone_number)
                     session = None
                     logger.info(f"✅ Session and order cleared for {phone_number}")
+                    
+                    # Update context after session reset
+                    current_step = 'waiting_for_language'
+                    user_context = self._build_user_context(phone_number, session, current_step)
             else:
                 logger.info(f"📋 Session check for {phone_number}: should_reset={should_reset}, current_step={session.get('current_step') if session else 'None'}")
-            
-            current_step = session.get('current_step') if session else 'waiting_for_language'
-
-            # Build comprehensive user context
-            user_context = self._build_user_context(phone_number, session, current_step)
 
             # AI-First Processing: Try AI understanding first
             logger.info(f"🔍 AI Status: ai={self.ai is not None}, available={self.ai.is_available() if self.ai else False}")
