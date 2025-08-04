@@ -250,12 +250,14 @@ class ThreadSafeDatabaseManager:
                     conn.execute("BEGIN IMMEDIATE TRANSACTION")
 
                     if only_session:
-                        # Only delete session record (for when orders already cleaned up)
+                        # Only delete session record and conversation log (for when orders already cleaned up)
+                        conn.execute("DELETE FROM conversation_log WHERE phone_number = ?", (phone_number,))
                         conn.execute("DELETE FROM user_sessions WHERE phone_number = ?", (phone_number,))
                     else:
                         # Delete all related data in proper order to avoid foreign key constraints
                         conn.execute("DELETE FROM user_orders WHERE phone_number = ?", (phone_number,))
                         conn.execute("DELETE FROM order_details WHERE phone_number = ?", (phone_number,))
+                        conn.execute("DELETE FROM conversation_log WHERE phone_number = ?", (phone_number,))
                         conn.execute("DELETE FROM user_sessions WHERE phone_number = ?", (phone_number,))
 
                     conn.commit()
@@ -406,9 +408,10 @@ class ThreadSafeDatabaseManager:
                         order['details'].get('location')
                     ))
 
-                    # Clear current order data
+                    # Clear current order data and conversation log
                     conn.execute("DELETE FROM user_orders WHERE phone_number = ?", (phone_number,))
                     conn.execute("DELETE FROM order_details WHERE phone_number = ?", (phone_number,))
+                    conn.execute("DELETE FROM conversation_log WHERE phone_number = ?", (phone_number,))
 
                     conn.commit()
 
