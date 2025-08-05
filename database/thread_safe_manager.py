@@ -754,7 +754,7 @@ class ThreadSafeDatabaseManager:
                         selected_main_category = NULL,
                         selected_sub_category = NULL,
                         selected_item = NULL,
-                        last_activity = datetime('now')
+                        updated_at = datetime('now')
                     WHERE phone_number = ?
                 """, (phone_number,))
                 

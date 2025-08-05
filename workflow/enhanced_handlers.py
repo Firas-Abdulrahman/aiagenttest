@@ -111,8 +111,8 @@ class EnhancedMessageHandler:
         # Get available categories based on current step
         if current_step == 'waiting_for_category':
             context['available_categories'] = self.db.get_main_categories()
-        elif current_step == 'waiting_for_sub_category' and session.get('selected_main_category'):
-            main_cat_id = session['selected_main_category']
+        elif current_step == 'waiting_for_sub_category' and session and session.get('selected_main_category'):
+            main_cat_id = session.get('selected_main_category')
             logger.info(f"🔍 Debug _build_user_context: main_cat_id type={type(main_cat_id)}, value={main_cat_id}")
             
             # Ensure main_cat_id is an integer
@@ -132,8 +132,8 @@ class EnhancedMessageHandler:
                     context['available_categories'] = self.db.get_sub_categories(main_cat_id)
             else:
                 context['available_categories'] = self.db.get_sub_categories(main_cat_id)
-        elif current_step == 'waiting_for_item' and session.get('selected_sub_category'):
-            sub_cat_id = session['selected_sub_category']
+        elif current_step == 'waiting_for_item' and session and session.get('selected_sub_category'):
+            sub_cat_id = session.get('selected_sub_category')
             logger.info(f"🔍 Debug _build_user_context: sub_cat_id type={type(sub_cat_id)}, value={sub_cat_id}")
             
             # Ensure sub_cat_id is an integer
@@ -421,9 +421,9 @@ class EnhancedMessageHandler:
         # If we have an item name, we need to find it intelligently
         if item_name:
             # First, try to find the item in the current context
-            if current_step == 'waiting_for_item' and session.get('selected_sub_category'):
+            if current_step == 'waiting_for_item' and session and session.get('selected_sub_category'):
                 # We're already at item selection step, try to match in current sub-category
-                sub_category_id = session['selected_sub_category']
+                sub_category_id = session.get('selected_sub_category')
                 logger.info(f"🔍 Debug _handle_intelligent_item_selection: sub_category_id type={type(sub_category_id)}, value={sub_category_id}")
                 
                 # Ensure sub_category_id is an integer
@@ -496,7 +496,7 @@ class EnhancedMessageHandler:
 
         if quantity and isinstance(quantity, int) and 1 <= quantity <= 50:
             # Add item to order
-            item_id = session.get('selected_item')
+            item_id = session.get('selected_item') if session else None
             logger.info(f"🔧 Adding to order: item_id={item_id}, quantity={quantity} for {phone_number}")
             if item_id:
                 success = self.db.add_item_to_order(phone_number, item_id, quantity)
@@ -505,14 +505,15 @@ class EnhancedMessageHandler:
                     # Update session - clear selected_item to prevent re-adding
                     self.db.create_or_update_session(
                         phone_number, 'waiting_for_additional', language,
-                        session.get('customer_name'),
-                        selected_main_category=session.get('selected_main_category'),
-                        selected_sub_category=session.get('selected_sub_category'),
+                        session.get('customer_name') if session else None,
+                        selected_main_category=session.get('selected_main_category') if session else None,
+                        selected_sub_category=session.get('selected_sub_category') if session else None,
                         selected_item=None  # Clear selected item
                     )
                     
                     # Get item details for confirmation
-                    items = self.db.get_sub_category_items(session.get('selected_sub_category'))
+                    sub_category_id = session.get('selected_sub_category') if session else None
+                    items = self.db.get_sub_category_items(sub_category_id) if sub_category_id else []
                     selected_item = next((item for item in items if item['id'] == item_id), None)
                     
                     if selected_item:
@@ -540,7 +541,7 @@ class EnhancedMessageHandler:
                 # Show main categories again
                 self.db.create_or_update_session(
                     phone_number, 'waiting_for_category', language,
-                    session.get('customer_name')
+                    session.get('customer_name') if session else None
                 )
                 return self._show_main_categories(phone_number, language)
             
@@ -553,7 +554,7 @@ class EnhancedMessageHandler:
                 # Proceed to service selection
                 self.db.create_or_update_session(
                     phone_number, 'waiting_for_service', language,
-                    session.get('customer_name')
+                    session.get('customer_name') if session else None
                 )
                 return self._show_service_selection(phone_number, language)
             
@@ -572,7 +573,7 @@ class EnhancedMessageHandler:
             # Update session step
             self.db.create_or_update_session(
                 phone_number, 'waiting_for_location', language,
-                session.get('customer_name')
+                session.get('customer_name') if session else None
             )
             
             # Update order details with service type
@@ -632,7 +633,7 @@ class EnhancedMessageHandler:
             # Update session step
             self.db.create_or_update_session(
                 phone_number, 'waiting_for_confirmation', language,
-                session.get('customer_name')
+                session.get('customer_name') if session else None
             )
             
             # Update order details with clean location
@@ -655,16 +656,19 @@ class EnhancedMessageHandler:
 
         if current_step == 'waiting_for_category':
             return self._show_main_categories(phone_number, language)
-        elif current_step == 'waiting_for_sub_category':
+        elif current_step == 'waiting_for_sub_category' and session:
             main_categories = self.db.get_main_categories()
             selected_category = next((cat for cat in main_categories if cat['id'] == session.get('selected_main_category')), None)
             if selected_category:
                 return self._show_sub_categories(phone_number, selected_category, language)
-        elif current_step == 'waiting_for_item':
-            sub_categories = self.db.get_sub_categories(session.get('selected_main_category'))
-            selected_sub_category = next((cat for cat in sub_categories if cat['id'] == session.get('selected_sub_category')), None)
-            if selected_sub_category:
-                return self._show_sub_category_items(phone_number, selected_sub_category, language)
+        elif current_step == 'waiting_for_item' and session:
+            main_category_id = session.get('selected_main_category')
+            sub_category_id = session.get('selected_sub_category')
+            if main_category_id and sub_category_id:
+                sub_categories = self.db.get_sub_categories(main_category_id)
+                selected_sub_category = next((cat for cat in sub_categories if cat['id'] == sub_category_id), None)
+                if selected_sub_category:
+                    return self._show_sub_category_items(phone_number, selected_sub_category, language)
 
         return self._create_response(self._get_fallback_message(current_step, language))
 
@@ -731,7 +735,7 @@ class EnhancedMessageHandler:
         if previous_step == 'waiting_for_category':
             self.db.create_or_update_session(
                 phone_number, previous_step, language,
-                session.get('customer_name'),
+                session.get('customer_name') if session else None,
                 selected_main_category=None,
                 selected_sub_category=None,
                 selected_item=None
@@ -741,12 +745,12 @@ class EnhancedMessageHandler:
         elif previous_step == 'waiting_for_sub_category':
             self.db.create_or_update_session(
                 phone_number, previous_step, language,
-                session.get('customer_name'),
-                selected_main_category=session.get('selected_main_category'),
+                session.get('customer_name') if session else None,
+                selected_main_category=session.get('selected_main_category') if session else None,
                 selected_sub_category=None,
                 selected_item=None
             )
-            main_category_id = session.get('selected_main_category')
+            main_category_id = session.get('selected_main_category') if session else None
             if main_category_id:
                 main_categories = self.db.get_main_categories()
                 for cat in main_categories:
@@ -757,7 +761,7 @@ class EnhancedMessageHandler:
         # Default: update step and show appropriate message
         self.db.create_or_update_session(
             phone_number, previous_step, language,
-            session.get('customer_name')
+            session.get('customer_name') if session else None
         )
         
         if language == 'arabic':
@@ -783,7 +787,7 @@ class EnhancedMessageHandler:
                 message = "الحمد لله، بخير! شكراً لسؤالك. الآن، هل تريد تأكيد طلبك؟\n\n1. نعم\n2. لا"
             elif current_step == 'waiting_for_sub_category':
                 # If user asked "where are they?", show the sub-categories again
-                main_category_id = session.get('selected_main_category')
+                main_category_id = session.get('selected_main_category') if session else None
                 if main_category_id:
                     main_categories = self.db.get_main_categories()
                     for cat in main_categories:
@@ -877,7 +881,7 @@ class EnhancedMessageHandler:
         # Update session
         self.db.create_or_update_session(
             phone_number, 'waiting_for_category', language,
-            session.get('customer_name')
+            session.get('customer_name') if session else None
         )
         
         return self._show_main_categories(phone_number, language)
@@ -897,7 +901,7 @@ class EnhancedMessageHandler:
                 # Update session
                 self.db.create_or_update_session(
                     phone_number, 'waiting_for_sub_category', language,
-                    session.get('customer_name'),
+                    session.get('customer_name') if session else None,
                     selected_main_category=selected_category['id']
                 )
                 
@@ -914,7 +918,7 @@ class EnhancedMessageHandler:
                 # Update session
                 self.db.create_or_update_session(
                     phone_number, 'waiting_for_sub_category', language,
-                    session.get('customer_name'),
+                    session.get('customer_name') if session else None,
                     selected_main_category=matched_category['id']
                 )
                 
@@ -965,7 +969,7 @@ class EnhancedMessageHandler:
                     # Update session
                     self.db.create_or_update_session(
                         phone_number, 'waiting_for_item', language,
-                        session.get('customer_name'),
+                        session.get('customer_name') if session else None,
                         selected_main_category=main_category_id,
                         selected_sub_category=selected_sub_category['id']
                     )
@@ -1044,8 +1048,8 @@ class EnhancedMessageHandler:
                 # Update session
                 self.db.create_or_update_session(
                     phone_number, 'waiting_for_quantity', language,
-                    session.get('customer_name'),
-                    selected_main_category=session.get('selected_main_category'),
+                    session.get('customer_name') if session else None,
+                    selected_main_category=session.get('selected_main_category') if session else None,
                     selected_sub_category=sub_category_id,
                     selected_item=selected_item['id']
                 )
@@ -1084,8 +1088,8 @@ class EnhancedMessageHandler:
                 # Update session
                 self.db.create_or_update_session(
                     phone_number, 'waiting_for_quantity', language,
-                    session.get('customer_name'),
-                    selected_main_category=session.get('selected_main_category'),
+                    session.get('customer_name') if session else None,
+                    selected_main_category=session.get('selected_main_category') if session else None,
                     selected_sub_category=sub_category_id,
                     selected_item=matched_item['id']
                 )
@@ -1148,9 +1152,9 @@ class EnhancedMessageHandler:
                     # Update session - clear selected_item to prevent re-adding
                     self.db.create_or_update_session(
                         phone_number, 'waiting_for_additional', language,
-                        session.get('customer_name'),
-                        selected_main_category=session.get('selected_main_category'),
-                        selected_sub_category=session.get('selected_sub_category'),
+                        session.get('customer_name') if session else None,
+                        selected_main_category=session.get('selected_main_category') if session else None,
+                        selected_sub_category=session.get('selected_sub_category') if session else None,
                         selected_item=None  # Clear selected item
                     )
                     
@@ -1187,7 +1191,7 @@ class EnhancedMessageHandler:
                 # Go back to sub-categories of current main category
                 self.db.create_or_update_session(
                     phone_number, 'waiting_for_sub_category', language,
-                    session.get('customer_name'),
+                    session.get('customer_name') if session else None,
                     selected_main_category=main_category_id,
                     selected_sub_category=None,
                     selected_item=None
@@ -1242,7 +1246,7 @@ class EnhancedMessageHandler:
             # Update session step
             self.db.create_or_update_session(
                 phone_number, 'waiting_for_location', language,
-                session.get('customer_name')
+                session.get('customer_name') if session else None
             )
             
             if service_type == 'dine-in':
@@ -1315,10 +1319,10 @@ class EnhancedMessageHandler:
                 else:
                     return self._create_response("Please enter a valid table number (1-7):")
         
-        # Update session step
+                # Update session step
         self.db.create_or_update_session(
             phone_number, 'waiting_for_confirmation', language,
-            session.get('customer_name')
+            session.get('customer_name') if session else None
         )
         
         # Update order details with clean location
@@ -1364,7 +1368,7 @@ class EnhancedMessageHandler:
                 # (There's no "previous order" to keep after completion)
                 self.db.create_or_update_session(
                     phone_number, 'waiting_for_category', language,
-                    session.get('customer_name')
+                    session.get('customer_name') if session else None
                 )
                 
                 return self._show_main_categories(phone_number, language)
@@ -1592,7 +1596,7 @@ class EnhancedMessageHandler:
         """Cancel order"""
         self.db.cancel_order(phone_number)
         language = user_context.get('language')
-        customer_name = session.get('customer_name', 'Customer')
+        customer_name = session.get('customer_name', 'Customer') if session else 'Customer'
         
         if language == 'arabic':
             message = f"تم إلغاء الطلب. شكراً لك {customer_name} لزيارة مقهى هيف.\n\n"
@@ -1610,7 +1614,7 @@ class EnhancedMessageHandler:
         # Update session to fresh start choice step
         self.db.create_or_update_session(
             phone_number, 'waiting_for_fresh_start_choice', language,
-            session.get('customer_name')
+            session.get('customer_name') if session else None
         )
         
         if language == 'arabic':
