@@ -155,7 +155,11 @@ Main Category 2 - Hot Drinks (المشروبات الحارة):
   3. Other Hot Drinks (مشروبات ساخنة أخرى) - Contains: Tea, hot chocolate, etc.
 
 Main Category 3 - Pastries & Sweets (الحلويات والمعجنات):
-  Various pastries, cakes, and sweet items
+  1. Toast (توست) - Contains: Various toast types
+  2. Sandwiches (سندويشات) - Contains: Various sandwich types
+  3. Croissants (كرواسان) - Contains: Various croissant types
+  4. Pastries (فطائر) - Contains: Various pastry types
+  5. Cake Pieces (قطع كيك) - Contains: Various cake pieces
 
 ENHANCED ARABIC TERM MAPPING (CRITICAL):
 - "طاقة" or "مشروب طاقة" or "مشروبات الطاقة" = Energy Drinks (Sub-category 7 of Cold Drinks)

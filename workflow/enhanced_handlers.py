@@ -224,6 +224,10 @@ class EnhancedMessageHandler:
                 
                 # Show sub-categories
                 return self._show_sub_categories(phone_number, selected_category, language)
+            else:
+                logger.warning(f"⚠️ Invalid main category suggestion: {suggested_main_category}, falling back to structured processing")
+                # Fall back to structured processing
+                return self._handle_structured_message(phone_number, "", current_step, session, user_context)
 
         # Handle sub-category suggestions
         suggested_sub_category = extracted_data.get('suggested_sub_category')
@@ -267,7 +271,9 @@ class EnhancedMessageHandler:
                 return self._show_sub_category_items(phone_number, selected_sub_category, language)
             else:
                 logger.warning(f"⚠️ Invalid sub-category number: {suggested_sub_category}, max: {len(sub_categories)}")
-                return self._create_response(f"الرقم غير صحيح. الرجاء اختيار من 1 إلى {len(sub_categories)}")
+                # Fall back to structured processing instead of showing error
+                logger.info(f"🔄 Falling back to structured processing for invalid AI suggestion")
+                return self._handle_structured_message(phone_number, "", current_step, session, user_context)
 
         # If no specific suggestions, use the AI's response message
         if response_message:
@@ -1638,9 +1644,26 @@ class EnhancedMessageHandler:
         return text
 
     def _match_category_by_name(self, text: str, categories: list, language: str) -> Optional[Dict]:
-        """Match category by name"""
+        """Match category by name with enhanced Arabic text recognition"""
         text_lower = text.lower().strip()
         
+        # Enhanced Arabic sub-category mapping for Pastries & Sweets
+        if language == 'arabic':
+            arabic_sub_category_mapping = {
+                'توست': 1,
+                'سندويشات': 2, 'سندويشة': 2, 'سندويش': 2,
+                'كرواسان': 3, 'كرواسون': 3,
+                'فطائر': 4, 'فطاير': 4, 'فطيرة': 4,
+                'قطع كيك': 5, 'كيك': 5, 'قطع': 5
+            }
+            
+            # Check for exact matches first
+            for arabic_term, sub_cat_number in arabic_sub_category_mapping.items():
+                if arabic_term in text_lower or text_lower in arabic_term:
+                    if 1 <= sub_cat_number <= len(categories):
+                        return categories[sub_cat_number - 1]
+        
+        # Fallback to original matching logic
         for category in categories:
             if language == 'arabic':
                 if text_lower in category['name_ar'].lower():
