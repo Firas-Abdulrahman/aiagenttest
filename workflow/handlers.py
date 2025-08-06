@@ -54,34 +54,26 @@ class MessageHandler:
 
         if current_step == 'waiting_for_language':
             return self._handle_language_selection(phone_number, text, customer_name)
-
-        elif current_step == 'waiting_for_category':  # FIXED: Use correct step name
+        elif current_step == 'waiting_for_category':
             return self._handle_category_selection(phone_number, text, language, session)
-
-        elif current_step == 'waiting_for_sub_category':  # NEW: Handle sub-category selection
+        elif current_step == 'waiting_for_sub_category':
             return self._handle_sub_category_selection(phone_number, text, language, session)
-
         elif current_step == 'waiting_for_item':
             return self._handle_item_selection(phone_number, text, language, session)
-
         elif current_step == 'waiting_for_quantity':
             return self._handle_quantity_selection(phone_number, text, language, session)
-
         elif current_step == 'waiting_for_additional':
             return self._handle_additional_items(phone_number, text, language, session)
-
         elif current_step == 'waiting_for_service':
             return self._handle_service_selection(phone_number, text, language, session)
-
         elif current_step == 'waiting_for_location':
             return self._handle_location_input(phone_number, text, language, session)
-
         elif current_step == 'waiting_for_confirmation':
             return self._handle_confirmation(phone_number, text, language, session)
-
+        elif current_step == 'waiting_for_fresh_start':
+            return self._handle_fresh_start_after_order(phone_number, text, language, session)
         else:
-            # Unknown step, restart
-            logger.warning(f"⚠️ Unknown step: {current_step}, restarting")
+            # Default to language selection
             return self._handle_language_selection(phone_number, text, customer_name)
 
     def _handle_language_selection(self, phone_number: str, text: str, customer_name: str) -> Dict:
@@ -453,7 +445,8 @@ class MessageHandler:
                 'waiting_for_additional': 'waiting_for_quantity',
                 'waiting_for_service': 'waiting_for_additional',
                 'waiting_for_location': 'waiting_for_service',
-                'waiting_for_confirmation': 'waiting_for_location'
+                'waiting_for_confirmation': 'waiting_for_location',
+                'waiting_for_fresh_start': None  # Can't go back from fresh start choice
             }
             
             previous_step = step_hierarchy.get(current_step)
@@ -541,45 +534,104 @@ class MessageHandler:
             return self._create_response("Please reply with '1' to add more or '2' to continue")
 
     def _handle_service_selection(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
-        """Handle service type selection"""
-        number = self._extract_number(text)
-
-        service_type = None
-        if number == 1:
-            service_type = 'dine-in'
-        elif number == 2:
-            service_type = 'delivery'
-
-        if service_type:
-            self.db.update_order_details(phone_number, service_type=service_type)
-            self.db.create_or_update_session(phone_number, 'waiting_for_location', language)
-
-            if language == 'arabic':
-                response = "📋 الخطوة 7 من 9: الموقع\n"
-                if service_type == 'dine-in':
-                    response += "ممتاز! الرجاء تحديد رقم الطاولة (1-7):\n"
-                    response += "💡 يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
+        """Handle service type selection with enhanced Arabic understanding"""
+        try:
+            # Enhanced service type detection
+            text_lower = text.lower().strip()
+            
+            # Service type indicators
+            dine_in_indicators = ['بالكهوة', 'في الكهوة', 'في المقهى', 'تناول', 'عندكم', 'عندك', 'في الكافيه']
+            delivery_indicators = ['توصيل', 'للبيت', 'للمنزل', 'توصيل للمنزل']
+            
+            # Check if user is indicating service type
+            is_dine_in = any(indicator in text_lower for indicator in dine_in_indicators)
+            is_delivery = any(indicator in text_lower for indicator in delivery_indicators)
+            
+            if is_dine_in:
+                # Update session with dine-in service
+                self.db.create_or_update_session(phone_number, 'waiting_for_location', language)
+                self.db.update_session_field(phone_number, 'service_type', 'dine-in')
+                
+                if language == 'arabic':
+                    return self._create_response(
+                        "📋 الخطوة 7 من 9\n"
+                        "ممتاز! تناول في المقهى 🏪\n"
+                        "الرجاء تحديد رقم الطاولة (1-7):\n"
+                        "💡 يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
+                    )
                 else:
-                    response += "ممتاز! الرجاء مشاركة موقعك أو عنوانك:\n"
-                    response += "💡 يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
+                    return self._create_response(
+                        "📋 Step 7 of 9\n"
+                        "Perfect! Dine-in service 🏪\n"
+                        "Please specify table number (1-7):\n"
+                        "💡 You can type 'back' to go to the previous step"
+                    )
+            
+            elif is_delivery:
+                # Update session with delivery service
+                self.db.create_or_update_session(phone_number, 'waiting_for_location', language)
+                self.db.update_session_field(phone_number, 'service_type', 'delivery')
+                
+                if language == 'arabic':
+                    return self._create_response(
+                        "📋 الخطوة 7 من 9\n"
+                        "ممتاز! خدمة التوصيل 🚚\n"
+                        "الرجاء إدخال عنوان التوصيل:\n"
+                        "💡 يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
+                    )
+                else:
+                    return self._create_response(
+                        "📋 Step 7 of 9\n"
+                        "Perfect! Delivery service 🚚\n"
+                        "Please enter delivery address:\n"
+                        "💡 You can type 'back' to go to the previous step"
+                    )
+            
             else:
-                response = "📋 Step 7 of 9: Location\n"
-                if service_type == 'dine-in':
-                    response += "Great! Please specify your table number (1-7):\n"
-                    response += "💡 You can type 'back' to go to the previous step"
+                # Check if user might be asking for coffee instead
+                coffee_indicators = ['قهوة', 'كوفي', 'اسبرسو', 'كابتشينو', 'لاتيه']
+                if any(indicator in text_lower for indicator in coffee_indicators):
+                    if language == 'arabic':
+                        return self._create_response(
+                            "أفهم أنك تريد قهوة! ☕\n"
+                            "لكن أولاً، هل تريد طلبك للتناول في المقهى أم للتوصيل؟\n"
+                            "1. تناول في المقهى\n"
+                            "2. توصيل\n"
+                            "💡 يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
+                        )
+                    else:
+                        return self._create_response(
+                            "I understand you want coffee! ☕\n"
+                            "But first, do you want your order for dine-in or delivery?\n"
+                            "1. Dine-in\n"
+                            "2. Delivery\n"
+                            "💡 You can type 'back' to go to the previous step"
+                        )
+                
+                # Default service type question
+                if language == 'arabic':
+                    return self._create_response(
+                        "📋 الخطوة 6 من 9\n"
+                        "هل تريد طلبك للتناول في المقهى أم للتوصيل؟\n"
+                        "1. تناول في المقهى 🏪\n"
+                        "2. توصيل 🚚\n"
+                        "💡 يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
+                    )
                 else:
-                    response += "Great! Please share your location or address:\n"
-                    response += "💡 You can type 'back' to go to the previous step"
-
-            return self._create_response(response)
-
-        # Invalid service type
-        if language == 'arabic':
-            response = "الرجاء اختيار:\n1. تناول في المقهى\n2. توصيل"
-        else:
-            response = "Please choose:\n1. Dine-in\n2. Delivery"
-
-        return self._create_response(response)
+                    return self._create_response(
+                        "📋 Step 6 of 9\n"
+                        "Do you want your order for dine-in or delivery?\n"
+                        "1. Dine-in 🏪\n"
+                        "2. Delivery 🚚\n"
+                        "💡 You can type 'back' to go to the previous step"
+                    )
+                    
+        except Exception as e:
+            logger.error(f"❌ Error in service selection: {e}")
+            if language == 'arabic':
+                return self._create_response("حدث خطأ في اختيار نوع الخدمة. الرجاء إعادة المحاولة.")
+            else:
+                return self._create_response("Error selecting service type. Please try again.")
 
     def _handle_location_input(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
         """Handle location input"""
@@ -626,67 +678,169 @@ class MessageHandler:
             return self._create_response("Please specify the location clearly")
 
     def _handle_confirmation(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
-        """Handle order confirmation"""
-        number = self._extract_number(text)
-
-        if number == 1:  # Confirm order
-            try:
-                order = self.db.get_user_order(phone_number)
-                total_amount = order.get('total', 0)
-
+        """Handle order confirmation with enhanced fresh start flow"""
+        try:
+            # Enhanced confirmation detection
+            text_lower = text.lower().strip()
+            
+            # Confirmation indicators
+            yes_indicators = ['نعم', 'اي', 'ايوا', 'هاهية', 'اوك', 'تمام', 'حسنا', 'yes', 'ok', 'okay']
+            no_indicators = ['لا', 'مش', 'لا شكرا', 'no', 'not']
+            
+            is_yes = any(indicator in text_lower for indicator in yes_indicators)
+            is_no = any(indicator in text_lower for indicator in no_indicators)
+            
+            if is_yes:
+                # Complete the order
                 order_id = self.db.complete_order(phone_number)
-
+                
                 if order_id:
                     if language == 'arabic':
-                        response = f"🎉 الخطوة 9 من 9: تم التأكيد!\n\n"
-                        response += f"✅ تم تأكيد طلبك بنجاح!\n\n"
-                        response += f"📋 رقم الطلب: {order_id}\n"
-                        response += f"💰 المبلغ الإجمالي: {total_amount} دينار\n\n"
-                        response += f"🏪 شكراً لك لاختيار مقهى هيف!\n\n"
-                        response += f"💡 يمكنك البدء بطلب جديد بإرسال 'مرحبا'"
+                        response = (
+                            f"✅ تم تأكيد طلبك بنجاح!\n"
+                            f"رقم الطلب: {order_id}\n"
+                            f"شكراً لك لاختيار مقهى هيف! 🙏\n\n"
+                            f"🔄 هل تريد طلب جديد؟\n"
+                            f"1. نعم، طلب جديد\n"
+                            f"2. لا، شكراً"
+                        )
                     else:
-                        response = f"🎉 Step 9 of 9: Confirmed!\n\n"
-                        response += f"✅ Your order has been confirmed successfully!\n\n"
-                        response += f"📋 Order ID: {order_id}\n"
-                        response += f"💰 Total Amount: {total_amount} IQD\n\n"
-                        response += f"🏪 Thank you for choosing Hef Cafe!\n\n"
-                        response += f"💡 You can start a new order by sending 'hello'"
-
+                        response = (
+                            f"✅ Your order has been confirmed successfully!\n"
+                            f"Order ID: {order_id}\n"
+                            f"Thank you for choosing Hef Cafe! 🙏\n\n"
+                            f"🔄 Would you like a new order?\n"
+                            f"1. Yes, new order\n"
+                            f"2. No, thank you"
+                        )
+                    
+                    # Update session to fresh start state
+                    self.db.create_or_update_session(phone_number, 'waiting_for_fresh_start', language)
                     return self._create_response(response)
-
-            except Exception as e:
-                logger.error(f"❌ Error completing order: {e}")
-                if language == 'arabic':
-                    return self._create_response("عذراً، حدث خطأ في إتمام الطلب")
                 else:
-                    return self._create_response("Sorry, there was an error completing your order")
-
-        elif number == 2:  # Cancel order
-            try:
-                customer_name = session.get('customer_name', 'Customer')
+                    if language == 'arabic':
+                        return self._create_response("❌ حدث خطأ في تأكيد الطلب. الرجاء إعادة المحاولة.")
+                    else:
+                        return self._create_response("❌ Error confirming order. Please try again.")
+            
+            elif is_no:
+                # Cancel the order and start fresh
+                self.db.cancel_order(phone_number)
                 self.db.delete_session(phone_number)
-
+                
                 if language == 'arabic':
-                    response = f"تم إلغاء الطلب. شكراً لك {customer_name} لزيارة مقهى هيف.\n\n"
-                    response += "يمكنك البدء بطلب جديد في أي وقت بإرسال 'مرحبا'"
+                    return self._create_response(
+                        "تم إلغاء الطلب. 🚫\n"
+                        "مرحباً! مرحباً بك في مقهى هيف ☕\n"
+                        "اختر اللغة المفضلة:\n"
+                        "1. العربية\n"
+                        "2. English"
+                    )
                 else:
-                    response = f"Order cancelled. Thank you {customer_name} for visiting Hef Cafe.\n\n"
-                    response += "You can start a new order anytime by sending 'hello'"
-
-                return self._create_response(response)
-
-            except Exception as e:
-                logger.error(f"❌ Error cancelling order: {e}")
+                    return self._create_response(
+                        "Order cancelled. 🚫\n"
+                        "Hello! Welcome to Hef Cafe ☕\n"
+                        "Choose your preferred language:\n"
+                        "1. العربية\n"
+                        "2. English"
+                    )
+            
+            else:
+                # Unclear response, ask for clarification
                 if language == 'arabic':
-                    return self._create_response("عذراً، حدث خطأ في إلغاء الطلب")
+                    return self._create_response(
+                        "📋 الخطوة 8 من 9\n"
+                        "هل تريد تأكيد هذا الطلب؟\n"
+                        "1. نعم ✅\n"
+                        "2. لا ❌\n"
+                        "�� يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
+                    )
                 else:
-                    return self._create_response("Sorry, there was an error cancelling your order")
+                    return self._create_response(
+                        "📋 Step 8 of 9\n"
+                        "Do you want to confirm this order?\n"
+                        "1. Yes ✅\n"
+                        "2. No ❌\n"
+                        "💡 You can type 'back' to go to the previous step"
+                    )
+                    
+        except Exception as e:
+            logger.error(f"❌ Error in confirmation: {e}")
+            if language == 'arabic':
+                return self._create_response("حدث خطأ في تأكيد الطلب. الرجاء إعادة المحاولة.")
+            else:
+                return self._create_response("Error confirming order. Please try again.")
 
-        # Invalid confirmation
-        if language == 'arabic':
-            return self._create_response("الرجاء الرد بـ '1' للتأكيد أو '2' للإلغاء")
-        else:
-            return self._create_response("Please reply with '1' to confirm or '2' to cancel")
+    def _handle_fresh_start_after_order(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
+        """Handle fresh start choice after order completion"""
+        try:
+            text_lower = text.lower().strip()
+            
+            # Fresh start indicators
+            yes_indicators = ['نعم', 'اي', 'ايوا', 'هاهية', 'اوك', 'تمام', 'حسنا', 'yes', 'ok', 'okay']
+            no_indicators = ['لا', 'مش', 'لا شكرا', 'no', 'not']
+            
+            is_yes = any(indicator in text_lower for indicator in yes_indicators)
+            is_no = any(indicator in text_lower for indicator in no_indicators)
+            
+            if is_yes:
+                # Start new order
+                self.db.delete_session(phone_number)
+                
+                if language == 'arabic':
+                    return self._create_response(
+                        "ممتاز! طلب جديد 🆕\n"
+                        "مرحباً! مرحباً بك في مقهى هيف ☕\n"
+                        "اختر اللغة المفضلة:\n"
+                        "1. العربية\n"
+                        "2. English"
+                    )
+                else:
+                    return self._create_response(
+                        "Perfect! New order 🆕\n"
+                        "Hello! Welcome to Hef Cafe ☕\n"
+                        "Choose your preferred language:\n"
+                        "1. العربية\n"
+                        "2. English"
+                    )
+            
+            elif is_no:
+                # End conversation gracefully
+                if language == 'arabic':
+                    return self._create_response(
+                        "شكراً لك! 🙏\n"
+                        "نتمنى لك يوماً سعيداً! ☀️\n"
+                        "نحن هنا دائماً عندما تحتاجنا! 💙"
+                    )
+                else:
+                    return self._create_response(
+                        "Thank you! 🙏\n"
+                        "Have a wonderful day! ☀️\n"
+                        "We're always here when you need us! 💙"
+                    )
+            
+            else:
+                # Unclear response, ask for clarification
+                if language == 'arabic':
+                    return self._create_response(
+                        "🔄 هل تريد طلب جديد؟\n"
+                        "1. نعم، طلب جديد\n"
+                        "2. لا، شكراً"
+                    )
+                else:
+                    return self._create_response(
+                        "🔄 Would you like a new order?\n"
+                        "1. Yes, new order\n"
+                        "2. No, thank you"
+                    )
+                    
+        except Exception as e:
+            logger.error(f"❌ Error in fresh start handling: {e}")
+            if language == 'arabic':
+                return self._create_response("حدث خطأ. الرجاء إعادة المحاولة.")
+            else:
+                return self._create_response("Error occurred. Please try again.")
+
     # Enhanced utility methods
     def _convert_arabic_numerals(self, text: str) -> str:
         """Convert Arabic numerals to English"""

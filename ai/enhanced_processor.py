@@ -157,12 +157,14 @@ Main Category 2 - Hot Drinks (المشروبات الحارة):
 Main Category 3 - Pastries & Sweets (الحلويات والمعجنات):
   Various pastries, cakes, and sweet items
 
-ARABIC TERM MAPPING (CRITICAL):
+ENHANCED ARABIC TERM MAPPING (CRITICAL):
 - "طاقة" or "مشروب طاقة" or "مشروبات الطاقة" = Energy Drinks (Sub-category 7 of Cold Drinks)
 - "كوفي" or "قهوة" or "كوفي بارد" or "قهوة باردة" = Coffee-related items (Multiple sub-categories)
 - "بارد" or "مشروب بارد" or "مشروبات باردة" = Cold drinks (Main category 1)
 - "ساخن" or "حار" or "مشروب ساخن" or "مشروبات ساخنة" = Hot drinks (Main category 2)
 - "حلو" or "حلويات" or "حلو" or "معجنات" = Pastries & Sweets (Main category 3)
+- "حلاوة" or "حلاوة طيبة" or "حلويات" = Pastries & Sweets (Main category 3)
+- "فطائر" or "فطاير" or "فطيرة" = Pastries (Sub-category 4 of Pastries & Sweets)
 - "موهيتو" or "موهيتو" = Mojito (Sub-category 6 of Cold Drinks)
 - "فرابتشينو" or "فراب" = Frappuccino (Sub-category 2 of Cold Drinks)
 - "ميلك شيك" or "شيك" = Milkshake (Sub-category 3 of Cold Drinks)
@@ -171,6 +173,17 @@ ARABIC TERM MAPPING (CRITICAL):
 - "عصير برتقال" or "عصير تفاح" = Fresh Juices (Sub-category 5 of Cold Drinks)
 - "لاتيه" or "كابتشينو" = Latte & Special Drinks (Sub-category 2 of Hot Drinks)
 - "اسبرسو" or "تركي" = Coffee & Espresso (Sub-category 1 of Hot Drinks)
+
+SERVICE TYPE MAPPING (CRITICAL):
+- "بالكهوة" or "في الكهوة" or "في المقهى" or "تناول" = Dine-in service
+- "توصيل" or "للبيت" or "للمنزل" = Delivery service
+- "في المقهى" or "في الكافيه" = Dine-in service
+- "عندكم" or "عندك" = Dine-in service (colloquial)
+
+CONFIRMATION MAPPING (CRITICAL):
+- "هاهية" or "اي" or "ايوا" or "نعم" = Yes/Confirm
+- "لا" or "مش" or "لا شكرا" = No/Decline
+- "اوك" or "تمام" or "حسنا" = Yes/OK/Confirm
 
 ARABIC QUANTITY MAPPING (CRITICAL):
 - "واحد" or "واحدة" = 1
@@ -228,6 +241,8 @@ IMPORTANT RULES:
 - Always maintain conversation flow and provide helpful guidance
 - If confidence is low, extract basic information and let the system handle the rest
 - BACK NAVIGATION: Detect back requests ("رجوع", "back", "السابق", "previous") and use "back_navigation" action
+- SERVICE TYPE: When user says "بالكهوة" or similar, interpret as dine-in service, not coffee selection
+- CONFIRMATION: When user says "هاهية" or "اوك", interpret as yes/confirm
 
 EXAMPLES:
 User: "اريد موهيتو" (at any step)
@@ -236,63 +251,56 @@ Response: {
     "confidence": "high",
     "action": "item_selection",
     "extracted_data": {
-        "item_name": "موهيتو"
+        "item_name": "موهيتو",
+        "category_id": 1,
+        "sub_category_id": 6
     },
-    "response_message": "Perfect! I'll help you order a mojito."
+    "response_message": "تم اختيار موهيتو. كم الكمية المطلوبة؟"
 }
 
-User: "4 iced tea" (at sub-category step)
+User: "حلاوة طيبة" (at category step)
 Response: {
-    "understood_intent": "User wants to select sub-category number 4 (Iced Tea)",
+    "understood_intent": "User wants pastries/sweets",
     "confidence": "high",
-    "action": "intelligent_suggestion",
+    "action": "category_selection",
     "extracted_data": {
-        "suggested_sub_category": 4
+        "category_id": 3,
+        "category_name": "الحلويات والمعجنات"
     },
-    "response_message": "Perfect! I'll show you the Iced Tea options."
+    "response_message": "ممتاز! اختر من قائمة الحلويات والمعجنات"
 }
 
-User: "شيء بارد" (at category step)
+User: "بالكهوة" (at service step)
 Response: {
-    "understood_intent": "User wants something cold",
+    "understood_intent": "User wants dine-in service",
     "confidence": "high",
-    "action": "intelligent_suggestion",
+    "action": "service_selection",
     "extracted_data": {
-        "suggested_category": "Cold Drinks"
+        "service_type": "dine-in"
     },
-    "response_message": "Great choice! Let me show you our cold drinks."
+    "response_message": "ممتاز! تناول في المقهى. الرجاء تحديد رقم الطاولة"
 }
 
-User: "طاقة" (at category step)
+User: "هاهية" (at confirmation step)
 Response: {
-    "understood_intent": "User wants energy drinks",
+    "understood_intent": "User confirms the order",
     "confidence": "high",
-    "action": "intelligent_suggestion",
+    "action": "confirmation",
     "extracted_data": {
-        "suggested_category": "Cold Drinks",
-        "suggested_sub_category": 7
+        "yes_no": "yes"
     },
-    "response_message": "Perfect! I'll show you our energy drinks selection."
+    "response_message": "تم تأكيد طلبك بنجاح!"
 }
 
-User: "واحد كوب" (at quantity step)
+User: "اوك" (at any yes/no step)
 Response: {
-    "understood_intent": "User wants 1 cup",
+    "understood_intent": "User confirms/agrees",
     "confidence": "high",
-    "action": "quantity_selection",
+    "action": "yes_no",
     "extracted_data": {
-        "quantity": 1
+        "yes_no": "yes"
     },
-    "response_message": "Great! 1 cup it is."
-}
-
-User: "رجوع" (at any step)
-Response: {
-    "understood_intent": "User wants to go back to previous step",
-    "confidence": "high",
-    "action": "back_navigation",
-    "extracted_data": {},
-    "response_message": "I'll take you back to the previous step."
+    "response_message": "ممتاز! المتابعة..."
 }"""
 
     def _build_enhanced_context(self, current_step: str, user_context: Dict, language: str) -> Dict:

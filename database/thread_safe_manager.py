@@ -568,38 +568,71 @@ class ThreadSafeDatabaseManager:
             logger.error(f"❌ Error getting item by ID: {e}")
             return None
 
-    def update_order_details(self, phone_number: str, service_type: str = None,
-                             location: str = None, customizations: str = None) -> bool:
+    def update_session_field(self, phone_number: str, field_name: str, value: Any) -> bool:
+        """Update a specific field in user session with thread safety"""
+        try:
+            with self.get_db_connection() as conn:
+                # Build dynamic update query
+                query = f"""
+                    UPDATE user_sessions 
+                    SET {field_name} = ?, updated_at = datetime('now')
+                    WHERE phone_number = ?
+                """
+                conn.execute(query, (value, phone_number))
+                conn.commit()
+                logger.info(f"✅ Updated session field '{field_name}' for {phone_number}")
+                return True
+        except Exception as e:
+            logger.error(f"❌ Error updating session field: {e}")
+            return False
+
+    def update_order_details(self, phone_number: str, **kwargs) -> bool:
         """Update order details with thread safety"""
-        with session_manager.user_session_lock(phone_number):
-            try:
-                with self.get_db_connection() as conn:
-                    updates = []
-                    params = []
-
-                    if service_type:
-                        updates.append("service_type = ?")
-                        params.append(service_type)
-                    if location:
-                        updates.append("location = ?")
-                        params.append(location)
-                    if customizations:
-                        updates.append("customizations = ?")
-                        params.append(customizations)
-
-                    if updates:
-                        params.append(phone_number)
-                        conn.execute(f"""
-                            UPDATE order_details 
-                            SET {', '.join(updates)}
+        try:
+            with self.get_db_connection() as conn:
+                # Get current order
+                order = conn.execute("""
+                    SELECT id FROM user_orders WHERE phone_number = ?
+                """, (phone_number,)).fetchone()
+                
+                if order:
+                    # Update existing order
+                    update_fields = []
+                    values = []
+                    for field, value in kwargs.items():
+                        if value is not None:
+                            update_fields.append(f"{field} = ?")
+                            values.append(value)
+                    
+                    if update_fields:
+                        values.append(phone_number)
+                        query = f"""
+                            UPDATE user_orders 
+                            SET {', '.join(update_fields)}, updated_at = datetime('now')
                             WHERE phone_number = ?
-                        """, params)
+                        """
+                        conn.execute(query, values)
                         conn.commit()
-
+                        logger.info(f"✅ Updated order details for {phone_number}")
+                        return True
+                else:
+                    # Create new order
+                    fields = ['phone_number'] + list(kwargs.keys())
+                    placeholders = ['?'] * len(fields)
+                    values = [phone_number] + list(kwargs.values())
+                    
+                    query = f"""
+                        INSERT INTO user_orders ({', '.join(fields)}, created_at, updated_at)
+                        VALUES ({', '.join(placeholders)}, datetime('now'), datetime('now'))
+                    """
+                    conn.execute(query, values)
+                    conn.commit()
+                    logger.info(f"✅ Created new order for {phone_number}")
                     return True
-            except Exception as e:
-                logger.error(f"❌ Error updating order details: {e}")
-                return False
+                    
+        except Exception as e:
+            logger.error(f"❌ Error updating order details: {e}")
+            return False
 
     # Utility Methods
     def cleanup_expired_sessions(self, days_old: int = 7) -> int:
