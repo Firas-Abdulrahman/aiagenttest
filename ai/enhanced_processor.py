@@ -158,11 +158,37 @@ Main Category 3 - Pastries & Sweets (الحلويات والمعجنات):
   Various pastries, cakes, and sweet items
 
 ARABIC TERM MAPPING (CRITICAL):
-- "طاقة" or "مشروب طاقة" = Energy Drinks (Sub-category 7 of Cold Drinks)
-- "كوفي" or "قهوة" = Coffee-related items (Multiple sub-categories)
-- "بارد" = Cold drinks (Main category 1)
-- "ساخن" or "حار" = Hot drinks (Main category 2)
-- "حلو" or "حلويات" = Pastries & Sweets (Main category 3)
+- "طاقة" or "مشروب طاقة" or "مشروبات الطاقة" = Energy Drinks (Sub-category 7 of Cold Drinks)
+- "كوفي" or "قهوة" or "كوفي بارد" or "قهوة باردة" = Coffee-related items (Multiple sub-categories)
+- "بارد" or "مشروب بارد" or "مشروبات باردة" = Cold drinks (Main category 1)
+- "ساخن" or "حار" or "مشروب ساخن" or "مشروبات ساخنة" = Hot drinks (Main category 2)
+- "حلو" or "حلويات" or "حلو" or "معجنات" = Pastries & Sweets (Main category 3)
+- "موهيتو" or "موهيتو" = Mojito (Sub-category 6 of Cold Drinks)
+- "فرابتشينو" or "فراب" = Frappuccino (Sub-category 2 of Cold Drinks)
+- "ميلك شيك" or "شيك" = Milkshake (Sub-category 3 of Cold Drinks)
+- "عصير" or "عصائر" = Fresh Juices (Sub-category 5 of Cold Drinks)
+- "شاي" or "شاي مثلج" = Iced Tea (Sub-category 4 of Cold Drinks)
+- "عصير برتقال" or "عصير تفاح" = Fresh Juices (Sub-category 5 of Cold Drinks)
+- "لاتيه" or "كابتشينو" = Latte & Special Drinks (Sub-category 2 of Hot Drinks)
+- "اسبرسو" or "تركي" = Coffee & Espresso (Sub-category 1 of Hot Drinks)
+
+ARABIC QUANTITY MAPPING (CRITICAL):
+- "واحد" or "واحدة" = 1
+- "اثنين" or "اثنتين" = 2  
+- "ثلاثة" or "ثلاث" = 3
+- "أربعة" or "أربع" = 4
+- "خمسة" or "خمس" = 5
+- "ستة" or "ست" = 6
+- "سبعة" or "سبع" = 7
+- "ثمانية" or "ثماني" = 8
+- "تسعة" or "تسع" = 9
+- "عشرة" or "عشر" = 10
+- "كوب" or "كوب واحد" = 1
+- "كوبين" = 2
+- "ثلاثة أكواب" = 3
+- "قطعة" or "قطعة واحدة" = 1
+- "قطعتين" = 2
+- "ثلاث قطع" = 3
 
 CONVERSATION FLOW:
 1. Language Selection → 2. Main Category → 3. Sub-Category → 4. Item Selection → 5. Quantity → 6. Additional Items → 7. Service Type → 8. Location → 9. Confirmation
@@ -190,8 +216,7 @@ AVAILABLE ACTIONS:
 - location_input: User is providing location
 - confirmation: User is confirming order
 - show_menu: User wants to see menu
-- help_request: User needs help
-- back_navigation: User wants to go back to previous step
+- back_navigation: User wants to go back to previous step (CRITICAL: Detect "رجوع", "back", "السابق", "previous", "قبل", "عودة")
 - conversational_response: User makes conversational comment that needs acknowledgment
 
 IMPORTANT RULES:
@@ -236,6 +261,38 @@ Response: {
         "suggested_category": "Cold Drinks"
     },
     "response_message": "Great choice! Let me show you our cold drinks."
+}
+
+User: "طاقة" (at category step)
+Response: {
+    "understood_intent": "User wants energy drinks",
+    "confidence": "high",
+    "action": "intelligent_suggestion",
+    "extracted_data": {
+        "suggested_category": "Cold Drinks",
+        "suggested_sub_category": 7
+    },
+    "response_message": "Perfect! I'll show you our energy drinks selection."
+}
+
+User: "واحد كوب" (at quantity step)
+Response: {
+    "understood_intent": "User wants 1 cup",
+    "confidence": "high",
+    "action": "quantity_selection",
+    "extracted_data": {
+        "quantity": 1
+    },
+    "response_message": "Great! 1 cup it is."
+}
+
+User: "رجوع" (at any step)
+Response: {
+    "understood_intent": "User wants to go back to previous step",
+    "confidence": "high",
+    "action": "back_navigation",
+    "extracted_data": {},
+    "response_message": "I'll take you back to the previous step."
 }"""
 
     def _build_enhanced_context(self, current_step: str, user_context: Dict, language: str) -> Dict:
@@ -971,7 +1028,7 @@ Response: {{
         return messages.get(current_step, 'Please provide a valid response.')
 
     def _preprocess_message(self, message: str) -> str:
-        """Preprocess message for better AI understanding"""
+        """Preprocess message for better AI understanding with enhanced Arabic quantity recognition"""
         if not message:
             return ""
         
@@ -984,6 +1041,30 @@ Response: {{
         processed_message = message
         for arabic, english in arabic_to_english.items():
             processed_message = processed_message.replace(arabic, english)
+        
+        # Enhanced Arabic quantity word recognition
+        arabic_quantity_mapping = {
+            'واحد': '1', 'واحدة': '1',
+            'اثنين': '2', 'اثنتين': '2',
+            'ثلاثة': '3', 'ثلاث': '3',
+            'أربعة': '4', 'أربع': '4',
+            'خمسة': '5', 'خمس': '5',
+            'ستة': '6', 'ست': '6',
+            'سبعة': '7', 'سبع': '7',
+            'ثمانية': '8', 'ثماني': '8',
+            'تسعة': '9', 'تسع': '9',
+            'عشرة': '10', 'عشر': '10',
+            'كوب واحد': '1 كوب', 'كوب': '1 كوب',
+            'كوبين': '2 كوب',
+            'ثلاثة أكواب': '3 كوب',
+            'قطعة واحدة': '1 قطعة', 'قطعة': '1 قطعة',
+            'قطعتين': '2 قطعة',
+            'ثلاث قطع': '3 قطعة'
+        }
+        
+        # Replace Arabic quantity words with numbers
+        for arabic_word, replacement in arabic_quantity_mapping.items():
+            processed_message = processed_message.replace(arabic_word, replacement)
         
         # Clean whitespace
         processed_message = ' '.join(processed_message.split())

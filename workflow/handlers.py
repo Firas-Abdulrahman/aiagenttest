@@ -41,12 +41,16 @@ class MessageHandler:
             return self._create_response("حدث خطأ. الرجاء إعادة المحاولة\nAn error occurred. Please try again")
 
     def _route_to_correct_handler(self, phone_number: str, current_step: str, text: str, session: Dict) -> Dict:
-        """Route to correct handler based on current step"""
+        """Route to correct handler based on current step with back navigation support"""
         language = session.get('language_preference', 'arabic')
         customer_name = session.get('customer_name', 'Customer')
 
         # Convert Arabic numerals
         text = self._convert_arabic_numerals(text)
+
+        # Check for back navigation request
+        if self._is_back_request(text, language):
+            return self._handle_back_navigation(phone_number, current_step, language, session)
 
         if current_step == 'waiting_for_language':
             return self._handle_language_selection(phone_number, text, customer_name)
@@ -87,11 +91,13 @@ class MessageHandler:
         if not language:
             # Ask for language selection
             return self._create_response(
-                "مرحباً بك في مقهى هيف\n\n"
+                "مرحباً بك في مقهى هيف 🏪\n\n"
+                "📋 الخطوة 1 من 9: اختيار اللغة\n"
                 "الرجاء اختيار لغتك المفضلة:\n"
                 "1. العربية\n"
                 "2. English\n\n"
-                "Welcome to Hef Cafe\n\n"
+                "Welcome to Hef Cafe 🏪\n\n"
+                "📋 Step 1 of 9: Language Selection\n"
                 "Please select your preferred language:\n"
                 "1. العربية (Arabic)\n"
                 "2. English"
@@ -104,17 +110,21 @@ class MessageHandler:
             main_categories = self.db.get_main_categories()
 
             if language == 'arabic':
-                response = f"أهلاً وسهلاً {customer_name} في مقهى هيف!\n\n"
+                response = f"أهلاً وسهلاً {customer_name} في مقهى هيف! 🏪\n\n"
+                response += "📋 الخطوة 2 من 9: القائمة الرئيسية\n"
                 response += "القائمة الرئيسية:\n\n"
                 for i, category in enumerate(main_categories, 1):
                     response += f"{i}. {category['name_ar']}\n"
-                response += "\nالرجاء اختيار الفئة المطلوبة بالرد بالرقم"
+                response += "\nالرجاء اختيار الفئة المطلوبة بالرد بالرقم\n"
+                response += "💡 يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
             else:
-                response = f"Welcome {customer_name} to Hef Cafe!\n\n"
+                response = f"Welcome {customer_name} to Hef Cafe! 🏪\n\n"
+                response += "📋 Step 2 of 9: Main Menu\n"
                 response += "Main Menu:\n\n"
                 for i, category in enumerate(main_categories, 1):
                     response += f"{i}. {category['name_en']}\n"
-                response += "\nPlease select the category by replying with the number"
+                response += "\nPlease select the category by replying with the number\n"
+                response += "💡 You can type 'back' to go to the previous step"
 
             return self._create_response(response)
 
@@ -139,15 +149,19 @@ class MessageHandler:
             sub_categories = self.db.get_sub_categories(selected_category['id'])
 
             if language == 'arabic':
-                response = f"قائمة {selected_category['name_ar']}:\n\n"
+                response = f"📋 الخطوة 2 من 9: {selected_category['name_ar']}\n"
+                response += f"قائمة {selected_category['name_ar']}:\n\n"
                 for i, sub_cat in enumerate(sub_categories, 1):
                     response += f"{i}. {sub_cat['name_ar']}\n"
-                response += "\nالرجاء اختيار الفئة الفرعية المطلوبة"
+                response += "\nالرجاء اختيار الفئة الفرعية المطلوبة\n"
+                response += "💡 يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
             else:
-                response = f"{selected_category['name_en']} Menu:\n\n"
+                response = f"📋 Step 2 of 9: {selected_category['name_en']}\n"
+                response += f"{selected_category['name_en']} Menu:\n\n"
                 for i, sub_cat in enumerate(sub_categories, 1):
                     response += f"{i}. {sub_cat['name_en']}\n"
-                response += "\nPlease choose the sub-category"
+                response += "\nPlease choose the sub-category\n"
+                response += "💡 You can type 'back' to go to the previous step"
 
             return self._create_response(response)
 
@@ -190,17 +204,21 @@ class MessageHandler:
             items = self.db.get_sub_category_items(selected_sub_category['id'])
 
             if language == 'arabic':
-                response = f"قائمة {selected_sub_category['name_ar']}:\n\n"
+                response = f"📋 الخطوة 3 من 9: {selected_sub_category['name_ar']}\n"
+                response += f"قائمة {selected_sub_category['name_ar']}:\n\n"
                 for i, item in enumerate(items, 1):
                     response += f"{i}. {item['item_name_ar']}\n"
                     response += f"   السعر: {item['price']} دينار\n\n"
-                response += "الرجاء اختيار المنتج المطلوب"
+                response += "الرجاء اختيار المنتج المطلوب\n"
+                response += "💡 يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
             else:
-                response = f"{selected_sub_category['name_en']} Menu:\n\n"
+                response = f"📋 Step 3 of 9: {selected_sub_category['name_en']}\n"
+                response += f"{selected_sub_category['name_en']} Menu:\n\n"
                 for i, item in enumerate(items, 1):
                     response += f"{i}. {item['item_name_en']}\n"
                     response += f"   Price: {item['price']} IQD\n\n"
-                response += "Please select the required item"
+                response += "Please select the required item\n"
+                response += "💡 You can type 'back' to go to the previous step"
 
             return self._create_response(response)
 
@@ -245,13 +263,17 @@ class MessageHandler:
             )
 
             if language == 'arabic':
-                response = f"تم اختيار: {selected_item['item_name_ar']}\n"
-                response += f"السعر: {selected_item['price']} دينار\n\n"
-                response += "كم الكمية المطلوبة؟"
+                response = f"📋 الخطوة 4 من 9: الكمية\n"
+                response += f"✅ تم اختيار: {selected_item['item_name_ar']}\n"
+                response += f"💰 السعر: {selected_item['price']} دينار\n\n"
+                response += "كم الكمية المطلوبة؟\n"
+                response += "💡 يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
             else:
-                response = f"Selected: {selected_item['item_name_en']}\n"
-                response += f"Price: {selected_item['price']} IQD\n\n"
-                response += "How many would you like?"
+                response = f"📋 Step 4 of 9: Quantity\n"
+                response += f"✅ Selected: {selected_item['item_name_en']}\n"
+                response += f"💰 Price: {selected_item['price']} IQD\n\n"
+                response += "How many would you like?\n"
+                response += "💡 You can type 'back' to go to the previous step"
 
             return self._create_response(response)
 
@@ -273,13 +295,14 @@ class MessageHandler:
         return self._create_response(response)
 
     def _handle_quantity_selection(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
-        """Handle quantity selection - FIXED"""
+        """Handle quantity selection with enhanced Arabic quantity recognition"""
         selected_item_id = session.get('selected_item')
 
         if not selected_item_id:
             return self._create_response("خطأ في النظام\nSystem error")
 
-        quantity = self._extract_number(text)
+        # Enhanced quantity extraction with Arabic word support
+        quantity = self._extract_number_enhanced(text)
 
         if quantity and quantity > 0 and quantity <= 50:
             # Add item to order
@@ -292,21 +315,37 @@ class MessageHandler:
                 self.db.create_or_update_session(phone_number, 'waiting_for_additional', language)
 
                 if language == 'arabic':
-                    response = f"تم إضافة {item['item_name_ar']} × {quantity} إلى طلبك\n\n"
+                    response = f"📋 الخطوة 5 من 9: إضافة المزيد\n"
+                    response += f"✅ تم إضافة {item['item_name_ar']} × {quantity} إلى طلبك\n\n"
                     response += "هل تريد إضافة المزيد من الأصناف؟\n\n"
-                    response += "1. نعم\n2. لا"
+                    response += "1. نعم\n2. لا\n"
+                    response += "💡 يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
                 else:
-                    response = f"Added {item['item_name_en']} × {quantity} to your order\n\n"
+                    response = f"📋 Step 5 of 9: Add More Items\n"
+                    response += f"✅ Added {item['item_name_en']} × {quantity} to your order\n\n"
                     response += "Would you like to add more items?\n\n"
-                    response += "1. Yes\n2. No"
+                    response += "1. Yes\n2. No\n"
+                    response += "💡 You can type 'back' to go to the previous step"
 
                 return self._create_response(response)
 
-        # Invalid quantity
+        # Invalid quantity - show better error message with examples
         if language == 'arabic':
-            return self._create_response("الكمية غير صحيحة. الرجاء إدخال رقم صحيح (1، 2، 3...)")
+            response = "❌ الكمية غير صحيحة\n\n"
+            response += "يمكنك كتابة:\n"
+            response += "• أرقام: 1، 2، 3، 4، 5...\n"
+            response += "• كلمات عربية: واحد، اثنين، ثلاثة...\n"
+            response += "• كلمات: كوب، قطعة، كوبين...\n\n"
+            response += "الرجاء إدخال كمية صحيحة"
         else:
-            return self._create_response("Invalid quantity. Please enter a valid number (1, 2, 3...)")
+            response = "❌ Invalid quantity\n\n"
+            response += "You can write:\n"
+            response += "• Numbers: 1, 2, 3, 4, 5...\n"
+            response += "• Arabic words: واحد، اثنين، ثلاثة...\n"
+            response += "• Words: كوب، قطعة، كوبين...\n\n"
+            response += "Please enter a valid quantity"
+
+        return self._create_response(response)
 
     # Helper methods
     def _detect_language(self, text: str) -> Optional[str]:
@@ -390,6 +429,69 @@ class MessageHandler:
             'timestamp': __import__('datetime').datetime.now().isoformat()
         }
 
+    def _is_back_request(self, text: str, language: str) -> bool:
+        """Check if user is requesting to go back"""
+        text_lower = text.lower().strip()
+        
+        if language == 'arabic':
+            back_indicators = ['رجوع', 'السابق', 'back', 'previous', 'قبل', 'عودة']
+        else:
+            back_indicators = ['back', 'previous', 'go back', 'return', 'رجوع']
+        
+        return any(indicator in text_lower for indicator in back_indicators)
+
+    def _handle_back_navigation(self, phone_number: str, current_step: str, language: str, session: Dict) -> Dict:
+        """Handle back navigation requests"""
+        try:
+            # Define step hierarchy for back navigation
+            step_hierarchy = {
+                'waiting_for_language': None,  # Can't go back from language selection
+                'waiting_for_category': 'waiting_for_language',
+                'waiting_for_sub_category': 'waiting_for_category',
+                'waiting_for_item': 'waiting_for_sub_category',
+                'waiting_for_quantity': 'waiting_for_item',
+                'waiting_for_additional': 'waiting_for_quantity',
+                'waiting_for_service': 'waiting_for_additional',
+                'waiting_for_location': 'waiting_for_service',
+                'waiting_for_confirmation': 'waiting_for_location'
+            }
+            
+            previous_step = step_hierarchy.get(current_step)
+            
+            if not previous_step:
+                if language == 'arabic':
+                    return self._create_response("لا يمكن العودة من هذه الخطوة. الرجاء المتابعة أو إعادة البدء.")
+                else:
+                    return self._create_response("Cannot go back from this step. Please continue or restart.")
+            
+            # Update session to previous step
+            self.db.create_or_update_session(phone_number, previous_step, language)
+            
+            # Generate appropriate response for the previous step
+            if previous_step == 'waiting_for_language':
+                return self._handle_language_selection(phone_number, "", session.get('customer_name', 'Customer'))
+            elif previous_step == 'waiting_for_category':
+                return self._handle_category_selection(phone_number, "", language, session)
+            elif previous_step == 'waiting_for_sub_category':
+                return self._handle_sub_category_selection(phone_number, "", language, session)
+            elif previous_step == 'waiting_for_item':
+                return self._handle_item_selection(phone_number, "", language, session)
+            elif previous_step == 'waiting_for_quantity':
+                return self._handle_quantity_selection(phone_number, "", language, session)
+            elif previous_step == 'waiting_for_additional':
+                return self._handle_additional_items(phone_number, "", language, session)
+            elif previous_step == 'waiting_for_service':
+                return self._handle_service_selection(phone_number, "", language, session)
+            elif previous_step == 'waiting_for_location':
+                return self._handle_location_input(phone_number, "", language, session)
+            
+        except Exception as e:
+            logger.error(f"❌ Error handling back navigation: {e}")
+            if language == 'arabic':
+                return self._create_response("حدث خطأ في العودة. الرجاء إعادة المحاولة.")
+            else:
+                return self._create_response("Error going back. Please try again.")
+
     # Add other missing handler methods (additional_items, service_selection, etc.)
     def _handle_additional_items(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
         """Handle additional items selection"""
@@ -400,15 +502,19 @@ class MessageHandler:
             main_categories = self.db.get_main_categories()
 
             if language == 'arabic':
-                response = "ممتاز! اختر من القائمة الرئيسية:\n\n"
+                response = "📋 الخطوة 2 من 9: إضافة المزيد\n"
+                response += "ممتاز! اختر من القائمة الرئيسية:\n\n"
                 for i, category in enumerate(main_categories, 1):
                     response += f"{i}. {category['name_ar']}\n"
-                response += "\nالرجاء اختيار الفئة المطلوبة"
+                response += "\nالرجاء اختيار الفئة المطلوبة\n"
+                response += "💡 يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
             else:
-                response = "Great! Choose from the main menu:\n\n"
+                response = "📋 Step 2 of 9: Add More Items\n"
+                response += "Great! Choose from the main menu:\n\n"
                 for i, category in enumerate(main_categories, 1):
                     response += f"{i}. {category['name_en']}\n"
-                response += "\nPlease choose the category"
+                response += "\nPlease choose the category\n"
+                response += "💡 You can type 'back' to go to the previous step"
 
             return self._create_response(response)
 
@@ -416,11 +522,15 @@ class MessageHandler:
             self.db.create_or_update_session(phone_number, 'waiting_for_service', language)
 
             if language == 'arabic':
-                response = "ممتاز! الآن دعنا نحدد نوع الخدمة:\n\n"
-                response += "1. تناول في المقهى\n2. توصيل\n\nالرجاء اختيار نوع الخدمة"
+                response = "📋 الخطوة 6 من 9: نوع الخدمة\n"
+                response += "ممتاز! الآن دعنا نحدد نوع الخدمة:\n\n"
+                response += "1. تناول في المقهى\n2. توصيل\n\nالرجاء اختيار نوع الخدمة\n"
+                response += "💡 يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
             else:
-                response = "Great! Now let's determine the service type:\n\n"
-                response += "1. Dine-in\n2. Delivery\n\nPlease choose the service type"
+                response = "📋 Step 6 of 9: Service Type\n"
+                response += "Great! Now let's determine the service type:\n\n"
+                response += "1. Dine-in\n2. Delivery\n\nPlease choose the service type\n"
+                response += "💡 You can type 'back' to go to the previous step"
 
             return self._create_response(response)
 
@@ -445,15 +555,21 @@ class MessageHandler:
             self.db.create_or_update_session(phone_number, 'waiting_for_location', language)
 
             if language == 'arabic':
+                response = "📋 الخطوة 7 من 9: الموقع\n"
                 if service_type == 'dine-in':
-                    response = "ممتاز! الرجاء تحديد رقم الطاولة (1-7):"
+                    response += "ممتاز! الرجاء تحديد رقم الطاولة (1-7):\n"
+                    response += "💡 يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
                 else:
-                    response = "ممتاز! الرجاء مشاركة موقعك أو عنوانك:"
+                    response += "ممتاز! الرجاء مشاركة موقعك أو عنوانك:\n"
+                    response += "💡 يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
             else:
+                response = "📋 Step 7 of 9: Location\n"
                 if service_type == 'dine-in':
-                    response = "Great! Please specify your table number (1-7):"
+                    response += "Great! Please specify your table number (1-7):\n"
+                    response += "💡 You can type 'back' to go to the previous step"
                 else:
-                    response = "Great! Please share your location or address:"
+                    response += "Great! Please share your location or address:\n"
+                    response += "💡 You can type 'back' to go to the previous step"
 
             return self._create_response(response)
 
@@ -477,7 +593,8 @@ class MessageHandler:
             order = self.db.get_user_order(phone_number)
 
             if language == 'arabic':
-                response = "إليك ملخص طلبك:\n\n"
+                response = "📋 الخطوة 8 من 9: تأكيد الطلب\n"
+                response += "إليك ملخص طلبك:\n\n"
                 response += "الأصناف:\n"
                 for item in order['items']:
                     response += f"• {item['item_name_ar']} × {item['quantity']} - {item['subtotal']} دينار\n"
@@ -485,9 +602,11 @@ class MessageHandler:
                 response += f"\nالخدمة: {order['details'].get('service_type', 'غير محدد')}\n"
                 response += f"المكان: {location}\n"
                 response += f"السعر الإجمالي: {order['total']} دينار\n\n"
-                response += "هل تريد تأكيد هذا الطلب؟\n\n1. نعم\n2. لا"
+                response += "هل تريد تأكيد هذا الطلب؟\n\n1. نعم\n2. لا\n"
+                response += "💡 يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
             else:
-                response = "Here is your order summary:\n\n"
+                response = "📋 Step 8 of 9: Order Confirmation\n"
+                response += "Here is your order summary:\n\n"
                 response += "Items:\n"
                 for item in order['items']:
                     response += f"• {item['item_name_en']} × {item['quantity']} - {item['subtotal']} IQD\n"
@@ -495,7 +614,8 @@ class MessageHandler:
                 response += f"\nService: {order['details'].get('service_type', 'Not specified')}\n"
                 response += f"Location: {location}\n"
                 response += f"Total Price: {order['total']} IQD\n\n"
-                response += "Would you like to confirm this order?\n\n1. Yes\n2. No"
+                response += "Would you like to confirm this order?\n\n1. Yes\n2. No\n"
+                response += "💡 You can type 'back' to go to the previous step"
 
             return self._create_response(response)
 
@@ -518,15 +638,19 @@ class MessageHandler:
 
                 if order_id:
                     if language == 'arabic':
-                        response = f"تم تأكيد طلبك بنجاح!\n\n"
-                        response += f"رقم الطلب: {order_id}\n"
-                        response += f"المبلغ الإجمالي: {total_amount} دينار\n\n"
-                        response += f"شكراً لك لاختيار مقهى هيف!"
+                        response = f"🎉 الخطوة 9 من 9: تم التأكيد!\n\n"
+                        response += f"✅ تم تأكيد طلبك بنجاح!\n\n"
+                        response += f"📋 رقم الطلب: {order_id}\n"
+                        response += f"💰 المبلغ الإجمالي: {total_amount} دينار\n\n"
+                        response += f"🏪 شكراً لك لاختيار مقهى هيف!\n\n"
+                        response += f"💡 يمكنك البدء بطلب جديد بإرسال 'مرحبا'"
                     else:
-                        response = f"Your order has been confirmed successfully!\n\n"
-                        response += f"Order ID: {order_id}\n"
-                        response += f"Total Amount: {total_amount} IQD\n\n"
-                        response += f"Thank you for choosing Hef Cafe!"
+                        response = f"🎉 Step 9 of 9: Confirmed!\n\n"
+                        response += f"✅ Your order has been confirmed successfully!\n\n"
+                        response += f"📋 Order ID: {order_id}\n"
+                        response += f"💰 Total Amount: {total_amount} IQD\n\n"
+                        response += f"🏪 Thank you for choosing Hef Cafe!\n\n"
+                        response += f"💡 You can start a new order by sending 'hello'"
 
                     return self._create_response(response)
 
@@ -577,7 +701,7 @@ class MessageHandler:
         return text
 
     def _extract_number_enhanced(self, text: str) -> Optional[int]:
-        """ENHANCED: Better number extraction with validation"""
+        """ENHANCED: Better number extraction with comprehensive Arabic quantity recognition"""
         import re
 
         # Convert Arabic numerals first
@@ -596,15 +720,48 @@ class MessageHandler:
 
             return number
 
-        # Try word numbers
-        word_numbers = {
-            'واحد': 1, 'اثنين': 2, 'ثلاثة': 3, 'اربعة': 4, 'خمسة': 5,
+        # Enhanced Arabic quantity word recognition
+        arabic_quantity_words = {
+            # Basic numbers
+            'واحد': 1, 'واحدة': 1, 'واحد': 1,
+            'اثنين': 2, 'اثنتين': 2, 'اثنان': 2,
+            'ثلاثة': 3, 'ثلاث': 3, 'ثلاثه': 3,
+            'أربعة': 4, 'أربع': 4, 'اربعة': 4, 'اربع': 4,
+            'خمسة': 5, 'خمس': 5, 'خمسه': 5,
+            'ستة': 6, 'ست': 6, 'سته': 6,
+            'سبعة': 7, 'سبع': 7, 'سبعه': 7,
+            'ثمانية': 8, 'ثماني': 8, 'ثمانيه': 8,
+            'تسعة': 9, 'تسع': 9, 'تسعه': 9,
+            'عشرة': 10, 'عشر': 10, 'عشره': 10,
+            
+            # Common quantity expressions
+            'كوب': 1, 'كوب واحد': 1, 'كوب واحد': 1,
+            'كوبين': 2, 'كوبين': 2,
+            'ثلاثة أكواب': 3, 'ثلاث اكواب': 3,
+            'أربعة أكواب': 4, 'اربع اكواب': 4,
+            'خمسة أكواب': 5, 'خمس اكواب': 5,
+            
+            'قطعة': 1, 'قطعة واحدة': 1, 'قطعة واحدة': 1,
+            'قطعتين': 2, 'قطعتين': 2,
+            'ثلاث قطع': 3, 'ثلاث قطع': 3,
+            'أربع قطع': 4, 'اربع قطع': 4,
+            'خمس قطع': 5, 'خمس قطع': 5,
+            
+            # English numbers
             'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+            'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
             'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5
         }
 
-        text_lower = text.lower()
-        for word, number in word_numbers.items():
+        text_lower = text.lower().strip()
+        
+        # Check for exact matches first
+        for word, number in arabic_quantity_words.items():
+            if word == text_lower:
+                return number
+        
+        # Check for partial matches
+        for word, number in arabic_quantity_words.items():
             if word in text_lower:
                 return number
 
