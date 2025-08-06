@@ -32,7 +32,7 @@ class EnhancedMessageHandler:
             
             # Build initial user context (may be updated after session reset)
             current_step = session.get('current_step') if session else 'waiting_for_language'
-            user_context = self._build_user_context(phone_number, session, current_step)
+            user_context = self._build_user_context(phone_number, session, current_step, text)
             
             # Check for session reset (fresh start intent or timeout)
             should_reset = self._should_reset_session(session, text)
@@ -53,7 +53,7 @@ class EnhancedMessageHandler:
                     
                     # Update context after session reset
                     current_step = 'waiting_for_language'
-                    user_context = self._build_user_context(phone_number, session, current_step)
+                    user_context = self._build_user_context(phone_number, session, current_step, text)
             else:
                 logger.info(f"📋 Session check for {phone_number}: should_reset={should_reset}, current_step={session.get('current_step') if session else 'None'}")
 
@@ -84,7 +84,7 @@ class EnhancedMessageHandler:
             logger.error(f"❌ Error in enhanced message handling: {str(e)}")
             return self._create_response("حدث خطأ. الرجاء إعادة المحاولة\nAn error occurred. Please try again")
 
-    def _build_user_context(self, phone_number: str, session: Dict, current_step: str) -> Dict:
+    def _build_user_context(self, phone_number: str, session: Dict, current_step: str, original_message: str = '') -> Dict:
         """Build comprehensive user context for AI understanding"""
         context = {
             'phone_number': phone_number,
@@ -98,7 +98,8 @@ class EnhancedMessageHandler:
             'current_order_items': [],
             'available_categories': [],
             'current_category_items': [],
-            'conversation_history': []
+            'conversation_history': [],
+            'original_user_message': original_message
         }
 
         # Get current order items
@@ -204,6 +205,7 @@ class EnhancedMessageHandler:
         response_message = ai_result.get('response_message', '')
         language = user_context.get('language', 'arabic')
         current_step = user_context.get('current_step')
+        original_user_message = user_context.get('original_user_message', '')
 
         logger.info(f"🧠 Intelligent suggestion: step={current_step}, data={extracted_data}")
 
@@ -226,8 +228,8 @@ class EnhancedMessageHandler:
                 return self._show_sub_categories(phone_number, selected_category, language)
             else:
                 logger.warning(f"⚠️ Invalid main category suggestion: {suggested_main_category}, falling back to structured processing")
-                # Fall back to structured processing
-                return self._handle_structured_message(phone_number, "", current_step, session, user_context)
+                # Fall back to structured processing with original message
+                return self._handle_structured_message(phone_number, original_user_message, current_step, session, user_context)
 
         # Handle sub-category suggestions
         suggested_sub_category = extracted_data.get('suggested_sub_category')
@@ -271,9 +273,9 @@ class EnhancedMessageHandler:
                 return self._show_sub_category_items(phone_number, selected_sub_category, language)
             else:
                 logger.warning(f"⚠️ Invalid sub-category number: {suggested_sub_category}, max: {len(sub_categories)}")
-                # Fall back to structured processing instead of showing error
-                logger.info(f"🔄 Falling back to structured processing for invalid AI suggestion")
-                return self._handle_structured_message(phone_number, "", current_step, session, user_context)
+                # Fall back to structured processing with original message
+                logger.info(f"🔄 Falling back to structured processing for invalid AI suggestion with original message: '{original_user_message}'")
+                return self._handle_structured_message(phone_number, original_user_message, current_step, session, user_context)
 
         # If no specific suggestions, use the AI's response message
         if response_message:
@@ -1235,19 +1237,25 @@ class EnhancedMessageHandler:
         # Convert Arabic numerals to English
         converted_text = self._convert_arabic_numerals(text)
         text_lower = text.lower().strip()
+        converted_lower = converted_text.lower().strip()
         
         service_type = None
         
-        # Check for dine-in indicators
-        if any(word in text_lower for word in ['1', 'داخل', 'في المقهى', 'dine', 'restaurant']):
+        # Check for dine-in indicators (including Arabic numerals)
+        if (any(word in text_lower for word in ['1', 'داخل', 'في المقهى', 'dine', 'restaurant']) or
+            any(word in converted_lower for word in ['1', 'dine', 'restaurant'])):
             service_type = 'dine-in'
-        # Check for delivery indicators
-        elif any(word in text_lower for word in ['2', 'توصيل', 'delivery', 'home']):
+            logger.info(f"✅ Dine-in service detected from text: '{text}' (converted: '{converted_text}')")
+        # Check for delivery indicators (including Arabic numerals)
+        elif (any(word in text_lower for word in ['2', 'توصيل', 'delivery', 'home']) or
+              any(word in converted_lower for word in ['2', 'delivery', 'home'])):
             service_type = 'delivery'
+            logger.info(f"✅ Delivery service detected from text: '{text}' (converted: '{converted_text}')")
         
         if service_type:
             # Update order details
-            self.db.update_order_details(phone_number, service_type=service_type)
+            success = self.db.update_order_details(phone_number, service_type=service_type)
+            logger.info(f"📝 Service type update: {service_type} for {phone_number}, success: {success}")
             
             # Update session step
             self.db.create_or_update_session(
@@ -1267,6 +1275,7 @@ class EnhancedMessageHandler:
                     return self._create_response("Please share your location and any special instructions:")
         
         # Invalid input
+        logger.warning(f"❌ Invalid service selection: '{text}' (converted: '{converted_text}')")
         if language == 'arabic':
             return self._create_response("الرجاء اختيار نوع الخدمة:\n\n1. تناول في المقهى\n2. توصيل")
         else:
@@ -1675,10 +1684,16 @@ class EnhancedMessageHandler:
         return None
 
     def _match_item_by_name(self, text: str, items: list, language: str) -> Optional[Dict]:
-        """Match item by name with enhanced partial matching and energy drink handling"""
-        # Clean the input - remove numbers and extra spaces
+        """Match item by name with enhanced scoring mechanism for better accuracy"""
         import re
+        
+        # Clean the input - remove numbers, common non-descriptive words, and extra spaces
         cleaned_text = re.sub(r'\d+', '', text).strip()
+        
+        # Remove common non-descriptive Arabic words
+        common_words = ['اريد', 'عايز', 'بغيت', 'بدي', 'ممكن', 'لو', 'سمحت', 'من', 'فى', 'في', 'على', 'الى', 'إلى', 'و', 'او', 'أو', 'هذا', 'هذه', 'هذا', 'ال', 'واحد', 'اثنين', 'ثلاثة', 'اربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة', 'عشرة']
+        text_words = [word for word in cleaned_text.split() if word not in common_words]
+        cleaned_text = ' '.join(text_words)
         text_lower = cleaned_text.lower().strip()
         
         logger.info(f"🔍 Matching '{text}' (cleaned: '{cleaned_text}') against {len(items)} items")
@@ -1692,36 +1707,66 @@ class EnhancedMessageHandler:
                     logger.info(f"✅ Energy drink match: '{item_name_lower}'")
                     return item
         
-        # First try exact substring matching
-        for item in items:
-            if language == 'arabic':
-                item_name_lower = item['item_name_ar'].lower()
-                logger.info(f"  Checking: '{text_lower}' in '{item_name_lower}' = {text_lower in item_name_lower}")
-                if text_lower in item_name_lower:
-                    return item
-            else:
-                item_name_lower = item['item_name_en'].lower()
-                logger.info(f"  Checking: '{text_lower}' in '{item_name_lower}' = {text_lower in item_name_lower}")
-                if text_lower in item_name_lower:
-                    return item
+        # Scoring mechanism for better accuracy
+        best_match = None
+        best_score = 0
         
-        # If no exact match, try word-based matching
-        text_words = set(text_lower.split())
         for item in items:
             if language == 'arabic':
                 item_name_lower = item['item_name_ar'].lower()
-                item_words = set(item_name_lower.split())
-                # Check if any word from input matches any word in item name
-                if text_words & item_words:  # Intersection
-                    logger.info(f"  Word match found: {text_words} ∩ {item_words} = {text_words & item_words}")
-                    return item
             else:
                 item_name_lower = item['item_name_en'].lower()
-                item_words = set(item_name_lower.split())
-                # Check if any word from input matches any word in item name
-                if text_words & item_words:  # Intersection
-                    logger.info(f"  Word match found: {text_words} ∩ {item_words} = {text_words & item_words}")
-                    return item
+            
+            score = 0
+            
+            # 1. Exact substring match (highest priority)
+            if text_lower in item_name_lower:
+                score += 100
+                logger.info(f"  ✅ Exact substring match: '{text_lower}' in '{item_name_lower}' (score: {score})")
+            
+            # 2. Item name contains all user words (very high priority)
+            user_words = set(text_lower.split())
+            item_words = set(item_name_lower.split())
+            common_words = user_words & item_words
+            
+            if len(common_words) == len(user_words) and len(user_words) > 0:
+                score += 80
+                logger.info(f"  ✅ All user words found: {user_words} in '{item_name_lower}' (score: {score})")
+            elif len(common_words) > 0:
+                # 3. Partial word match (medium priority)
+                score += 20 + (len(common_words) * 10)
+                logger.info(f"  📊 Partial word match: {common_words} in '{item_name_lower}' (score: {score})")
+            
+            # 4. Bonus for longer matches (prefer more specific items)
+            if len(item_name_lower) > len(text_lower):
+                score += 5
+            
+            # 5. Special handling for specific terms
+            if language == 'arabic':
+                # Handle "دجاج" (chicken) specifically
+                if 'دجاج' in text_lower and 'دجاج' in item_name_lower:
+                    score += 15
+                    logger.info(f"  🍗 Chicken match bonus: '{item_name_lower}' (score: {score})")
+                
+                # Handle "جبن" (cheese) specifically
+                if 'جبن' in text_lower and 'جبن' in item_name_lower:
+                    score += 10
+                    logger.info(f"  🧀 Cheese match bonus: '{item_name_lower}' (score: {score})")
+                
+                # Handle "لحم" (meat) specifically
+                if 'لحم' in text_lower and 'لحم' in item_name_lower:
+                    score += 15
+                    logger.info(f"  🥩 Meat match bonus: '{item_name_lower}' (score: {score})")
+            
+            # Update best match if this score is higher
+            if score > best_score:
+                best_score = score
+                best_match = item
+                logger.info(f"  🏆 New best match: '{item_name_lower}' with score {score}")
+        
+        if best_match and best_score > 0:
+            logger.info(f"✅ Final match: '{best_match['item_name_ar' if language == 'arabic' else 'item_name_en']}' with score {best_score}")
+            return best_match
         
         logger.info(f"❌ No match found for '{text}' (cleaned: '{cleaned_text}')")
         return None
