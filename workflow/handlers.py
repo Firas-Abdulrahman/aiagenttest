@@ -172,12 +172,16 @@ class MessageHandler:
         return self._create_response(response)
 
     def _handle_sub_category_selection(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
-        """Handle sub-category selection - NEW"""
+        """Handle sub-category selection with enhanced Arabic text recognition"""
         selected_main_category_id = session.get('selected_main_category')
         
         if not selected_main_category_id:
             return self._create_response("خطأ في النظام\nSystem error")
 
+        # Convert Arabic numerals first
+        text = self._convert_arabic_numerals(text)
+        
+        # Try number extraction first
         number = self._extract_number(text)
         sub_categories = self.db.get_sub_categories(selected_main_category_id)
 
@@ -213,6 +217,46 @@ class MessageHandler:
                 response += "💡 You can type 'back' to go to the previous step"
 
             return self._create_response(response)
+
+        # If no number found, try to match by Arabic text
+        if language == 'arabic':
+            text_lower = text.lower().strip()
+            
+            # Enhanced Arabic sub-category mapping
+            arabic_sub_category_mapping = {
+                'توست': 1,
+                'سندويشات': 2, 'سندويشة': 2, 'سندويش': 2,
+                'كرواسان': 3, 'كرواسون': 3,
+                'فطائر': 4, 'فطاير': 4, 'فطيرة': 4,
+                'قطع كيك': 5, 'كيك': 5, 'قطع': 5
+            }
+            
+            # Check for exact matches first
+            for arabic_term, sub_cat_number in arabic_sub_category_mapping.items():
+                if arabic_term in text_lower or text_lower in arabic_term:
+                    if 1 <= sub_cat_number <= len(sub_categories):
+                        selected_sub_category = sub_categories[sub_cat_number - 1]
+                        
+                        # Update session with selected sub-category
+                        self.db.create_or_update_session(
+                            phone_number, 'waiting_for_item', language,
+                            session.get('customer_name'),
+                            selected_main_category=selected_main_category_id,
+                            selected_sub_category=selected_sub_category['id']
+                        )
+
+                        # Get items for this sub-category
+                        items = self.db.get_sub_category_items(selected_sub_category['id'])
+
+                        response = f"📋 الخطوة 3 من 9: {selected_sub_category['name_ar']}\n"
+                        response += f"قائمة {selected_sub_category['name_ar']}:\n\n"
+                        for i, item in enumerate(items, 1):
+                            response += f"{i}. {item['item_name_ar']}\n"
+                            response += f"   السعر: {item['price']} دينار\n\n"
+                        response += "الرجاء اختيار المنتج المطلوب\n"
+                        response += "💡 يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
+
+                        return self._create_response(response)
 
         # Invalid selection - show sub-categories again
         main_categories = self.db.get_main_categories()
@@ -534,12 +578,56 @@ class MessageHandler:
             return self._create_response("Please reply with '1' to add more or '2' to continue")
 
     def _handle_service_selection(self, phone_number: str, text: str, language: str, session: Dict) -> Dict:
-        """Handle service type selection with enhanced Arabic understanding"""
+        """Handle service type selection with enhanced Arabic understanding and numeric support"""
         try:
+            # Convert Arabic numerals first
+            text = self._convert_arabic_numerals(text)
+            
             # Enhanced service type detection
             text_lower = text.lower().strip()
             
-            # Service type indicators
+            # Try numeric input first
+            number = self._extract_number(text)
+            if number == 1:
+                # Dine-in service
+                self.db.create_or_update_session(phone_number, 'waiting_for_location', language)
+                self.db.update_order_details(phone_number, service_type='dine-in')
+                
+                if language == 'arabic':
+                    return self._create_response(
+                        "📋 الخطوة 7 من 9\n"
+                        "ممتاز! تناول في المقهى 🏪\n"
+                        "الرجاء تحديد رقم الطاولة (1-7):\n"
+                        "💡 يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
+                    )
+                else:
+                    return self._create_response(
+                        "📋 Step 7 of 9\n"
+                        "Perfect! Dine-in service 🏪\n"
+                        "Please specify table number (1-7):\n"
+                        "💡 You can type 'back' to go to the previous step"
+                    )
+            elif number == 2:
+                # Delivery service
+                self.db.create_or_update_session(phone_number, 'waiting_for_location', language)
+                self.db.update_order_details(phone_number, service_type='delivery')
+                
+                if language == 'arabic':
+                    return self._create_response(
+                        "📋 الخطوة 7 من 9\n"
+                        "ممتاز! خدمة التوصيل 🚚\n"
+                        "الرجاء إدخال عنوان التوصيل:\n"
+                        "💡 يمكنك كتابة 'رجوع' للعودة للخطوة السابقة"
+                    )
+                else:
+                    return self._create_response(
+                        "📋 Step 7 of 9\n"
+                        "Perfect! Delivery service 🚚\n"
+                        "Please enter delivery address:\n"
+                        "💡 You can type 'back' to go to the previous step"
+                    )
+            
+            # Service type indicators for text-based detection
             dine_in_indicators = ['بالكهوة', 'في الكهوة', 'في المقهى', 'تناول', 'عندكم', 'عندك', 'في الكافيه']
             delivery_indicators = ['توصيل', 'للبيت', 'للمنزل', 'توصيل للمنزل']
             
@@ -550,7 +638,7 @@ class MessageHandler:
             if is_dine_in:
                 # Update session with dine-in service
                 self.db.create_or_update_session(phone_number, 'waiting_for_location', language)
-                self.db.update_session_field(phone_number, 'service_type', 'dine-in')
+                self.db.update_order_details(phone_number, service_type='dine-in')
                 
                 if language == 'arabic':
                     return self._create_response(
@@ -570,7 +658,7 @@ class MessageHandler:
             elif is_delivery:
                 # Update session with delivery service
                 self.db.create_or_update_session(phone_number, 'waiting_for_location', language)
-                self.db.update_session_field(phone_number, 'service_type', 'delivery')
+                self.db.update_order_details(phone_number, service_type='delivery')
                 
                 if language == 'arabic':
                     return self._create_response(
