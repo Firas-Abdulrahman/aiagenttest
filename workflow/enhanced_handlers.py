@@ -179,6 +179,9 @@ class EnhancedMessageHandler:
             return self._handle_ai_language_selection(phone_number, extracted_data, session)
         elif action == 'category_selection':
             return self._handle_ai_category_selection(phone_number, extracted_data, session, user_context)
+        elif action == 'sub_category_selection':
+            # Handle sub-category selection (e.g., user asks for "موهيتو" sub-category)
+            return self._handle_sub_category_selection(phone_number, extracted_data, session, user_context)
         elif action == 'item_selection':
             # Special handling for item selection - can work across different steps
             return self._handle_intelligent_item_selection(phone_number, extracted_data, session, user_context)
@@ -427,6 +430,68 @@ class EnhancedMessageHandler:
 
         return self._create_response(self._get_fallback_message('waiting_for_item', language))
 
+    def _handle_sub_category_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
+        """Handle AI sub-category selection (e.g., user asks for mojito sub-category)"""
+        sub_category_name = extracted_data.get('sub_category_name')
+        sub_category_id = extracted_data.get('sub_category_id')
+        language = user_context.get('language')
+        
+        logger.info(f"🎯 Sub-category selection: name='{sub_category_name}', id={sub_category_id}")
+        
+        # Get current main category
+        main_category_id = session.get('selected_main_category')
+        if not main_category_id:
+            logger.error(f"❌ No selected_main_category in session for {phone_number}")
+            return self._create_response("خطأ في النظام. الرجاء البدء من جديد")
+        
+        # Ensure main_category_id is an integer
+        if isinstance(main_category_id, dict):
+            main_category_id = main_category_id.get('id', main_category_id)
+        elif not isinstance(main_category_id, int):
+            try:
+                main_category_id = int(main_category_id)
+            except (ValueError, TypeError):
+                return self._create_response("خطأ في النظام. الرجاء البدء من جديد")
+        
+        # Get sub-categories for current main category
+        sub_categories = self.db.get_sub_categories(main_category_id)
+        
+        # Find the requested sub-category
+        selected_sub_category = None
+        
+        if sub_category_id:
+            # Direct ID selection
+            if 1 <= sub_category_id <= len(sub_categories):
+                selected_sub_category = sub_categories[sub_category_id - 1]
+        
+        elif sub_category_name:
+            # Name-based selection
+            for sub_cat in sub_categories:
+                if (sub_category_name.lower() in sub_cat['name_ar'].lower() or 
+                    sub_category_name.lower() in sub_cat['name_en'].lower()):
+                    selected_sub_category = sub_cat
+                    break
+        
+        if selected_sub_category:
+            logger.info(f"✅ Found sub-category: '{selected_sub_category['name_ar']}' (ID: {selected_sub_category['id']})")
+            
+            # Update session
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_item', language,
+                session.get('customer_name'),
+                selected_main_category=main_category_id,
+                selected_sub_category=selected_sub_category['id']
+            )
+            
+            # Show sub-category items
+            return self._show_sub_category_items(phone_number, selected_sub_category, language)
+        else:
+            logger.warning(f"❌ Sub-category not found: name='{sub_category_name}', id={sub_category_id}")
+            if language == 'arabic':
+                return self._create_response(f"عذراً، لم نجد الفئة الفرعية '{sub_category_name}'. الرجاء اختيار من القائمة المتاحة.")
+            else:
+                return self._create_response(f"Sorry, we couldn't find the sub-category '{sub_category_name}'. Please select from the available options.")
+
     def _handle_intelligent_item_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle intelligent item selection that can work across different steps"""
         item_name = extracted_data.get('item_name')
@@ -489,21 +554,32 @@ class EnhancedMessageHandler:
                     
                     # Special handling for mojito - check if any item contains "موهيتو"
                     if item_name.lower() in ['موهيتو', 'mojito']:
-                        for item in items:
-                            if 'موهيتو' in item['item_name_ar'].lower() or 'mojito' in item['item_name_en'].lower():
-                                logger.info(f"✅ Found mojito item: '{item['item_name_ar']}' in sub-category '{sub_cat['name_ar']}'")
-                                
-                                # Update session to reflect the found item's context
-                                self.db.create_or_update_session(
-                                    phone_number, 'waiting_for_quantity', language,
-                                    session.get('customer_name'),
-                                    selected_main_category=main_cat['id'],
-                                    selected_sub_category=sub_cat['id'],
-                                    selected_item=item['id']
-                                )
-                                
-                                # Show quantity selection for the found item
-                                return self._show_quantity_selection(phone_number, item, language)
+                        logger.info(f"🔍 Special mojito handling for '{item_name}' in sub-category '{sub_cat['name_ar']}' (ID: {sub_cat['id']})")
+                        
+                        # Check if this is the mojito sub-category
+                        if sub_cat['name_ar'].lower() == 'موهيتو' or sub_cat['id'] == 6:
+                            logger.info(f"🎯 Found mojito sub-category! Searching for mojito items...")
+                            for item in items:
+                                logger.info(f"🔍 Checking item: '{item['item_name_ar']}' (ID: {item['id']})")
+                                if 'موهيتو' in item['item_name_ar'].lower() or 'mojito' in item['item_name_en'].lower():
+                                    logger.info(f"✅ Found mojito item: '{item['item_name_ar']}' in sub-category '{sub_cat['name_ar']}'")
+                                    
+                                    # Update session to reflect the found item's context
+                                    self.db.create_or_update_session(
+                                        phone_number, 'waiting_for_quantity', language,
+                                        session.get('customer_name'),
+                                        selected_main_category=main_cat['id'],
+                                        selected_sub_category=sub_cat['id'],
+                                        selected_item=item['id']
+                                    )
+                                    
+                                    # Show quantity selection for the found item
+                                    return self._show_quantity_selection(phone_number, item, language)
+                            
+                            logger.info(f"❌ No mojito items found in mojito sub-category, continuing search...")
+                        else:
+                            logger.info(f"🔍 Not in mojito sub-category, continuing search...")
+                            continue
                     
                     # Regular matching for other items
                     matched_item = self._match_item_by_name(item_name, items, language)
@@ -526,6 +602,33 @@ class EnhancedMessageHandler:
             
             # Item not found anywhere
             logger.warning(f"❌ Item '{item_name}' not found in any sub-category")
+            
+            # Special handling for mojito - if not found, navigate to mojito sub-category
+            if item_name.lower() in ['موهيتو', 'mojito']:
+                logger.info(f"🔍 Mojito not found, navigating to mojito sub-category...")
+                
+                # Find the mojito sub-category in Cold Drinks (main category 1)
+                main_categories = self.db.get_main_categories()
+                cold_drinks_main = next((cat for cat in main_categories if cat['id'] == 1), None)
+                
+                if cold_drinks_main:
+                    sub_categories = self.db.get_sub_categories(1)  # Cold Drinks
+                    mojito_sub = next((sub for sub in sub_categories if sub['id'] == 6), None)
+                    
+                    if mojito_sub:
+                        logger.info(f"✅ Found mojito sub-category, showing items...")
+                        
+                        # Update session to mojito sub-category
+                        self.db.create_or_update_session(
+                            phone_number, 'waiting_for_item', language,
+                            session.get('customer_name'),
+                            selected_main_category=1,
+                            selected_sub_category=6
+                        )
+                        
+                        # Show mojito items
+                        return self._show_sub_category_items(phone_number, mojito_sub, language)
+            
             if language == 'arabic':
                 return self._create_response(f"عذراً، لم نجد '{item_name}' في قائمتنا. الرجاء اختيار من القائمة المتاحة.")
             else:
@@ -1794,6 +1897,11 @@ class EnhancedMessageHandler:
             
             # 5. Special handling for specific terms
             if language == 'arabic':
+                # Handle "موهيتو" (mojito) specifically - highest priority
+                if 'موهيتو' in text_lower and 'موهيتو' in item_name_lower:
+                    score += 200  # Very high score to ensure mojito items are prioritized
+                    logger.info(f"  🍹 Mojito match bonus: '{item_name_lower}' (score: {score})")
+                
                 # Handle "دجاج" (chicken) specifically
                 if 'دجاج' in text_lower and 'دجاج' in item_name_lower:
                     score += 15
@@ -1816,6 +1924,13 @@ class EnhancedMessageHandler:
                 logger.info(f"  🏆 New best match: '{item_name_lower}' with score {score}")
         
         if best_match and best_score > 0:
+            # Special validation for mojito requests
+            if language == 'arabic' and 'موهيتو' in text_lower:
+                # If user asked for mojito but best match doesn't contain mojito, reject it
+                if 'موهيتو' not in best_match['item_name_ar'].lower():
+                    logger.warning(f"❌ Rejecting non-mojito match '{best_match['item_name_ar']}' for mojito request")
+                    return None
+            
             logger.info(f"✅ Final match: '{best_match['item_name_ar' if language == 'arabic' else 'item_name_en']}' with score {best_score}")
             return best_match
         

@@ -217,6 +217,45 @@ Response: {{
     "response_message": "فهمت أنك تريد شيء بارد ومنعش! اختيار ممتاز لإنعاش يومك.\\n\\nأنصحك بالشاي المثلج - بارد ومنعش تماماً:\\n\\n1. شاي مثلج بالخوخ - 5000 دينار\\n2. شاي مثلج بفاكهة العاطفة - 5000 دينار\\n\\nأو جرب الموهيتو إذا كنت تحب شيء أكثر انتعاشاً مع النعناع!\\n\\nاختر الرقم أو قلي أيش يعجبك!"
 }}
 
+User: "موهيتو"
+Response: {{
+    "understood_intent": "User wants to see mojito sub-category",
+    "confidence": "high",
+    "action": "sub_category_selection",
+    "extracted_data": {{
+        "language": "arabic",
+        "sub_category_name": "موهيتو",
+        "sub_category_id": 6,
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! سأعرض لك قائمة الموهيتو:\\n\\n1. موهيتو ازرق - 5000 دينار\\n2. موهيتو فاكهة العاطفة - 5000 دينار\\n3. موهيتو توت ازرق - 5000 دينار\\n4. موهيتو روزبيري - 5000 دينار\\n5. موهيتو فراولة - 5000 دينار\\n6. موهيتو بينا كولادا - 5000 دينار\\n7. موهيتو علكة - 5000 دينار\\n8. موهيتو دراغون - 5000 دينار\\n9. موهيتو هيف - 5000 دينار\\n10. موهيتو رمان - 5000 دينار\\n11. موهيتو خوخ - 5000 دينار\\n\\nاختر الرقم الذي تفضله!"
+}}
+
+User: "موهيتو ازرق"
+Response: {{
+    "understood_intent": "User wants to order Blue Mojito specifically",
+    "confidence": "high",
+    "action": "item_selection",
+    "extracted_data": {{
+        "language": "arabic",
+        "item_name": "موهيتو ازرق",
+        "item_id": null,
+        "category_id": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! تم اختيار: موهيتو ازرق\\nالسعر: 5000 دينار\\nكم الكمية المطلوبة؟"
+}}
+
 Now analyze the user's message and respond with appropriate JSON."""
 
     @staticmethod

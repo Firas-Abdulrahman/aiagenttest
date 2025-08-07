@@ -173,7 +173,7 @@ ENHANCED ARABIC TERM MAPPING (CRITICAL):
 - "توست" = Toast (Sub-category 1 of Pastries & Sweets)
 - "كرواسان" or "كرواسون" = Croissants (Sub-category 3 of Pastries & Sweets)
 - "قطع كيك" or "كيك" or "قطع" = Cake Pieces (Sub-category 5 of Pastries & Sweets)
-- "موهيتو" or "موهيتو" = Mojito (Sub-category 6 of Cold Drinks)
+- "موهيتو" or "mojito" = Mojito (Sub-category 6 of Cold Drinks) - Contains: Blue Mojito, Passion Fruit Mojito, Blueberry Mojito, etc.
 - "فرابتشينو" or "فراب" = Frappuccino (Sub-category 2 of Cold Drinks)
 - "ميلك شيك" or "شيك" = Milkshake (Sub-category 3 of Cold Drinks)
 - "عصير" or "عصائر" = Fresh Juices (Sub-category 5 of Cold Drinks)
@@ -221,7 +221,19 @@ Always respond with valid JSON in this exact format:
     "confidence": "high/medium/low",
     "action": "action_type",
     "extracted_data": {
-        // Action-specific data
+        "language": "arabic/english/null",
+        "suggested_main_category": "number or null",
+        "suggested_sub_category": "number or null", 
+        "category_id": "number or null",
+        "category_name": "string or null",
+        "sub_category_id": "number or null",
+        "sub_category_name": "string or null",
+        "item_id": "number or null",
+        "item_name": "string or null",
+        "quantity": "number or null",
+        "yes_no": "yes/no/null",
+        "service_type": "dine-in/delivery/null",
+        "location": "string or null"
     },
     "response_message": "Brief response to user"
 }
@@ -229,8 +241,9 @@ Always respond with valid JSON in this exact format:
 AVAILABLE ACTIONS:
 - language_selection: User is choosing language
 - category_selection: User is selecting main category
+- sub_category_selection: User is selecting sub-category (e.g., "موهيتو" for mojito sub-category)
 - intelligent_suggestion: AI suggests category/sub-category based on preferences
-- item_selection: User is selecting specific item
+- item_selection: User is selecting specific item (e.g., "موهيتو ازرق" for specific mojito)
 - quantity_selection: User is specifying quantity
 - yes_no: User is answering yes/no question
 - service_selection: User is choosing service type
