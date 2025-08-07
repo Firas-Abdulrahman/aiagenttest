@@ -383,6 +383,13 @@ Response: {
     def _generate_enhanced_prompt(self, user_message: str, current_step: str, context: Dict) -> str:
         """Generate enhanced prompt for natural language understanding"""
         
+        # Use menu-aware prompts for specific steps that need special handling
+        if current_step in ['waiting_for_additional', 'waiting_for_sub_category', 'waiting_for_item']:
+            from .menu_aware_prompts import MenuAwarePrompts
+            return MenuAwarePrompts.get_enhanced_understanding_prompt(
+                user_message, current_step, context, self.database_manager
+            )
+        
         # Get menu context
         menu_context = context.get('menu_context', 'Menu context unavailable')
         

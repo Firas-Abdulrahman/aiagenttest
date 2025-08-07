@@ -159,6 +159,8 @@ INTELLIGENT RESPONSE RULES:
    - At waiting_for_sub_category: If user says "موهيتو ازرق", use action "item_selection"
    - At waiting_for_item: If user says "موهيتو", navigate to mojito sub-category
    - At waiting_for_item: If user says "موهيتو ازرق", select that specific item
+   - At waiting_for_additional: If user says "1" or "نعم" or "yes", use action "yes_no" with yes_no="yes"
+   - At waiting_for_additional: If user says "2" or "لا" or "no", use action "yes_no" with yes_no="no"
 
 RESPOND WITH CLEAN JSON (no extra text):
 =======================================
@@ -303,6 +305,42 @@ Response: {{
     }},
     "clarification_needed": false,
     "response_message": "ممتاز! سأعرض لك قائمة ايس كوفي:\\n\\n1. ايس كوفي - 3000 دينار\\n2. ايس امريكانو - 4000 دينار\\n3. لاتيه مثلج عادي - 4000 دينار\\n4. لاتيه مثلج كراميل - 5000 دينار\\n5. لاتيه مثلج فانيلا - 5000 دينار\\n6. لاتيه مثلج بندق - 5000 دينار\\n7. ايس موكا - 5000 دينار\\n8. لاتيه اسباني مثلج - 6000 دينار\\n\\nاختر الرقم الذي تفضله!"
+}}
+
+User: "1" (at waiting_for_additional step)
+Response: {{
+    "understood_intent": "User wants to add more items to their order",
+    "confidence": "high",
+    "action": "yes_no",
+    "extracted_data": {{
+        "language": "arabic",
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": "yes",
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! سأعرض لك قائمة الأصناف مرة أخرى:\\n\\n1. مشروبات باردة\\n2. مشروبات ساخنة\\n3. معجنات وحلويات\\n\\nاختر رقم الصنف الذي تريده:"
+}}
+
+User: "2" (at waiting_for_additional step)
+Response: {{
+    "understood_intent": "User wants to finish their order and not add more items",
+    "confidence": "high",
+    "action": "yes_no",
+    "extracted_data": {{
+        "language": "arabic",
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": "no",
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! لننتقل إلى اختيار نوع الخدمة. هل تفضل تناول الطعام في المقهى أم التوصيل للمنزل؟"
 }}
 
 Now analyze the user's message and respond with appropriate JSON."""
