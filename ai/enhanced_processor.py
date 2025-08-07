@@ -845,6 +845,7 @@ Response: {{
         
         validator = validators.get(current_step)
         if validator:
+            # Always run step-specific validation, even for intelligent_suggestion
             return validator(result, extracted_data, user_message)
         
         # Accept intelligent suggestions and navigation actions if no step-specific validation
@@ -884,19 +885,21 @@ Response: {{
         if user_message_lower in ['1', '2', '3', '4', '5', '6', '7', '١', '٢', '٣', '٤', '٥', '٦', '٧']:
             # Force correct interpretation for category step
             if user_message_lower in ['1', '١']:
-                extracted_data['suggested_main_category'] = 1
+                forced_category_id = 1
             elif user_message_lower in ['2', '٢']:
-                extracted_data['suggested_main_category'] = 2
+                forced_category_id = 2
             elif user_message_lower in ['3', '٣']:
-                extracted_data['suggested_main_category'] = 3
+                forced_category_id = 3
             else:
                 # Numbers 4-7 should map to main category 1 (Cold Drinks)
-                extracted_data['suggested_main_category'] = 1
-            
+                forced_category_id = 1
+
+            extracted_data['category_id'] = forced_category_id  # Set category_id directly
+            extracted_data['suggested_main_category'] = None  # Clear suggested_main_category if it was set by AI
             result['extracted_data'] = extracted_data
             result['action'] = 'category_selection'
-            result['understood_intent'] = f"User wants to select main category number {extracted_data['suggested_main_category']}"
-            logger.info(f"🔧 Fixed category selection: {user_message} -> main_category={extracted_data['suggested_main_category']}")
+            result['understood_intent'] = f"User wants to select main category number {forced_category_id}"
+            logger.info(f"🔧 Fixed category selection: {user_message} -> main_category={forced_category_id}")
         
         return True
 
