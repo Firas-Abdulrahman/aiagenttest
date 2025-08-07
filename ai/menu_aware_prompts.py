@@ -175,6 +175,9 @@ INTELLIGENT RESPONSE RULES:
    - At waiting_for_item: If user says "موهيتو ازرق", select that specific item
    - At waiting_for_additional: If user says "1" or "نعم" or "yes" or "اي", use action "yes_no" with yes_no="yes"
    - At waiting_for_additional: If user says "2" or "لا" or "no" or "لأ", use action "yes_no" with yes_no="no"
+   - At waiting_for_service: If user says "1" or "١" or "في المقهى" or "داخل" or "dine", use action "service_selection" with service_type="dine-in"
+   - At waiting_for_service: If user says "2" or "٢" or "توصيل" or "delivery", use action "service_selection" with service_type="delivery"
+   - At waiting_for_service: If user says "3" or "4" or "5" or "6" or "7" or "8" or "9" or "10" or "11" or "12" or any number > 2, DO NOT accept it as valid service selection
 
 RESPOND WITH CLEAN JSON (no extra text):
 =======================================
@@ -198,6 +201,11 @@ RESPOND WITH CLEAN JSON (no extra text):
     }},
     "clarification_needed": false,
     "response_message": "Helpful response in user's language with intelligent suggestions and explanation"
+
+IMPORTANT VALIDATION RULES:
+==========================
+- For service_selection: ONLY accept "1" or "2" as valid numbers. Numbers 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, etc. are INVALID for service selection.
+- If user enters invalid service number, return error message asking them to choose 1 or 2 only."
 }}
 
 CRITICAL EXAMPLES:

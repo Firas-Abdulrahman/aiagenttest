@@ -792,10 +792,36 @@ class EnhancedMessageHandler:
 
     def _handle_ai_service_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle AI service selection"""
-        service_type = extracted_data.get('service_type')
-        language = user_context.get('language')
-
-        if service_type in ['dine-in', 'delivery']:
+        language = user_context.get('language', 'arabic')
+        
+        # Convert Arabic numerals to English
+        converted_text = self._convert_arabic_numerals(extracted_data.get('service_type', ''))
+        text_lower = extracted_data.get('service_type', '').lower().strip()
+        converted_lower = converted_text.lower().strip()
+        
+        service_type = None
+        
+        # First check for exact numeric matches (1 or 2 only)
+        import re
+        if re.match(r'^[12]$', converted_lower):
+            if converted_lower == '1':
+                service_type = 'dine-in'
+                logger.info(f"✅ Dine-in service detected from exact number: '{extracted_data.get('service_type')}'")
+            elif converted_lower == '2':
+                service_type = 'delivery'
+                logger.info(f"✅ Delivery service detected from exact number: '{extracted_data.get('service_type')}'")
+        # Check for dine-in indicators (including Arabic numerals)
+        elif (any(word in text_lower for word in ['داخل', 'في المقهى', 'dine', 'restaurant']) or
+              any(word in converted_lower for word in ['dine', 'restaurant'])):
+            service_type = 'dine-in'
+            logger.info(f"✅ Dine-in service detected from text: '{extracted_data.get('service_type')}' (converted: '{converted_text}')")
+        # Check for delivery indicators (including Arabic numerals)
+        elif (any(word in text_lower for word in ['توصيل', 'delivery', 'home']) or
+              any(word in converted_lower for word in ['delivery', 'home'])):
+            service_type = 'delivery'
+            logger.info(f"✅ Delivery service detected from text: '{extracted_data.get('service_type')}' (converted: '{converted_text}')")
+        
+        if service_type:
             # Update session step
             self.db.create_or_update_session(
                 phone_number, 'waiting_for_location', language,
@@ -1561,14 +1587,23 @@ class EnhancedMessageHandler:
         
         service_type = None
         
+        # First check for exact numeric matches (1 or 2 only)
+        import re
+        if re.match(r'^[12]$', converted_lower):
+            if converted_lower == '1':
+                service_type = 'dine-in'
+                logger.info(f"✅ Dine-in service detected from exact number: '{text}'")
+            elif converted_lower == '2':
+                service_type = 'delivery'
+                logger.info(f"✅ Delivery service detected from exact number: '{text}'")
         # Check for dine-in indicators (including Arabic numerals)
-        if (any(word in text_lower for word in ['1', 'داخل', 'في المقهى', 'dine', 'restaurant']) or
-            any(word in converted_lower for word in ['1', 'dine', 'restaurant'])):
+        elif (any(word in text_lower for word in ['داخل', 'في المقهى', 'dine', 'restaurant']) or
+              any(word in converted_lower for word in ['dine', 'restaurant'])):
             service_type = 'dine-in'
             logger.info(f"✅ Dine-in service detected from text: '{text}' (converted: '{converted_text}')")
         # Check for delivery indicators (including Arabic numerals)
-        elif (any(word in text_lower for word in ['2', 'توصيل', 'delivery', 'home']) or
-              any(word in converted_lower for word in ['2', 'delivery', 'home'])):
+        elif (any(word in text_lower for word in ['توصيل', 'delivery', 'home']) or
+              any(word in converted_lower for word in ['delivery', 'home'])):
             service_type = 'delivery'
             logger.info(f"✅ Delivery service detected from text: '{text}' (converted: '{converted_text}')")
         

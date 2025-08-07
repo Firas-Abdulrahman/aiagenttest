@@ -706,9 +706,13 @@ Response: {{
             """,
             
             'waiting_for_service': """
-                - Accept: service type preferences, numbers (1-2)
+                - Accept: service type preferences, numbers (1-2 ONLY)
                 - Dine-in: "في المقهى", "داخل", "dine", "1"
                 - Delivery: "توصيل", "delivery", "2"
+                - CRITICAL: ONLY accept numbers 1 or 2. Reject 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, etc.
+                - If user enters number > 2, return validation error
+                - IMPORTANT: Numbers like "12", "21", "123", etc. are INVALID - they contain digits > 2
+                - ONLY accept "1" or "2" as valid numeric inputs
                 - Response: Ask for location (table number or address)
             """,
             
@@ -1040,6 +1044,29 @@ Response: {{
         service_type = extracted_data.get('service_type')
         if service_type not in ['dine-in', 'delivery']:
             return False
+        
+        # Additional validation: Check if user entered a number above 2
+        import re
+        # Convert Arabic numerals to English
+        arabic_to_english = {
+            '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+            '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'
+        }
+        
+        processed_message = user_message
+        for arabic, english in arabic_to_english.items():
+            processed_message = processed_message.replace(arabic, english)
+        
+        # Check if it's a pure number
+        if re.match(r'^\d+$', processed_message.strip()):
+            number = int(processed_message.strip())
+            if number > 2:
+                logger.warning(f"⚠️ Invalid service selection number: {number} (must be 1 or 2)")
+                # Add validation flag for the handler
+                extracted_data['service_validation'] = 'invalid'
+                extracted_data['invalid_service_number'] = number
+                result['extracted_data'] = extracted_data
+                return False
         
         return True
 
