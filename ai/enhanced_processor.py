@@ -582,17 +582,33 @@ Response: {{
             for item in context['current_order_items'][-3:]:  # Last 3 items
                 parts.append(f"  - {item.get('name', 'Unknown')} × {item.get('quantity', 1)}")
         
-        # Selected categories
-        if context.get('selected_main_category'):
-            parts.append(f"Selected Main Category: {context['selected_main_category']}")
+        # Selected categories with detailed context
+        selected_main = context.get('selected_main_category')
+        if selected_main:
+            main_category_names = {
+                1: "Cold Drinks (المشروبات الباردة)",
+                2: "Hot Drinks (المشروبات الحارة)", 
+                3: "Pastries & Sweets (الحلويات والمعجنات)"
+            }
+            main_name = main_category_names.get(selected_main, f"Unknown Category {selected_main}")
+            parts.append(f"CURRENT MAIN CATEGORY: {selected_main} - {main_name}")
+            
+            # Add sub-category context based on main category
+            if selected_main == 1:  # Cold Drinks
+                parts.append("Available Sub-Categories: 1=Iced Coffee, 2=Frappuccino, 3=Milkshake, 4=Iced Tea, 5=Fresh Juices, 6=Mojito, 7=Energy Drinks")
+            elif selected_main == 2:  # Hot Drinks
+                parts.append("Available Sub-Categories: 1=Coffee & Espresso, 2=Latte & Special Drinks, 3=Other Hot Drinks")
+            elif selected_main == 3:  # Pastries & Sweets
+                parts.append("Available Sub-Categories: 1=Toast, 2=Sandwiches, 3=Croissants, 4=Pastries, 5=Cake Pieces")
+                
         if context.get('selected_sub_category'):
-            parts.append(f"Selected Sub-Category: {context['selected_sub_category']}")
+            parts.append(f"CURRENT SUB-CATEGORY: {context['selected_sub_category']}")
             
         # Available options
         if context.get('available_categories'):
-            parts.append(f"Available Categories: {len(context['available_categories'])} options")
+            parts.append(f"Available Main Categories: {len(context['available_categories'])} options")
         if context.get('current_category_items'):
-            parts.append(f"Current Category Items: {len(context['current_category_items'])} options")
+            parts.append(f"Current Sub-Category Items: {len(context['current_category_items'])} options")
             
         return "\n".join(parts) if parts else "No specific context available"
 
@@ -614,9 +630,14 @@ Response: {{
             """,
             
             'waiting_for_sub_category': """
-                - Accept: numbers (1-7 for Cold Drinks), sub-category names, specific item requests
-                - Cold Drinks has 7 sub-categories: 1=Iced Coffee, 2=Frappuccino, 3=Milkshake, 4=Iced Tea, 5=Fresh Juices, 6=Mojito, 7=Energy Drinks
-                - Hot Drinks has 3 sub-categories: 1=Coffee & Espresso, 2=Latte & Special Drinks, 3=Other Hot Drinks
+                - CRITICAL: Use CURRENT MAIN CATEGORY from conversation context to determine valid sub-categories
+                - If CURRENT MAIN CATEGORY = 1 (Cold Drinks): Accept numbers 1-7 only
+                  1=Iced Coffee, 2=Frappuccino, 3=Milkshake, 4=Iced Tea, 5=Fresh Juices, 6=Mojito, 7=Energy Drinks
+                - If CURRENT MAIN CATEGORY = 2 (Hot Drinks): Accept numbers 1-3 only
+                  1=Coffee & Espresso, 2=Latte & Special Drinks, 3=Other Hot Drinks
+                - If CURRENT MAIN CATEGORY = 3 (Pastries & Sweets): Accept numbers 1-5 only
+                  1=Toast, 2=Sandwiches, 3=Croissants, 4=Pastries, 5=Cake Pieces
+                - NEVER suggest sub-categories outside the current main category context
                 - IMPORTANT: If user provides mixed input like "4 iced tea", extract the number (4) for sub-category selection
                 - If user asks for specific item (e.g., "موهيتو", "coffee", "iced tea"), use action "item_selection"
                 - If user asks for sub-category type (e.g., "عصائر", "hot drinks"), use action "intelligent_suggestion"
@@ -769,8 +790,8 @@ Response: {{
         action = result.get('action')
         extracted_data = result.get('extracted_data', {})
         
-        # Accept intelligent suggestions
-        if action == 'intelligent_suggestion':
+        # Accept intelligent suggestions and navigation actions
+        if action in ['intelligent_suggestion', 'back_navigation', 'conversational_response']:
             return True
         
         # Step-specific validation

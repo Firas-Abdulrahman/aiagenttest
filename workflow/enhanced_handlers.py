@@ -61,11 +61,16 @@ class EnhancedMessageHandler:
             logger.info(f"🔍 AI Status: ai={self.ai is not None}, available={self.ai.is_available() if self.ai else False}")
             if self.ai and self.ai.is_available():
                 logger.info(f"🧠 Using enhanced AI for message: '{text}' at step '{current_step}'")
+                # Determine language safely
+                language = 'arabic'  # Default
+                if session:
+                    language = session.get('language_preference', 'arabic')
+                
                 ai_result = self.ai.understand_natural_language(
                     user_message=text,
                     current_step=current_step,
                     user_context=user_context,
-                    language=session.get('language_preference', 'arabic') if session else 'arabic'
+                    language=language
                 )
                 
                 # Handle AI result
@@ -255,8 +260,17 @@ class EnhancedMessageHandler:
                     logger.error(f"❌ Cannot convert main_category_id to int: {main_category_id}")
                     return self._create_response("خطأ في النظام. الرجاء البدء من جديد")
                 
+            # CRITICAL VALIDATION: Check if suggested sub-category is valid for current main category
+            max_sub_categories_by_main = {1: 7, 2: 3, 3: 5}  # Cold Drinks: 7, Hot Drinks: 3, Pastries & Sweets: 5
+            max_allowed = max_sub_categories_by_main.get(main_category_id, 0)
+            
+            if suggested_sub_category > max_allowed:
+                logger.error(f"🚫 CRITICAL: AI suggested invalid sub-category {suggested_sub_category} for main category {main_category_id} (max: {max_allowed})")
+                logger.info(f"🔄 Falling back to structured processing for context-invalid AI suggestion with original message: '{original_user_message}'")
+                return self._handle_structured_message(phone_number, original_user_message, current_step, session, user_context)
+                
             sub_categories = self.db.get_sub_categories(main_category_id)
-            logger.info(f"🔍 Sub-category selection: suggested={suggested_sub_category}, available={len(sub_categories)}")
+            logger.info(f"🔍 Sub-category selection: suggested={suggested_sub_category}, available={len(sub_categories)}, main_category={main_category_id}")
             
             if 1 <= suggested_sub_category <= len(sub_categories):
                 selected_sub_category = sub_categories[suggested_sub_category - 1]
@@ -463,12 +477,35 @@ class EnhancedMessageHandler:
             
             # Get all main categories and search through their sub-categories
             main_categories = self.db.get_main_categories()
+            logger.info(f"🔍 Searching across {len(main_categories)} main categories")
             
             for main_cat in main_categories:
                 sub_categories = self.db.get_sub_categories(main_cat['id'])
+                logger.info(f"🔍 Searching main category '{main_cat['name_ar']}' with {len(sub_categories)} sub-categories")
                 
                 for sub_cat in sub_categories:
                     items = self.db.get_sub_category_items(sub_cat['id'])
+                    logger.info(f"🔍 Checking sub-category '{sub_cat['name_ar']}' with {len(items)} items")
+                    
+                    # Special handling for mojito - check if any item contains "موهيتو"
+                    if item_name.lower() in ['موهيتو', 'mojito']:
+                        for item in items:
+                            if 'موهيتو' in item['item_name_ar'].lower() or 'mojito' in item['item_name_en'].lower():
+                                logger.info(f"✅ Found mojito item: '{item['item_name_ar']}' in sub-category '{sub_cat['name_ar']}'")
+                                
+                                # Update session to reflect the found item's context
+                                self.db.create_or_update_session(
+                                    phone_number, 'waiting_for_quantity', language,
+                                    session.get('customer_name'),
+                                    selected_main_category=main_cat['id'],
+                                    selected_sub_category=sub_cat['id'],
+                                    selected_item=item['id']
+                                )
+                                
+                                # Show quantity selection for the found item
+                                return self._show_quantity_selection(phone_number, item, language)
+                    
+                    # Regular matching for other items
                     matched_item = self._match_item_by_name(item_name, items, language)
                     
                     if matched_item:
@@ -766,12 +803,26 @@ class EnhancedMessageHandler:
                         return self._show_sub_categories(phone_number, cat, language)
             return self._show_main_categories(phone_number, language)
             
-        # Default: update step and show appropriate message
+        # Default: update step and show appropriate content for the previous step
         self.db.create_or_update_session(
             phone_number, previous_step, language,
             session.get('customer_name') if session else None
         )
         
+        # Show appropriate content for the previous step
+        if previous_step == 'waiting_for_item':
+            # Going back to item selection - show items from current sub-category
+            sub_category_id = session.get('selected_sub_category') if session else None
+            if sub_category_id:
+                sub_categories = self.db.get_sub_categories(session.get('selected_main_category'))
+                for sub_cat in sub_categories:
+                    if sub_cat['id'] == sub_category_id:
+                        return self._show_sub_category_items(phone_number, sub_cat, language)
+        elif previous_step == 'waiting_for_quantity':
+            # Going back to quantity - show item selection again
+            return self._create_response(f"{'تم الرجوع للخطوة السابقة' if language == 'arabic' else 'Returned to previous step'}\n\n{'كم الكمية المطلوبة؟' if language == 'arabic' else 'How many do you need?'}")
+        
+        # Fallback message
         if language == 'arabic':
             message = "تم الرجوع للخطوة السابقة"
         else:
