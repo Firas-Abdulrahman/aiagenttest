@@ -765,6 +765,26 @@ Response: {{
             try:
                 result = json.loads(ai_response)
                 logger.info(f"✅ JSON parsed successfully without fixing")
+                logger.info(f"✨ Parsed result before validation: {result}")
+                
+                # Fix malformed structure where action is inside extracted_data
+                if 'extracted_data' in result and isinstance(result['extracted_data'], dict):
+                    extracted_data = result['extracted_data']
+                    if 'action' in extracted_data and 'action' not in result:
+                        # Move action from extracted_data to top level
+                        result['action'] = extracted_data.pop('action')
+                        logger.info(f"🔧 Fixed malformed structure: moved action to top level")
+                    
+                    if 'confidence' in extracted_data and 'confidence' not in result:
+                        # Move confidence from extracted_data to top level
+                        result['confidence'] = extracted_data.pop('confidence')
+                        logger.info(f"🔧 Fixed malformed structure: moved confidence to top level")
+                    
+                    if 'understood_intent' in extracted_data and 'understood_intent' not in result:
+                        # Move understood_intent from extracted_data to top level
+                        result['understood_intent'] = extracted_data.pop('understood_intent')
+                        logger.info(f"🔧 Fixed malformed structure: moved understood_intent to top level")
+                
                 # Validate required fields
                 required_fields = ['understood_intent', 'confidence', 'action', 'extracted_data']
                 for field in required_fields:
@@ -774,6 +794,7 @@ Response: {{
                 
                 # Validate for current step
                 if not self._validate_enhanced_result(result, current_step, user_message):
+                    logger.error(f"❌ Validation failed for step: {current_step}")
                     return None
                 
                 return result
@@ -784,6 +805,22 @@ Response: {{
                 logger.info(f"🔧 Fixed JSON: {ai_response}")
                 
                 result = json.loads(ai_response)
+                logger.info(f"✨ Parsed result after fixing and before validation: {result}")
+                
+                # Apply the same structure fixes after JSON fixing
+                if 'extracted_data' in result and isinstance(result['extracted_data'], dict):
+                    extracted_data = result['extracted_data']
+                    if 'action' in extracted_data and 'action' not in result:
+                        result['action'] = extracted_data.pop('action')
+                        logger.info(f"🔧 Fixed malformed structure: moved action to top level")
+                    
+                    if 'confidence' in extracted_data and 'confidence' not in result:
+                        result['confidence'] = extracted_data.pop('confidence')
+                        logger.info(f"🔧 Fixed malformed structure: moved confidence to top level")
+                    
+                    if 'understood_intent' in extracted_data and 'understood_intent' not in result:
+                        result['understood_intent'] = extracted_data.pop('understood_intent')
+                        logger.info(f"🔧 Fixed malformed structure: moved understood_intent to top level")
             
             # Validate required fields
             required_fields = ['understood_intent', 'confidence', 'action', 'extracted_data']
@@ -794,6 +831,7 @@ Response: {{
             
             # Validate for current step
             if not self._validate_enhanced_result(result, current_step, user_message):
+                logger.error(f"❌ Validation failed for step: {current_step}")
                 return None
             
             return result
@@ -875,14 +913,20 @@ Response: {{
     def _validate_language_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
         """Validate language selection step"""
         action = result.get('action')
+        logger.debug(f"DEBUG: _validate_language_step - action: {action}, extracted_data: {extracted_data}")
+        
         if action not in ['language_selection', 'intelligent_suggestion']:
+            logger.debug(f"DEBUG: _validate_language_step - Invalid action: {action}")
             return False
         
         if action == 'language_selection':
             language = extracted_data.get('language')
+            logger.debug(f"DEBUG: _validate_language_step - language: {language}")
             if language not in ['arabic', 'english']:
+                logger.debug(f"DEBUG: _validate_language_step - Invalid language: {language}")
                 return False
         
+        logger.debug(f"DEBUG: _validate_language_step - Validation passed")
         return True
 
     def _validate_category_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
