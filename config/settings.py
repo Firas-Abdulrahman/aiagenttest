@@ -44,11 +44,13 @@ class WhatsAppConfig:
 
         # Auto-fetch phone number ID
         self.phone_number_id = os.getenv('PHONE_NUMBER_ID')
-        if not self.phone_number_id and self.whatsapp_token and self.waba_id:
+        if self.phone_number_id:
+            # Clean the phone number ID (remove + prefix if present)
+            self.phone_number_id = self.phone_number_id.lstrip('+')
+            logger.info(f"✅ Using phone number ID from env: {self.phone_number_id}")
+        elif not self.phone_number_id and self.whatsapp_token and self.waba_id:
             logger.info("🔍 Phone number ID not found, attempting auto-fetch...")
             self.phone_number_id = self.get_phone_number_id()
-        elif self.phone_number_id:
-            logger.info(f"✅ Using phone number ID from env: {self.phone_number_id}")
 
         # Final validation
         if not self.validate_config():
@@ -196,9 +198,12 @@ class WhatsAppConfig:
         if self.waba_id and not self.waba_id.isdigit():
             validation_errors.append("WHATSAPP_BUSINESS_ACCOUNT_ID should be numeric")
 
-        # Validate phone number ID format
-        if self.phone_number_id and not self.phone_number_id.isdigit():
-            validation_errors.append("PHONE_NUMBER_ID should be numeric")
+        # Validate phone number ID format (allow + prefix)
+        if self.phone_number_id:
+            # Remove + prefix if present, then check if remaining is numeric
+            phone_id_clean = self.phone_number_id.lstrip('+')
+            if not phone_id_clean.isdigit():
+                validation_errors.append("PHONE_NUMBER_ID should be numeric (with optional + prefix)")
 
         # Validate AI configuration
         if self.ai_enabled and not self.openai_api_key:
