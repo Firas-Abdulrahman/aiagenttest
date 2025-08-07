@@ -754,6 +754,16 @@ class EnhancedMessageHandler:
             elif current_step == 'waiting_for_confirmation':
                 # Confirm order
                 return self._confirm_order(phone_number, session, user_context)
+            
+            elif current_step == 'waiting_for_fresh_start_choice':
+                # Start new order - clear everything
+                self.db.cancel_order(phone_number)
+                self.db.delete_session(phone_number)
+                
+                if language == 'arabic':
+                    return self._create_response("ممتاز! اختر من القائمة الرئيسية:\n\n1. المشروبات الباردة\n2. المشروبات الحارة\n3. الحلويات والمعجنات\n\nالرجاء اختيار الفئة المطلوبة")
+                else:
+                    return self._create_response("Great! Choose from the main menu:\n\n1. Cold Drinks\n2. Hot Drinks\n3. Pastries & Sweets\n\nPlease select the required category")
 
         elif yes_no == 'no':
             if current_step == 'waiting_for_additional':
@@ -767,6 +777,16 @@ class EnhancedMessageHandler:
             elif current_step == 'waiting_for_confirmation':
                 # Cancel order
                 return self._cancel_order(phone_number, session, user_context)
+            
+            elif current_step == 'waiting_for_fresh_start_choice':
+                # Since the order was already completed, start a new order
+                # (There's no "previous order" to keep after completion)
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_category', language,
+                    session.get('customer_name') if session else None
+                )
+                
+                return self._show_main_categories(phone_number, language)
 
         return self._create_response(self._get_fallback_message(current_step, language))
 
@@ -1911,7 +1931,8 @@ class EnhancedMessageHandler:
         """Cancel order"""
         self.db.cancel_order(phone_number)
         language = user_context.get('language')
-        customer_name = session.get('customer_name', 'Customer') if session else 'Customer'
+        # Use customer name from user_context first, then fallback to session
+        customer_name = user_context.get('customer_name') or session.get('customer_name') or 'Customer'
         
         if language == 'arabic':
             message = f"تم إلغاء الطلب. شكراً لك {customer_name} لزيارة مقهى هيف.\n\n"

@@ -896,7 +896,8 @@ Response: {{
             'waiting_for_additional': self._validate_additional_step,
             'waiting_for_service': self._validate_service_step,
             'waiting_for_location': self._validate_location_step,
-            'waiting_for_confirmation': self._validate_confirmation_step
+            'waiting_for_confirmation': self._validate_confirmation_step,
+            'waiting_for_fresh_start_choice': self._validate_fresh_start_choice_step
         }
         
         validator = validators.get(current_step)
@@ -1102,6 +1103,19 @@ Response: {{
             yes_no = extracted_data.get('yes_no')
             if yes_no not in ['yes', 'no']:
                 return False
+        
+        return True
+
+    def _validate_fresh_start_choice_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+        """Validate fresh start choice step"""
+        action = result.get('action')
+        
+        if action != 'yes_no':
+            return False
+        
+        yes_no = extracted_data.get('yes_no')
+        if yes_no not in ['yes', 'no']:
+            return False
         
         return True
 
