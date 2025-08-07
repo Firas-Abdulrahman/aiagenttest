@@ -761,12 +761,29 @@ Response: {{
                 if json_match:
                     ai_response = json_match.group(0)
             
-            # Fix common JSON issues
-            ai_response = self._fix_json_format(ai_response)
-            
-            logger.info(f"🔧 Fixed JSON: {ai_response}")
-            
-            result = json.loads(ai_response)
+            # Try to parse the JSON first without fixing
+            try:
+                result = json.loads(ai_response)
+                logger.info(f"✅ JSON parsed successfully without fixing")
+                # Validate required fields
+                required_fields = ['understood_intent', 'confidence', 'action', 'extracted_data']
+                for field in required_fields:
+                    if field not in result:
+                        logger.error(f"Missing required field: {field}")
+                        return None
+                
+                # Validate for current step
+                if not self._validate_enhanced_result(result, current_step, user_message):
+                    return None
+                
+                return result
+            except json.JSONDecodeError:
+                # Only fix JSON if it's actually invalid
+                logger.info(f"⚠️ JSON parsing failed, attempting to fix...")
+                ai_response = self._fix_json_format(ai_response)
+                logger.info(f"🔧 Fixed JSON: {ai_response}")
+                
+                result = json.loads(ai_response)
             
             # Validate required fields
             required_fields = ['understood_intent', 'confidence', 'action', 'extracted_data']
@@ -802,8 +819,10 @@ Response: {{
             json_str = re.sub(r',+', ',', json_str)
             
             # Fix missing commas between properties - more specific patterns
-            # Only add comma after closing brace if followed by a quoted key
+            # Only add comma after closing brace if followed by a quoted key (but not if already has comma)
             json_str = re.sub(r'}(\s*)"([^"]+)"\s*:', r'},\1"\2":', json_str)
+            # Fix cases where there's no comma between object properties
+            json_str = re.sub(r'"([^"]+)"\s*"([^"]+)"\s*:', r'"\1", "\2":', json_str)
             
             # Fix missing quotes around property names
             json_str = re.sub(r'([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1 "\2":', json_str)
