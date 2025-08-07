@@ -651,6 +651,75 @@ class DatabaseManager:
             logger.error(f"❌ Error completing order: {e}")
             return None
 
+    def remove_last_item_from_order(self, phone_number: str) -> bool:
+        """Remove the last added item from user's order"""
+        try:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=30000")
+                
+                # Get the last added item
+                cursor = conn.execute("""
+                    SELECT id, menu_item_id, quantity 
+                    FROM user_orders 
+                    WHERE phone_number = ? 
+                    ORDER BY added_at DESC 
+                    LIMIT 1
+                """, (phone_number,))
+                
+                last_item = cursor.fetchone()
+                
+                if last_item:
+                    # Remove the last item
+                    conn.execute("""
+                        DELETE FROM user_orders 
+                        WHERE id = ?
+                    """, (last_item[0],))
+                    
+                    conn.commit()
+                    logger.info(f"✅ Removed last item {last_item[1]} × {last_item[2]} from order for {phone_number}")
+                    return True
+                else:
+                    logger.warning(f"⚠️ No items found in order for {phone_number}")
+                    return False
+                
+        except Exception as e:
+            logger.error(f"❌ Error removing last item from order: {e}")
+            return False
+
+    def update_item_quantity(self, phone_number: str, item_id: int, new_quantity: int) -> bool:
+        """Update quantity for a specific item in the order"""
+        try:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=30000")
+                
+                # Get item price
+                cursor = conn.execute("SELECT price FROM menu_items WHERE id = ? AND available = 1", (item_id,))
+                item = cursor.fetchone()
+                
+                if not item:
+                    logger.error(f"❌ Item {item_id} not found or not available")
+                    return False
+                
+                price = item[0]
+                new_subtotal = price * new_quantity
+                
+                # Update the quantity and subtotal
+                conn.execute("""
+                    UPDATE user_orders 
+                    SET quantity = ?, subtotal = ?
+                    WHERE phone_number = ? AND menu_item_id = ?
+                """, (new_quantity, new_subtotal, phone_number, item_id))
+                
+                conn.commit()
+                logger.info(f"✅ Updated item {item_id} quantity to {new_quantity} for {phone_number}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Error updating item quantity: {e}")
+            return False
+
     # Conversation Logging
     def log_conversation(self, phone_number: str, message_type: str, content: str,
                          ai_response: str = None, current_step: str = None):

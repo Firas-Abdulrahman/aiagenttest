@@ -672,11 +672,30 @@ class EnhancedMessageHandler:
         language = user_context.get('language')
 
         if quantity and isinstance(quantity, int) and 1 <= quantity <= 50:
-            # Add item to order
             item_id = session.get('selected_item') if session else None
-            logger.info(f"🔧 Adding to order: item_id={item_id}, quantity={quantity} for {phone_number}")
+            logger.info(f"🔧 Processing quantity: item_id={item_id}, quantity={quantity} for {phone_number}")
+            
             if item_id:
-                success = self.db.add_item_to_order(phone_number, item_id, quantity)
+                # Check if this item already exists in the order
+                current_order = self.db.get_user_order(phone_number)
+                existing_item = None
+                
+                if current_order and current_order.get('items'):
+                    for item in current_order['items']:
+                        if item['menu_item_id'] == item_id:
+                            existing_item = item
+                            break
+                
+                if existing_item:
+                    # Update existing item quantity
+                    logger.info(f"🔄 Updating existing item quantity from {existing_item['quantity']} to {quantity}")
+                    success = self.db.update_item_quantity(phone_number, item_id, quantity)
+                    action = "updated"
+                else:
+                    # Add new item to order
+                    logger.info(f"➕ Adding new item to order: item_id={item_id}, quantity={quantity}")
+                    success = self.db.add_item_to_order(phone_number, item_id, quantity)
+                    action = "added"
                 
                 if success:
                     # Update session - clear selected_item to prevent re-adding
@@ -695,9 +714,15 @@ class EnhancedMessageHandler:
                     
                     if selected_item:
                         if language == 'arabic':
-                            message = f"تم إضافة {selected_item['item_name_ar']} × {quantity} إلى طلبك\n\nهل تريد إضافة المزيد من الأصناف؟\n\n1. نعم\n2. لا"
+                            if action == "updated":
+                                message = f"تم تحديث {selected_item['item_name_ar']} إلى × {quantity}\n\nهل تريد إضافة المزيد من الأصناف؟\n\n1. نعم\n2. لا"
+                            else:
+                                message = f"تم إضافة {selected_item['item_name_ar']} × {quantity} إلى طلبك\n\nهل تريد إضافة المزيد من الأصناف؟\n\n1. نعم\n2. لا"
                         else:
-                            message = f"Added {selected_item['item_name_en']} × {quantity} to your order\n\nWould you like to add more items?\n\n1. Yes\n2. No"
+                            if action == "updated":
+                                message = f"Updated {selected_item['item_name_en']} to × {quantity}\n\nWould you like to add more items?\n\n1. Yes\n2. No"
+                            else:
+                                message = f"Added {selected_item['item_name_en']} × {quantity} to your order\n\nWould you like to add more items?\n\n1. Yes\n2. No"
                         
                         return self._create_response(message)
                 else:
@@ -951,8 +976,30 @@ class EnhancedMessageHandler:
                     if sub_cat['id'] == sub_category_id:
                         return self._show_sub_category_items(phone_number, sub_cat, language)
         elif previous_step == 'waiting_for_quantity':
-            # Going back to quantity - show item selection again
-            return self._create_response(f"{'تم الرجوع للخطوة السابقة' if language == 'arabic' else 'Returned to previous step'}\n\n{'كم الكمية المطلوبة؟' if language == 'arabic' else 'How many do you need?'}")
+            # Going back to quantity - remove the last added item and show quantity selection again
+            if current_step == 'waiting_for_additional':
+                # Remove the last added item from the order
+                success = self.db.remove_last_item_from_order(phone_number)
+                if success:
+                    logger.info(f"🔙 Removed last item when going back from {current_step} to {previous_step}")
+                else:
+                    logger.warning(f"⚠️ Failed to remove last item when going back from {current_step} to {previous_step}")
+            
+            # Update session to quantity step
+            self.db.create_or_update_session(
+                phone_number, previous_step, language,
+                session.get('customer_name') if session else None,
+                selected_main_category=session.get('selected_main_category') if session else None,
+                selected_sub_category=session.get('selected_sub_category') if session else None,
+                selected_item=session.get('selected_item') if session else None
+            )
+            
+            # Show quantity selection message
+            if language == 'arabic':
+                message = "تم إلغاء العنصر السابق. كم الكمية المطلوبة؟"
+            else:
+                message = "Previous item cancelled. How many do you need?"
+            return self._create_response(message)
         
         # Fallback message
         if language == 'arabic':
@@ -1336,8 +1383,26 @@ class EnhancedMessageHandler:
             quantity = int(numbers[0])
             logger.info(f"🔢 Extracted quantity: {quantity}")
             if quantity > 0 and quantity <= 50:  # Reasonable limit
-                # Add item to order
-                success = self.db.add_item_to_order(phone_number, item_id, quantity)
+                # Check if this item already exists in the order
+                current_order = self.db.get_user_order(phone_number)
+                existing_item = None
+                
+                if current_order and current_order.get('items'):
+                    for item in current_order['items']:
+                        if item['menu_item_id'] == item_id:
+                            existing_item = item
+                            break
+                
+                if existing_item:
+                    # Update existing item quantity
+                    logger.info(f"🔄 Updating existing item quantity from {existing_item['quantity']} to {quantity}")
+                    success = self.db.update_item_quantity(phone_number, item_id, quantity)
+                    action = "updated"
+                else:
+                    # Add new item to order
+                    logger.info(f"➕ Adding new item to order: item_id={item_id}, quantity={quantity}")
+                    success = self.db.add_item_to_order(phone_number, item_id, quantity)
+                    action = "added"
                 
                 if success:
                     # Update session - clear selected_item to prevent re-adding
@@ -1350,12 +1415,18 @@ class EnhancedMessageHandler:
                     )
                     
                     if language == 'arabic':
-                        message = f"تم إضافة المنتج إلى طلبك\n"
+                        if action == "updated":
+                            message = f"تم تحديث الكمية إلى {quantity}\n"
+                        else:
+                            message = f"تم إضافة المنتج إلى طلبك\n"
                         message += "هل تريد إضافة المزيد من الأصناف؟\n\n"
                         message += "1. نعم\n"
                         message += "2. لا"
                     else:
-                        message = f"Item added to your order\n"
+                        if action == "updated":
+                            message = f"Quantity updated to {quantity}\n"
+                        else:
+                            message = f"Item added to your order\n"
                         message += "Would you like to add more items?\n\n"
                         message += "1. Yes\n"
                         message += "2. No"
