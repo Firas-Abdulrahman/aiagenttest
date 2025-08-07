@@ -146,26 +146,35 @@ INTELLIGENT RESPONSE RULES:
 4. WORKFLOW STEPS:
    - waiting_for_language: Detect language preference
    - waiting_for_main_category: User selects from 3 main categories
-   - waiting_for_sub_category: User selects specific sub-category
-   - waiting_for_item: User selects specific item
+   - waiting_for_sub_category: User selects specific sub-category (e.g., "موهيتو", "ايس كوفي", "فرابتشينو")
+   - waiting_for_item: User selects specific item (e.g., "موهيتو ازرق", "ايس امريكانو")
    - waiting_for_quantity: User specifies how many
    - waiting_for_additional: Ask if they want more items
    - waiting_for_service: Dine-in or delivery
    - waiting_for_location: Table number or address
    - waiting_for_confirmation: Final order confirmation
 
+5. STEP-SPECIFIC RULES:
+   - At waiting_for_sub_category: If user says "موهيتو", use action "sub_category_selection"
+   - At waiting_for_sub_category: If user says "موهيتو ازرق", use action "item_selection"
+   - At waiting_for_item: If user says "موهيتو", navigate to mojito sub-category
+   - At waiting_for_item: If user says "موهيتو ازرق", select that specific item
+
 RESPOND WITH CLEAN JSON (no extra text):
 =======================================
 {{
     "understood_intent": "Clear description of what the user wants",
     "confidence": "high/medium/low",
-    "action": "intelligent_suggestion/language_selection/category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu",
+    "action": "intelligent_suggestion/language_selection/category_selection/sub_category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu",
     "extracted_data": {{
         "language": "arabic/english/null",
         "suggested_main_category": "number if you can intelligently suggest main category",
         "suggested_sub_category": "number if you can intelligently suggest specific sub-category",
+        "sub_category_id": "number or null",
+        "sub_category_name": "string or null",
         "category_id": "number or null",
         "item_id": "number or null",
+        "item_name": "string or null",
         "quantity": "number or null",
         "yes_no": "yes/no/null",
         "service_type": "dine-in/delivery/null",
@@ -217,9 +226,9 @@ Response: {{
     "response_message": "فهمت أنك تريد شيء بارد ومنعش! اختيار ممتاز لإنعاش يومك.\\n\\nأنصحك بالشاي المثلج - بارد ومنعش تماماً:\\n\\n1. شاي مثلج بالخوخ - 5000 دينار\\n2. شاي مثلج بفاكهة العاطفة - 5000 دينار\\n\\nأو جرب الموهيتو إذا كنت تحب شيء أكثر انتعاشاً مع النعناع!\\n\\nاختر الرقم أو قلي أيش يعجبك!"
 }}
 
-User: "موهيتو"
+User: "موهيتو" (at waiting_for_sub_category step)
 Response: {{
-    "understood_intent": "User wants to see mojito sub-category",
+    "understood_intent": "User wants to select mojito sub-category",
     "confidence": "high",
     "action": "sub_category_selection",
     "extracted_data": {{
@@ -237,7 +246,27 @@ Response: {{
     "response_message": "ممتاز! سأعرض لك قائمة الموهيتو:\\n\\n1. موهيتو ازرق - 5000 دينار\\n2. موهيتو فاكهة العاطفة - 5000 دينار\\n3. موهيتو توت ازرق - 5000 دينار\\n4. موهيتو روزبيري - 5000 دينار\\n5. موهيتو فراولة - 5000 دينار\\n6. موهيتو بينا كولادا - 5000 دينار\\n7. موهيتو علكة - 5000 دينار\\n8. موهيتو دراغون - 5000 دينار\\n9. موهيتو هيف - 5000 دينار\\n10. موهيتو رمان - 5000 دينار\\n11. موهيتو خوخ - 5000 دينار\\n\\nاختر الرقم الذي تفضله!"
 }}
 
-User: "موهيتو ازرق"
+User: "موهيتو" (at waiting_for_item step)
+Response: {{
+    "understood_intent": "User wants to navigate to mojito sub-category",
+    "confidence": "high",
+    "action": "sub_category_selection",
+    "extracted_data": {{
+        "language": "arabic",
+        "sub_category_name": "موهيتو",
+        "sub_category_id": 6,
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! سأعرض لك قائمة الموهيتو:\\n\\n1. موهيتو ازرق - 5000 دينار\\n2. موهيتو فاكهة العاطفة - 5000 دينار\\n3. موهيتو توت ازرق - 5000 دينار\\n4. موهيتو روزبيري - 5000 دينار\\n5. موهيتو فراولة - 5000 دينار\\n6. موهيتو بينا كولادا - 5000 دينار\\n7. موهيتو علكة - 5000 دينار\\n8. موهيتو دراغون - 5000 دينار\\n9. موهيتو هيف - 5000 دينار\\n10. موهيتو رمان - 5000 دينار\\n11. موهيتو خوخ - 5000 دينار\\n\\nاختر الرقم الذي تفضله!"
+}}
+
+User: "موهيتو ازرق" (at waiting_for_item step)
 Response: {{
     "understood_intent": "User wants to order Blue Mojito specifically",
     "confidence": "high",
@@ -254,6 +283,26 @@ Response: {{
     }},
     "clarification_needed": false,
     "response_message": "ممتاز! تم اختيار: موهيتو ازرق\\nالسعر: 5000 دينار\\nكم الكمية المطلوبة؟"
+}}
+
+User: "ايس كوفي" (at waiting_for_sub_category step)
+Response: {{
+    "understood_intent": "User wants to select iced coffee sub-category",
+    "confidence": "high",
+    "action": "sub_category_selection",
+    "extracted_data": {{
+        "language": "arabic",
+        "sub_category_name": "ايس كوفي",
+        "sub_category_id": 1,
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! سأعرض لك قائمة ايس كوفي:\\n\\n1. ايس كوفي - 3000 دينار\\n2. ايس امريكانو - 4000 دينار\\n3. لاتيه مثلج عادي - 4000 دينار\\n4. لاتيه مثلج كراميل - 5000 دينار\\n5. لاتيه مثلج فانيلا - 5000 دينار\\n6. لاتيه مثلج بندق - 5000 دينار\\n7. ايس موكا - 5000 دينار\\n8. لاتيه اسباني مثلج - 6000 دينار\\n\\nاختر الرقم الذي تفضله!"
 }}
 
 Now analyze the user's message and respond with appropriate JSON."""

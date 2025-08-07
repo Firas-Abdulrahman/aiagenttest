@@ -183,6 +183,27 @@ class EnhancedMessageHandler:
             # Handle sub-category selection (e.g., user asks for "موهيتو" sub-category)
             return self._handle_sub_category_selection(phone_number, extracted_data, session, user_context)
         elif action == 'item_selection':
+            # Check if we're at the right step for item selection
+            current_step = user_context.get('current_step')
+            if current_step == 'waiting_for_sub_category':
+                # User is trying to select an item while still at sub-category step
+                # This might be a sub-category selection instead
+                item_name = extracted_data.get('item_name')
+                if item_name and item_name.lower() in ['موهيتو', 'mojito']:
+                    logger.info(f"🔄 Converting item_selection to sub_category_selection for '{item_name}' at step '{current_step}'")
+                    # Convert to sub-category selection
+                    return self._handle_sub_category_selection(phone_number, {
+                        'sub_category_name': item_name,
+                        'sub_category_id': 6  # Mojito sub-category ID
+                    }, session, user_context)
+                else:
+                    # Invalid - user must select sub-category first
+                    language = user_context.get('language', 'arabic')
+                    if language == 'arabic':
+                        return self._create_response("الرجاء اختيار الفئة الفرعية أولاً قبل اختيار المنتج المحدد.")
+                    else:
+                        return self._create_response("Please select a sub-category first before selecting a specific item.")
+            
             # Special handling for item selection - can work across different steps
             return self._handle_intelligent_item_selection(phone_number, extracted_data, session, user_context)
         elif action == 'quantity_selection':
@@ -500,6 +521,14 @@ class EnhancedMessageHandler:
         current_step = user_context.get('current_step')
         
         logger.info(f"🧠 Intelligent item selection: '{item_name}' at step '{current_step}'")
+        
+        # Validate that we're at the correct step for item selection
+        if current_step == 'waiting_for_sub_category':
+            logger.warning(f"❌ Invalid: Attempting item selection at sub-category step")
+            if language == 'arabic':
+                return self._create_response("الرجاء اختيار الفئة الفرعية أولاً قبل اختيار المنتج المحدد.")
+            else:
+                return self._create_response("Please select a sub-category first before selecting a specific item.")
         
         # If we have a direct item ID, use it
         if item_id:

@@ -365,6 +365,21 @@ Response: {
         }
         return descriptions.get(step, f'Unknown step: {step}')
 
+    def _get_available_actions_for_step(self, step: str) -> str:
+        """Get available actions for the current step"""
+        actions = {
+            'waiting_for_language': 'language_selection, back_navigation',
+            'waiting_for_main_category': 'category_selection, intelligent_suggestion, back_navigation',
+            'waiting_for_sub_category': 'sub_category_selection, intelligent_suggestion, back_navigation',
+            'waiting_for_item': 'item_selection, sub_category_selection, back_navigation',
+            'waiting_for_quantity': 'quantity_selection, back_navigation',
+            'waiting_for_additional': 'yes_no, back_navigation',
+            'waiting_for_service': 'service_selection, back_navigation',
+            'waiting_for_location': 'location_input, back_navigation',
+            'waiting_for_confirmation': 'confirmation, back_navigation'
+        }
+        return actions.get(step, 'unknown')
+
     def _generate_enhanced_prompt(self, user_message: str, current_step: str, context: Dict) -> str:
         """Generate enhanced prompt for natural language understanding"""
         
@@ -388,6 +403,10 @@ CURRENT CONVERSATION STATE:
 - Step: {current_step} ({context['step_description']})
 - Language: {context['language']}
 - User Message: "{user_message}"
+
+STEP-SPECIFIC CONTEXT:
+- Current Step: {current_step}
+- Available Actions: {self._get_available_actions_for_step(current_step)}
 
 CONVERSATION CONTEXT:
 {conversation_context}
