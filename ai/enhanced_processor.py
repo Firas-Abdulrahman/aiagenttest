@@ -765,6 +765,25 @@ Response: {{
             try:
                 result = json.loads(ai_response)
                 logger.info(f"✅ JSON parsed successfully without fixing")
+                
+                # Fix malformed structure where action is inside extracted_data
+                if 'extracted_data' in result and isinstance(result['extracted_data'], dict):
+                    extracted_data = result['extracted_data']
+                    if 'action' in extracted_data and 'action' not in result:
+                        # Move action from extracted_data to top level
+                        result['action'] = extracted_data.pop('action')
+                        logger.info(f"🔧 Fixed malformed structure: moved action to top level")
+                    
+                    if 'confidence' in extracted_data and 'confidence' not in result:
+                        # Move confidence from extracted_data to top level
+                        result['confidence'] = extracted_data.pop('confidence')
+                        logger.info(f"🔧 Fixed malformed structure: moved confidence to top level")
+                    
+                    if 'understood_intent' in extracted_data and 'understood_intent' not in result:
+                        # Move understood_intent from extracted_data to top level
+                        result['understood_intent'] = extracted_data.pop('understood_intent')
+                        logger.info(f"🔧 Fixed malformed structure: moved understood_intent to top level")
+                
                 # Validate required fields
                 required_fields = ['understood_intent', 'confidence', 'action', 'extracted_data']
                 for field in required_fields:
@@ -784,6 +803,21 @@ Response: {{
                 logger.info(f"🔧 Fixed JSON: {ai_response}")
                 
                 result = json.loads(ai_response)
+                
+                # Apply the same structure fixes after JSON fixing
+                if 'extracted_data' in result and isinstance(result['extracted_data'], dict):
+                    extracted_data = result['extracted_data']
+                    if 'action' in extracted_data and 'action' not in result:
+                        result['action'] = extracted_data.pop('action')
+                        logger.info(f"🔧 Fixed malformed structure: moved action to top level")
+                    
+                    if 'confidence' in extracted_data and 'confidence' not in result:
+                        result['confidence'] = extracted_data.pop('confidence')
+                        logger.info(f"🔧 Fixed malformed structure: moved confidence to top level")
+                    
+                    if 'understood_intent' in extracted_data and 'understood_intent' not in result:
+                        result['understood_intent'] = extracted_data.pop('understood_intent')
+                        logger.info(f"🔧 Fixed malformed structure: moved understood_intent to top level")
             
             # Validate required fields
             required_fields = ['understood_intent', 'confidence', 'action', 'extracted_data']
