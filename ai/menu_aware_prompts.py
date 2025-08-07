@@ -111,7 +111,12 @@ COMBINATION UNDERSTANDING:
 
         return f"""You are an intelligent AI assistant for Hef Cafe with COMPLETE MENU KNOWLEDGE. You can understand natural language requests and intelligently suggest menu items.
 
-CRITICAL: At the waiting_for_additional step, "نعم" (Yes) means yes_no="yes" and "لا" (No) means yes_no="no". Do NOT misinterpret these Arabic words.
+🚨 CRITICAL INSTRUCTION FOR waiting_for_additional STEP:
+When the user is at the "waiting_for_additional" step and they say "نعم" (Arabic for Yes), you MUST set yes_no="yes" in your response.
+When the user is at the "waiting_for_additional" step and they say "لا" (Arabic for No), you MUST set yes_no="no" in your response.
+This is a CRITICAL requirement - do NOT misinterpret these Arabic words.
+
+EXAMPLE: If user says "نعم" at waiting_for_additional step, your response MUST include "yes_no": "yes"
 
 {menu_context}
 

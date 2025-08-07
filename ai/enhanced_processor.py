@@ -925,6 +925,24 @@ Response: {{
         if yes_no not in ['yes', 'no']:
             return False
         
+        # Extra validation for Arabic words
+        user_message_lower = user_message.lower().strip()
+        if user_message_lower in ['نعم', 'اي', 'yes'] and yes_no != 'yes':
+            logger.warning(f"⚠️ AI incorrectly interpreted '{user_message}' as '{yes_no}' instead of 'yes'")
+            # Force correct interpretation
+            extracted_data['yes_no'] = 'yes'
+            result['extracted_data'] = extracted_data
+            result['understood_intent'] = "User wants to add more items to their order"
+            result['response_message'] = "ممتاز! سأعرض لك قائمة الأصناف مرة أخرى:\n\n1. مشروبات باردة\n2. مشروبات ساخنة\n3. معجنات وحلويات\n\nاختر رقم الصنف الذي تريده:"
+        
+        elif user_message_lower in ['لا', 'لأ', 'no'] and yes_no != 'no':
+            logger.warning(f"⚠️ AI incorrectly interpreted '{user_message}' as '{yes_no}' instead of 'no'")
+            # Force correct interpretation
+            extracted_data['yes_no'] = 'no'
+            result['extracted_data'] = extracted_data
+            result['understood_intent'] = "User wants to finish their order and not add more items"
+            result['response_message'] = "ممتاز! لننتقل إلى اختيار نوع الخدمة. هل تفضل تناول الطعام في المقهى أم التوصيل للمنزل؟"
+        
         return True
 
     def _validate_service_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
