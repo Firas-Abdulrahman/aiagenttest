@@ -871,7 +871,7 @@ Response: {{
     def _validate_category_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
         """Validate category selection step"""
         action = result.get('action')
-        valid_actions = ['category_selection', 'intelligent_suggestion', 'show_menu', 'help_request']
+        valid_actions = ['category_selection', 'intelligent_suggestion', 'show_menu', 'help_request', 'conversational_response']
         
         if action not in valid_actions:
             return False
@@ -907,7 +907,7 @@ Response: {{
     def _validate_sub_category_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
         """Validate sub-category selection step"""
         action = result.get('action')
-        valid_actions = ['category_selection', 'item_selection', 'intelligent_suggestion']
+        valid_actions = ['category_selection', 'item_selection', 'intelligent_suggestion', 'conversational_response']
         
         if action not in valid_actions:
             return False
@@ -917,7 +917,7 @@ Response: {{
     def _validate_item_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
         """Validate item selection step"""
         action = result.get('action')
-        valid_actions = ['item_selection', 'category_selection', 'intelligent_suggestion']
+        valid_actions = ['item_selection', 'category_selection', 'intelligent_suggestion', 'conversational_response']
         
         if action not in valid_actions:
             return False
