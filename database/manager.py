@@ -525,9 +525,16 @@ class DatabaseManager:
 
     def update_order_details(self, phone_number: str, service_type: str = None,
                              location: str = None, customizations: str = None) -> bool:
-        """Update order service details"""
+        """Update order service details using UPSERT"""
         try:
             with sqlite3.connect(self.db_path) as conn:
+                # First, ensure the record exists
+                conn.execute("""
+                    INSERT OR IGNORE INTO order_details (phone_number)
+                    VALUES (?)
+                """, (phone_number,))
+                
+                # Build the UPDATE query
                 updates = []
                 params = []
 
@@ -549,6 +556,7 @@ class DatabaseManager:
                         WHERE phone_number = ?
                     """, params)
                     conn.commit()
+                    logger.info(f"✅ Updated order details for {phone_number}: service_type={service_type}, location={location}")
 
                 return True
         except Exception as e:

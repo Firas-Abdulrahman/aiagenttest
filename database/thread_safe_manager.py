@@ -590,45 +590,33 @@ class ThreadSafeDatabaseManager:
         """Update order details with thread safety"""
         try:
             with self.get_db_connection() as conn:
-                # Get current order
-                order = conn.execute("""
-                    SELECT id FROM user_orders WHERE phone_number = ?
-                """, (phone_number,)).fetchone()
+                # First, ensure the order_details record exists
+                conn.execute("""
+                    INSERT OR IGNORE INTO order_details (phone_number)
+                    VALUES (?)
+                """, (phone_number,))
                 
-                if order:
-                    # Update existing order
-                    update_fields = []
-                    values = []
-                    for field, value in kwargs.items():
-                        if value is not None:
-                            update_fields.append(f"{field} = ?")
-                            values.append(value)
-                    
-                    if update_fields:
-                        values.append(phone_number)
-                        query = f"""
-                            UPDATE user_orders 
-                            SET {', '.join(update_fields)}, updated_at = datetime('now')
-                            WHERE phone_number = ?
-                        """
-                        conn.execute(query, values)
-                        conn.commit()
-                        logger.info(f"✅ Updated order details for {phone_number}")
-                        return True
-                else:
-                    # Create new order
-                    fields = ['phone_number'] + list(kwargs.keys())
-                    placeholders = ['?'] * len(fields)
-                    values = [phone_number] + list(kwargs.values())
-                    
+                # Build the UPDATE query for order_details table
+                update_fields = []
+                values = []
+                for field, value in kwargs.items():
+                    if value is not None:
+                        update_fields.append(f"{field} = ?")
+                        values.append(value)
+                
+                if update_fields:
+                    values.append(phone_number)
                     query = f"""
-                        INSERT INTO user_orders ({', '.join(fields)}, created_at, updated_at)
-                        VALUES ({', '.join(placeholders)}, datetime('now'), datetime('now'))
+                        UPDATE order_details 
+                        SET {', '.join(update_fields)}
+                        WHERE phone_number = ?
                     """
                     conn.execute(query, values)
                     conn.commit()
-                    logger.info(f"✅ Created new order for {phone_number}")
+                    logger.info(f"✅ Updated order details for {phone_number}: {kwargs}")
                     return True
+                
+                return True
                     
         except Exception as e:
             logger.error(f"❌ Error updating order details: {e}")
