@@ -668,33 +668,46 @@ class ThreadSafeDatabaseManager:
             return False
 
     def update_item_quantity(self, phone_number: str, item_id: int, new_quantity: int) -> bool:
-        """Update quantity for a specific item in the order with thread safety"""
+        """Update quantity of existing item in user's order (thread-safe)"""
         try:
             with self.get_db_connection() as conn:
-                # Get item price
-                cursor = conn.execute("SELECT price FROM menu_items WHERE id = ? AND available = 1", (item_id,))
-                item = cursor.fetchone()
-                
-                if not item:
-                    logger.error(f"❌ Item {item_id} not found or not available")
-                    return False
-                
-                price = item[0]
-                new_subtotal = price * new_quantity
-                
-                # Update the quantity and subtotal
-                conn.execute("""
+                # Update the quantity of the existing item
+                cursor = conn.execute("""
                     UPDATE user_orders 
-                    SET quantity = ?, subtotal = ?
+                    SET quantity = ?, subtotal = ? * (SELECT price FROM menu_items WHERE id = ?)
                     WHERE phone_number = ? AND menu_item_id = ?
-                """, (new_quantity, new_subtotal, phone_number, item_id))
+                """, (new_quantity, new_quantity, item_id, phone_number, item_id))
                 
                 conn.commit()
-                logger.info(f"✅ Updated item {item_id} quantity to {new_quantity} for {phone_number}")
-                return True
+                return cursor.rowcount > 0
                 
         except Exception as e:
             logger.error(f"❌ Error updating item quantity: {e}")
+            return False
+
+    def delete_menu_item(self, item_id: int) -> bool:
+        """Delete a menu item by setting it as unavailable (thread-safe)"""
+        try:
+            with self.get_db_connection() as conn:
+                # Set the item as unavailable instead of actually deleting it
+                cursor = conn.execute("""
+                    UPDATE menu_items 
+                    SET available = 0
+                    WHERE id = ?
+                """, (item_id,))
+                
+                conn.commit()
+                success = cursor.rowcount > 0
+                
+                if success:
+                    logger.info(f"✅ Successfully deleted menu item with ID: {item_id}")
+                else:
+                    logger.warning(f"⚠️ Menu item with ID {item_id} not found or already deleted")
+                
+                return success
+                
+        except Exception as e:
+            logger.error(f"❌ Error deleting menu item {item_id}: {e}")
             return False
 
     # Utility Methods

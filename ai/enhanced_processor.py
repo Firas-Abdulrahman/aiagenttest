@@ -829,10 +829,6 @@ Response: {{
         action = result.get('action')
         extracted_data = result.get('extracted_data', {})
         
-        # Accept intelligent suggestions and navigation actions
-        if action in ['intelligent_suggestion', 'back_navigation', 'conversational_response']:
-            return True
-        
         # Step-specific validation
         validators = {
             'waiting_for_language': self._validate_language_step,
@@ -850,6 +846,10 @@ Response: {{
         validator = validators.get(current_step)
         if validator:
             return validator(result, extracted_data, user_message)
+        
+        # Accept intelligent suggestions and navigation actions if no step-specific validation
+        if action in ['intelligent_suggestion', 'back_navigation', 'conversational_response']:
+            return True
         
         return True
 
@@ -878,6 +878,25 @@ Response: {{
             category_id = extracted_data.get('category_id')
             if category_id and (category_id < 1 or category_id > 3):
                 return False
+        
+        # Extra validation for numeric inputs at category step
+        user_message_lower = user_message.lower().strip()
+        if user_message_lower in ['1', '2', '3', '4', '5', '6', '7', '١', '٢', '٣', '٤', '٥', '٦', '٧']:
+            # Force correct interpretation for category step
+            if user_message_lower in ['1', '١']:
+                extracted_data['suggested_main_category'] = 1
+            elif user_message_lower in ['2', '٢']:
+                extracted_data['suggested_main_category'] = 2
+            elif user_message_lower in ['3', '٣']:
+                extracted_data['suggested_main_category'] = 3
+            else:
+                # Numbers 4-7 should map to main category 1 (Cold Drinks)
+                extracted_data['suggested_main_category'] = 1
+            
+            result['extracted_data'] = extracted_data
+            result['action'] = 'category_selection'
+            result['understood_intent'] = f"User wants to select main category number {extracted_data['suggested_main_category']}"
+            logger.info(f"🔧 Fixed category selection: {user_message} -> main_category={extracted_data['suggested_main_category']}")
         
         return True
 

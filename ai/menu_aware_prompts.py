@@ -162,6 +162,13 @@ INTELLIGENT RESPONSE RULES:
    - waiting_for_confirmation: Final order confirmation
 
 5. STEP-SPECIFIC RULES:
+   - At waiting_for_category: If user says "1" or "١", use action "category_selection" with suggested_main_category=1
+   - At waiting_for_category: If user says "2" or "٢", use action "category_selection" with suggested_main_category=2  
+   - At waiting_for_category: If user says "3" or "٣", use action "category_selection" with suggested_main_category=3
+   - At waiting_for_category: If user says "4" or "٤", use action "category_selection" with suggested_main_category=1 (Cold Drinks)
+   - At waiting_for_category: If user says "5" or "٥", use action "category_selection" with suggested_main_category=1 (Cold Drinks)
+   - At waiting_for_category: If user says "6" or "٦", use action "category_selection" with suggested_main_category=1 (Cold Drinks)
+   - At waiting_for_category: If user says "7" or "٧", use action "category_selection" with suggested_main_category=1 (Cold Drinks)
    - At waiting_for_sub_category: If user says "موهيتو", use action "sub_category_selection"
    - At waiting_for_sub_category: If user says "موهيتو ازرق", use action "item_selection"
    - At waiting_for_item: If user says "موهيتو", navigate to mojito sub-category
@@ -195,6 +202,66 @@ RESPOND WITH CLEAN JSON (no extra text):
 
 CRITICAL EXAMPLES:
 ==================
+User: "1" (at waiting_for_category step)
+Response: {{
+    "understood_intent": "User wants to select main category number 1 (Cold Drinks)",
+    "confidence": "high",
+    "action": "category_selection",
+    "extracted_data": {{
+        "language": "arabic",
+        "suggested_main_category": 1,
+        "suggested_sub_category": null,
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!"
+}}
+
+User: "4" (at waiting_for_category step)
+Response: {{
+    "understood_intent": "User wants to select main category number 1 (Cold Drinks)",
+    "confidence": "high",
+    "action": "category_selection",
+    "extracted_data": {{
+        "language": "arabic",
+        "suggested_main_category": 1,
+        "suggested_sub_category": null,
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!"
+}}
+
+User: "6" (at waiting_for_category step)
+Response: {{
+    "understood_intent": "User wants to select main category number 1 (Cold Drinks)",
+    "confidence": "high",
+    "action": "category_selection",
+    "extracted_data": {{
+        "language": "arabic",
+        "suggested_main_category": 1,
+        "suggested_sub_category": null,
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!"
+}}
+
 User: "I want something cold and sweet"
 Response: {{
     "understood_intent": "User wants a cold and sweet drink",
