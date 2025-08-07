@@ -801,11 +801,9 @@ Response: {{
             # Fix multiple commas
             json_str = re.sub(r',+', ',', json_str)
             
-            # Fix missing commas between properties - improved pattern
-            json_str = re.sub(r'}(\s*)"', r'},\1"', json_str)
-            json_str = re.sub(r'(\d+)(\s*)"', r'\1,\2"', json_str)
-            json_str = re.sub(r'("[\w\s]+")(\s*)"', r'\1,\2"', json_str)
-            json_str = re.sub(r'(true|false|null)(\s*)"', r'\1,\2"', json_str)
+            # Fix missing commas between properties - more specific patterns
+            # Only add comma after closing brace if followed by a quoted key
+            json_str = re.sub(r'}(\s*)"([^"]+)"\s*:', r'},\1"\2":', json_str)
             
             # Fix missing quotes around property names
             json_str = re.sub(r'([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1 "\2":', json_str)
