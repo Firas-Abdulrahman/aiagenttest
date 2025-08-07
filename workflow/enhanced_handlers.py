@@ -928,12 +928,30 @@ class EnhancedMessageHandler:
             'waiting_for_item': 'waiting_for_sub_category', 
             'waiting_for_quantity': 'waiting_for_item',
             'waiting_for_additional': 'waiting_for_quantity',
-            'waiting_for_service': 'waiting_for_category',  # Go back to main menu
+            'waiting_for_service': 'waiting_for_additional',  # Go back to add more items prompt
             'waiting_for_location': 'waiting_for_service',
             'waiting_for_confirmation': 'waiting_for_location'
         }
         
         previous_step = back_transitions.get(current_step)
+        
+        # Special case: if at waiting_for_category, check if we should go back to add more items
+        if current_step == 'waiting_for_category' and not previous_step:
+            # Check if there's an existing order with items (indicating we came from add more items)
+            current_order = self.db.get_current_order(phone_number)
+            if current_order and current_order.get('items'):
+                # Go back to add more items prompt
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_additional', language,
+                    session.get('customer_name') if session else None
+                )
+                
+                # Show the add more items prompt
+                if language == 'arabic':
+                    message = "هل تريد إضافة المزيد من الأصناف؟\n1. نعم\n2. لا"
+                else:
+                    message = "Do you want to add more items?\n1. Yes\n2. No"
+                return self._create_response(message)
         
         if not previous_step:
             # Can't go back further
@@ -985,6 +1003,20 @@ class EnhancedMessageHandler:
                 for sub_cat in sub_categories:
                     if sub_cat['id'] == sub_category_id:
                         return self._show_sub_category_items(phone_number, sub_cat, language)
+        elif previous_step == 'waiting_for_additional':
+            # Going back to add more items prompt
+            self.db.create_or_update_session(
+                phone_number, previous_step, language,
+                session.get('customer_name') if session else None
+            )
+            
+            # Show the add more items prompt
+            if language == 'arabic':
+                message = "هل تريد إضافة المزيد من الأصناف؟\n1. نعم\n2. لا"
+            else:
+                message = "Do you want to add more items?\n1. Yes\n2. No"
+            return self._create_response(message)
+            
         elif previous_step == 'waiting_for_quantity':
             # Going back to quantity - remove the last added item and show quantity selection again
             if current_step == 'waiting_for_additional':
