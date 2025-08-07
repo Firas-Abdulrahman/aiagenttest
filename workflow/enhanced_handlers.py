@@ -34,6 +34,9 @@ class EnhancedMessageHandler:
             current_step = session.get('current_step') if session else 'waiting_for_language'
             user_context = self._build_user_context(phone_number, session, current_step, text)
             
+            # Update user context with extracted customer name
+            user_context['customer_name'] = customer_name
+            
             # Check for session reset (fresh start intent or timeout)
             should_reset = self._should_reset_session(session, text)
             if should_reset:
@@ -54,6 +57,7 @@ class EnhancedMessageHandler:
                     # Update context after session reset
                     current_step = 'waiting_for_language'
                     user_context = self._build_user_context(phone_number, session, current_step, text)
+                    user_context['customer_name'] = customer_name
             else:
                 logger.info(f"📋 Session check for {phone_number}: should_reset={should_reset}, current_step={session.get('current_step') if session else 'None'}")
 
@@ -797,54 +801,60 @@ class EnhancedMessageHandler:
         return self._create_response(self._get_fallback_message('waiting_for_service', language))
 
     def _handle_ai_location_input(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
-        """Handle AI location input"""
-        location = extracted_data.get('location')
-        language = user_context.get('language')
-
-        if location and len(location.strip()) > 0:
-            # Clean location (remove trailing commas, etc.)
-            clean_location = location.strip().rstrip(',')
-            
-            # Check if this is a table number for dine-in service
-            current_order = self.db.get_current_order(phone_number)
-            service_type = None
-            if current_order and current_order.get('details'):
-                service_type = current_order['details'].get('service_type')
-            
-            if service_type == 'dine-in':
-                # Validate table number (1-7)
-                try:
-                    # Convert Arabic numerals to English
-                    clean_location = self._convert_arabic_numerals(clean_location)
-                    table_num = int(clean_location)
-                    
-                    if table_num < 1 or table_num > 7:
-                        if language == 'arabic':
-                            return self._create_response("رقم الطاولة غير صحيح. الرجاء اختيار رقم من 1 إلى 7:")
-                        else:
-                            return self._create_response("Invalid table number. Please choose a number from 1 to 7:")
-                    
-                    clean_location = str(table_num)  # Use clean number
-                    
-                except ValueError:
+        """Handle AI location input with enhanced table number validation"""
+        language = user_context.get('language', 'arabic')
+        location = extracted_data.get('location', '').strip()
+        
+        # Check for table number validation from AI processor
+        table_validation = extracted_data.get('table_number_validation')
+        if table_validation == 'invalid':
+            invalid_number = extracted_data.get('invalid_table_number')
+            if language == 'arabic':
+                return self._create_response(f"رقم الطاولة {invalid_number} غير صحيح. الرجاء اختيار رقم من 1 إلى 7:")
+            else:
+                return self._create_response(f"Table number {invalid_number} is invalid. Please choose a number from 1 to 7:")
+        
+        # Clean location (remove trailing commas, etc.)
+        clean_location = location.rstrip(',')
+        
+        # Check if this is a table number for dine-in service
+        current_order = self.db.get_current_order(phone_number)
+        service_type = None
+        if current_order and current_order.get('details'):
+            service_type = current_order['details'].get('service_type')
+        
+        if service_type == 'dine-in':
+            # Additional validation for table number (1-7)
+            try:
+                # Convert Arabic numerals to English
+                clean_location = self._convert_arabic_numerals(clean_location)
+                table_num = int(clean_location)
+                
+                if table_num < 1 or table_num > 7:
                     if language == 'arabic':
-                        return self._create_response("الرجاء إدخال رقم صحيح للطاولة (1-7):")
+                        return self._create_response("رقم الطاولة غير صحيح. الرجاء اختيار رقم من 1 إلى 7:")
                     else:
-                        return self._create_response("Please enter a valid table number (1-7):")
-            
-            # Update session step
-            self.db.create_or_update_session(
-                phone_number, 'waiting_for_confirmation', language,
-                session.get('customer_name') if session else None
-            )
-            
-            # Update order details with clean location
-            self.db.update_order_details(phone_number, location=clean_location)
-            
-            # Show order summary
-            return self._show_order_summary(phone_number, session, user_context, clean_location)
-
-        return self._create_response(self._get_fallback_message('waiting_for_location', language))
+                        return self._create_response("Invalid table number. Please choose a number from 1 to 7:")
+                
+                clean_location = str(table_num)  # Use clean number
+                
+            except ValueError:
+                if language == 'arabic':
+                    return self._create_response("الرجاء إدخال رقم صحيح للطاولة (1-7):")
+                else:
+                    return self._create_response("Please enter a valid table number (1-7):")
+        
+        # Update session step
+        self.db.create_or_update_session(
+            phone_number, 'waiting_for_confirmation', language,
+            session.get('customer_name') if session else None
+        )
+        
+        # Update order details with clean location
+        self.db.update_order_details(phone_number, location=clean_location)
+        
+        # Show order summary
+        return self._show_order_summary(phone_number, session, user_context, clean_location)
 
     def _handle_ai_confirmation(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle AI confirmation"""
@@ -1065,7 +1075,7 @@ class EnhancedMessageHandler:
         
         # Handle different steps with structured logic
         if current_step == 'waiting_for_language':
-            return self._handle_structured_language_selection(phone_number, text, session)
+            return self._handle_structured_language_selection(phone_number, text, session, user_context.get('customer_name'))
             
         elif current_step == 'waiting_for_category':
             return self._handle_structured_category_selection(phone_number, text, session, user_context)
@@ -1097,7 +1107,7 @@ class EnhancedMessageHandler:
         else:
             return self._create_response(self._get_fallback_message(current_step, language))
 
-    def _handle_structured_language_selection(self, phone_number: str, text: str, session: Dict) -> Dict:
+    def _handle_structured_language_selection(self, phone_number: str, text: str, session: Dict, customer_name: str = None) -> Dict:
         """Handle language selection with structured logic"""
         text_lower = text.lower().strip()
         
@@ -1115,11 +1125,15 @@ class EnhancedMessageHandler:
             # Default to Arabic for unknown input
             language = 'arabic'
             logger.info(f"🌍 Defaulting to Arabic for input: '{text}'")
+        
+        # Use provided customer name or fallback to session
+        final_customer_name = customer_name or session.get('customer_name') if session else 'Valued Customer'
+        logger.info(f"👤 Using customer name: {final_customer_name}")
                 
         # Update session
         self.db.create_or_update_session(
             phone_number, 'waiting_for_category', language,
-            session.get('customer_name') if session else None
+            final_customer_name
         )
         
         return self._show_main_categories(phone_number, language)
@@ -2130,9 +2144,40 @@ class EnhancedMessageHandler:
         return False
 
     def _extract_customer_name(self, message_data: Dict) -> str:
-        """Extract customer name from message data"""
-        profile = message_data.get('profile', {})
-        return profile.get('name', 'Customer')
+        """Extract customer name from message data with proper WhatsApp structure"""
+        try:
+            # Check for contacts array first (WhatsApp Business API structure)
+            if 'contacts' in message_data and message_data['contacts']:
+                contact = message_data['contacts'][0]
+                if 'profile' in contact:
+                    name = contact['profile'].get('name', '').strip()
+                    if name:
+                        logger.info(f"✅ Extracted customer name from contacts: {name}")
+                        return name
+            
+            # Fallback: check for profile directly
+            if 'profile' in message_data:
+                name = message_data['profile'].get('name', '').strip()
+                if name:
+                    logger.info(f"✅ Extracted customer name from profile: {name}")
+                    return name
+            
+            # Fallback: check for from field (phone number)
+            if 'from' in message_data:
+                phone = message_data['from']
+                # Extract last 4 digits for a friendly name
+                if len(phone) >= 4:
+                    last_four = phone[-4:]
+                    logger.info(f"⚠️ No name found, using phone suffix: {last_four}")
+                    return f"Customer {last_four}"
+            
+            # Final fallback
+            logger.warning("⚠️ No customer name found, using default")
+            return "Valued Customer"
+            
+        except Exception as e:
+            logger.error(f"❌ Error extracting customer name: {e}")
+            return "Valued Customer"
 
     def _create_response(self, content: str) -> Dict[str, Any]:
         """Create response structure"""

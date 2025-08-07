@@ -714,8 +714,9 @@ Response: {{
             
             'waiting_for_location': """
                 - Accept: table numbers (1-7), addresses, location descriptions
-                - For dine-in: expect table number
+                - For dine-in: expect table number (ONLY 1-7, reject 8, 9, 10, etc.)
                 - For delivery: expect address or location
+                - CRITICAL: If user enters table number > 7 for dine-in, reject it
                 - Response: Show order summary and ask for confirmation
             """,
             
@@ -981,7 +982,7 @@ Response: {{
         return True
 
     def _validate_location_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
-        """Validate location input step"""
+        """Validate location input step with enhanced table number validation"""
         action = result.get('action')
         
         if action != 'location_input':
@@ -990,6 +991,42 @@ Response: {{
         location = extracted_data.get('location')
         if not location or len(location.strip()) < 1:
             return False
+        
+        # Enhanced validation for dine-in table numbers
+        # Check if this is a numeric input that could be a table number
+        import re
+        
+        # Convert Arabic numerals to English
+        arabic_to_english = {
+            '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+            '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'
+        }
+        
+        processed_location = location
+        for arabic, english in arabic_to_english.items():
+            processed_location = processed_location.replace(arabic, english)
+        
+        # Check if it's a pure number (could be table number)
+        if re.match(r'^\d+$', processed_location.strip()):
+            table_num = int(processed_location.strip())
+            
+            # For dine-in service, table numbers must be 1-7
+            # We need to check the current order's service type
+            # Since we don't have direct access to the database here,
+            # we'll add a note in the extracted_data for the handler to validate
+            if table_num < 1 or table_num > 7:
+                logger.warning(f"⚠️ Invalid table number detected: {table_num} (must be 1-7)")
+                # Add validation flag for the handler
+                extracted_data['table_number_validation'] = 'invalid'
+                extracted_data['invalid_table_number'] = table_num
+                result['extracted_data'] = extracted_data
+                return False
+            else:
+                # Valid table number
+                extracted_data['table_number_validation'] = 'valid'
+                extracted_data['table_number'] = table_num
+                result['extracted_data'] = extracted_data
+                logger.info(f"✅ Valid table number detected: {table_num}")
         
         return True
 
