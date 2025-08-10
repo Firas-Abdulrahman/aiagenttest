@@ -60,10 +60,12 @@ class VoicePipeline:
                 return False
 
             # TTS
+            # Decide output format: prefer OGG voice notes; fallback to MP3 if configured
+            preferred_mime = "audio/ogg"
             audio_blob: AudioBlob = self.tts.synthesize(
                 reply_text,
                 language=transcript.language,
-                mime_type="audio/ogg"
+                mime_type=preferred_mime
             )
             if not audio_blob or not audio_blob.data:
                 # fallback: text-only, but mark handled to avoid duplicate sends
@@ -76,7 +78,9 @@ class VoicePipeline:
                 self.whatsapp.send_text_message(phone_number, reply_text)
                 return True
 
-            voice_ok = self.whatsapp.send_voice_message(phone_number, media_id_out)
+            # If we produced ogg, send as voice note; if mp3/mpeg, send as regular audio
+            is_voice_note = 'ogg' in audio_blob.mime_type
+            voice_ok = self.whatsapp.send_voice_message(phone_number, media_id_out, voice=is_voice_note)
             if not voice_ok:
                 self.whatsapp.send_text_message(phone_number, reply_text)
                 return True

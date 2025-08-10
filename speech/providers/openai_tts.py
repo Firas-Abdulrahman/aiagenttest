@@ -21,22 +21,26 @@ class OpenAITTS(TTSService):
             # OpenAI v1 TTS: audio.speech.create
             # Choose voice; default to 'alloy' if not provided
             voice_name = voice or 'alloy'
-            format_hint = 'ogg'
-            if 'mp3' in mime_type:
+            # Choose output format from mime
+            if 'mp3' in mime_type or 'mpeg' in mime_type:
                 format_hint = 'mp3'
             elif 'wav' in mime_type:
                 format_hint = 'wav'
+            else:
+                format_hint = 'ogg'
 
             result = self.client.audio.speech.create(
                 model=self.model,
                 voice=voice_name,
                 input=text,
-                format=format_hint,
+                response_format=format_hint,
             )
 
             # openai v1 returns bytes in .read() or .content; handle both
-            audio_bytes = getattr(result, 'content', None)
-            if audio_bytes is None and hasattr(result, 'read'):
+            audio_bytes = None
+            if hasattr(result, 'content'):
+                audio_bytes = result.content
+            elif hasattr(result, 'read'):
                 audio_bytes = result.read()
 
             if not audio_bytes:

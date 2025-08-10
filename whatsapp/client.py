@@ -121,8 +121,15 @@ class WhatsAppClient:
         try:
             import requests
             url = f"{self.base_url}/{self.phone_number_id}/media"
+            # Pick a filename by mime type
+            filename = 'voice.ogg'
+            if 'mpeg' in mime_type or 'mp3' in mime_type:
+                filename = 'audio.mp3'
+            elif 'wav' in mime_type:
+                filename = 'audio.wav'
+
             files = {
-                'file': ('voice.ogg', media_bytes, mime_type),
+                'file': (filename, media_bytes, mime_type),
             }
             data = {
                 'messaging_product': 'whatsapp'
@@ -140,8 +147,8 @@ class WhatsAppClient:
             logger.error(f"❌ Error uploading media: {e}")
             return None
 
-    def send_voice_message(self, to: str, media_id: str) -> bool:
-        """Send a WhatsApp voice note using a previously uploaded media id."""
+    def send_voice_message(self, to: str, media_id: str, voice: bool = True) -> bool:
+        """Send a WhatsApp audio message (voice note when voice=True)."""
         try:
             url = f"{self.base_url}/{self.phone_number_id}/messages"
             payload = {
@@ -150,7 +157,7 @@ class WhatsAppClient:
                 'type': 'audio',
                 'audio': {
                     'id': media_id,
-                    'voice': True
+                    'voice': bool(voice)
                 }
             }
             response = self._make_request('POST', url, headers=self.headers, json=payload)
