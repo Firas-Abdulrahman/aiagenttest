@@ -42,19 +42,6 @@ class WhatsAppConfig:
         # Database configuration
         self.db_path = os.getenv('DATABASE_PATH', 'hef_cafe.db')
 
-        # Speech (ASR/TTS) configuration
-        self.asr_enabled = os.getenv('ASR_ENABLED', 'true').lower() == 'true'
-        self.asr_provider = os.getenv('ASR_PROVIDER', 'openai')
-        self.asr_model = os.getenv('ASR_MODEL', 'whisper-1')
-        self.asr_max_duration_s = int(os.getenv('ASR_MAX_DURATION_S', '120'))
-
-        self.tts_enabled = os.getenv('TTS_ENABLED', 'true').lower() == 'true'
-        self.tts_provider = os.getenv('TTS_PROVIDER', 'openai')
-        self.tts_model = os.getenv('TTS_MODEL', 'gpt-4o-mini-tts')
-        self.tts_voice_ar = os.getenv('TTS_VOICE_AR', 'alloy')
-        self.tts_voice_en = os.getenv('TTS_VOICE_EN', 'alloy')
-        self.tts_mime = os.getenv('TTS_MIME', 'audio/ogg')
-
         # Auto-fetch phone number ID
         self.phone_number_id = os.getenv('PHONE_NUMBER_ID')
         if self.phone_number_id:
@@ -186,18 +173,6 @@ class WhatsAppConfig:
             'port': self.port,
             'debug_mode': self.debug_mode,
             'host': self.host
-            ,
-            # Speech config
-            'asr_enabled': self.asr_enabled,
-            'asr_provider': self.asr_provider,
-            'asr_model': self.asr_model,
-            'asr_max_duration_s': self.asr_max_duration_s,
-            'tts_enabled': self.tts_enabled,
-            'tts_provider': self.tts_provider,
-            'tts_model': self.tts_model,
-            'tts_voice_ar': self.tts_voice_ar,
-            'tts_voice_en': self.tts_voice_en,
-            'tts_mime': self.tts_mime,
         }
 
     def validate_config(self) -> bool:

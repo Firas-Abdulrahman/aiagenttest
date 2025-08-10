@@ -116,56 +116,6 @@ class WhatsAppClient:
             logger.error(f"❌ Error sending text message: {str(e)}")
             return False
 
-    def upload_media(self, media_bytes: bytes, mime_type: str) -> Optional[str]:
-        """Upload media to WhatsApp and return media_id."""
-        try:
-            import requests
-            url = f"{self.base_url}/{self.phone_number_id}/media"
-            files = {
-                'file': ('voice.ogg', media_bytes, mime_type),
-            }
-            data = {
-                'messaging_product': 'whatsapp'
-            }
-            headers = {
-                'Authorization': f'Bearer {self.whatsapp_token}'
-            }
-            response = requests.post(url, headers=headers, files=files, data=data, timeout=60)
-            if response.status_code == 200:
-                media_id = response.json().get('id')
-                return media_id
-            logger.error(f"❌ Media upload failed: {response.status_code} {response.text}")
-            return None
-        except Exception as e:
-            logger.error(f"❌ Error uploading media: {e}")
-            return None
-
-    def send_voice_message(self, to: str, media_id: str) -> bool:
-        """Send a WhatsApp voice note using a previously uploaded media id."""
-        try:
-            url = f"{self.base_url}/{self.phone_number_id}/messages"
-            payload = {
-                'messaging_product': 'whatsapp',
-                'to': to,
-                'type': 'audio',
-                'audio': {
-                    'id': media_id,
-                    'voice': True
-                }
-            }
-            response = self._make_request('POST', url, headers=self.headers, json=payload)
-            if response and response.status_code == 200:
-                logger.info("✅ Voice message sent successfully")
-                return True
-            else:
-                logger.error(f"❌ Failed to send voice message: {response.status_code if response else 'No response'}")
-                if response:
-                    logger.error(f"Response: {response.text}")
-                return False
-        except Exception as e:
-            logger.error(f"❌ Error sending voice message: {e}")
-            return False
-
     def send_template_message(self, to: str, template_name: str, language_code: str = 'en',
                               parameters: List[str] = None) -> bool:
         """Send a template message to WhatsApp user with enhanced reliability"""
@@ -401,8 +351,8 @@ class WhatsAppClient:
 
     def verify_webhook(self, mode: str, token: str, challenge: str) -> Optional[str]:
         """Verify webhook for WhatsApp subscription"""
-        logger.info("🔐 Webhook verification attempt")
-        logger.info(f"Mode: {mode}")
+        logger.info(f"🔐 Webhook verification attempt")
+        logger.info(f"Mode: {mode}, Token: {token}, Challenge: {challenge}")
 
         if mode == 'subscribe' and token == self.verify_token:
             logger.info("✅ Webhook verified successfully!")

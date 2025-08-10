@@ -11,9 +11,6 @@ from utils.thread_safe_session import session_manager
 from database.thread_safe_manager import ThreadSafeDatabaseManager
 from workflow.handlers import MessageHandler
 from workflow.enhanced_handlers import EnhancedMessageHandler
-from speech.pipeline import VoicePipeline
-from speech.providers.openai_asr import OpenAIASR
-from speech.providers.openai_tts import OpenAITTS
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +18,10 @@ logger = logging.getLogger(__name__)
 class ThreadSafeMessageHandler:
     """Thread-safe wrapper for main message handlers with user isolation"""
 
-    def __init__(self, database_manager: ThreadSafeDatabaseManager, ai_processor=None, action_executor=None, whatsapp_client=None):
+    def __init__(self, database_manager: ThreadSafeDatabaseManager, ai_processor=None, action_executor=None):
         self.db = database_manager
         self.ai = ai_processor
         self.executor = action_executor
-        self.whatsapp_client = whatsapp_client
         
         # Initialize the main message handler
         self.main_handler = MessageHandler(database_manager, ai_processor, action_executor)
@@ -42,21 +38,6 @@ class ThreadSafeMessageHandler:
         except ImportError:
             self.enhanced_handler = None
             logger.info("ℹ️ Standard message handler initialized (enhanced processor not available)")
-
-        # Initialize voice pipeline if configured and OpenAI client available in AI processors
-        self.voice_pipeline = None
-        try:
-            # Reuse OpenAI client from existing AI processor if possible
-            openai_client = getattr(ai_processor, 'client', None)
-            if openai_client:
-                asr = OpenAIASR(openai_client, model='whisper-1')
-                tts = OpenAITTS(openai_client, model='gpt-4o-mini-tts')
-                from whatsapp.client import WhatsAppClient  # type: ignore
-                # We already have a client instance in app/workflow; we will use self.whatsapp from workflow
-                # Here, we leave pipeline prepared to be wired by the workflow that holds whatsapp client
-                self.voice_pipeline = {'asr': asr, 'tts': tts}
-        except Exception as e:
-            logger.warning(f"Voice pipeline setup skipped: {e}")
 
     def handle_message(self, message_data: Dict[str, Any]) -> Dict[str, Any]:
         """Main message handling with thread safety and user isolation"""
@@ -77,16 +58,6 @@ class ThreadSafeMessageHandler:
         # Use user-specific lock for entire processing
         try:
             with session_manager.user_session_lock(phone_number):
-                # If voice message, route to voice pipeline
-                if message_data.get('audio') and self.voice_pipeline and hasattr(self, 'whatsapp_client'):
-                    try:
-                        pipeline = VoicePipeline(self.voice_pipeline['asr'], self.voice_pipeline['tts'], self.whatsapp_client, self.main_handler)
-                        ok = pipeline.process_voice_message(phone_number, message_data)
-                        if ok:
-                            return { 'type': 'handled' }
-                    except Exception as e:
-                        logger.error(f"Voice pipeline failed: {e}")
-
                 return self._process_user_message_safely(phone_number, text, message_data)
 
         except TimeoutError:
