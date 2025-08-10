@@ -1,4 +1,5 @@
 import logging
+import io
 from typing import Optional
 
 from ..asr_service import ASRService
@@ -18,10 +19,31 @@ class OpenAIASR(ASRService):
         self.model = model
 
     def transcribe(self, media_bytes: bytes, mime_type: str, language_hint: Optional[str] = None) -> Transcript:
-        # Placeholder structure; the actual HTTP call will be implemented with the provided client
-        # keeping the code minimal here as requested (no full implementation now).
-        logger.info("ASR request prepared (OpenAI)")
-        # Return a dummy transcript to be replaced by real integration
-        return Transcript(text="", language=language_hint, confidence=None, duration_s=None)
+        """Transcribe audio using OpenAI Whisper (whisper-1)."""
+        try:
+            buf = io.BytesIO(media_bytes)
+            buf.name = "audio.ogg"  # some SDKs expect a filename
+
+            result = self.client.audio.transcriptions.create(
+                model=self.model,
+                file=buf,
+                language=language_hint if language_hint else None,
+                response_format="json"
+            )
+
+            text = getattr(result, 'text', None)
+            if not text and isinstance(result, dict):
+                text = result.get('text')
+
+            if text:
+                logger.info("ASR completed (OpenAI whisper-1)")
+                return Transcript(text=text, language=language_hint, confidence=None, duration_s=None)
+
+            logger.warning("ASR returned no text")
+            return Transcript(text="", language=language_hint, confidence=None, duration_s=None)
+
+        except Exception as e:
+            logger.error(f"ASR error: {e}")
+            return Transcript(text="", language=language_hint, confidence=None, duration_s=None)
 
 

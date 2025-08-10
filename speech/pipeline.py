@@ -42,8 +42,9 @@ class VoicePipeline:
             # ASR
             transcript: Transcript = self.asr.transcribe(media_bytes, mime_type)
             if not transcript or not transcript.text:
-                self.whatsapp.send_text_message(phone_number, "لم أتمكن من فهم الرسالة الصوتية. الرجاء المحاولة بصوت أوضح.")
-                return False
+                # Handle as "processed" to avoid normal text flow sending another message
+                self.whatsapp.send_text_message(phone_number, "لم أتمكن من فهم الرسالة الصوتية. الرجاء إعادة إرسال ملاحظة صوتية أقصر أو أوضح.")
+                return True
 
             # Build a synthetic text message for downstream handler
             synthetic_message = {
@@ -65,21 +66,23 @@ class VoicePipeline:
                 mime_type="audio/ogg"
             )
             if not audio_blob or not audio_blob.data:
-                # fallback: text-only
-                return self.whatsapp.send_text_message(phone_number, reply_text)
+                # fallback: text-only, but mark handled to avoid duplicate sends
+                self.whatsapp.send_text_message(phone_number, reply_text)
+                return True
 
             # Upload and send voice message
             media_id_out = self.whatsapp.upload_media(audio_blob.data, audio_blob.mime_type)
             if not media_id_out:
-                return self.whatsapp.send_text_message(phone_number, reply_text)
+                self.whatsapp.send_text_message(phone_number, reply_text)
+                return True
 
             voice_ok = self.whatsapp.send_voice_message(phone_number, media_id_out)
             if not voice_ok:
-                return self.whatsapp.send_text_message(phone_number, reply_text)
+                self.whatsapp.send_text_message(phone_number, reply_text)
+                return True
 
             # Optionally send text too (can be toggled later)
             self.whatsapp.send_text_message(phone_number, reply_text)
-
             return True
 
         except Exception as e:

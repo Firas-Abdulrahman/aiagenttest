@@ -16,8 +16,38 @@ class OpenAITTS(TTSService):
 
     def synthesize(self, text: str, language: Optional[str] = None, voice: Optional[str] = None,
                    mime_type: str = "audio/ogg") -> AudioBlob:
-        logger.info("TTS request prepared (OpenAI)")
-        # Return a dummy blob to be replaced by real integration
-        return AudioBlob(data=b"", mime_type=mime_type)
+        """Generate audio using OpenAI TTS (gpt-4o-mini-tts)."""
+        try:
+            # OpenAI v1 TTS: audio.speech.create
+            # Choose voice; default to 'alloy' if not provided
+            voice_name = voice or 'alloy'
+            format_hint = 'ogg'
+            if 'mp3' in mime_type:
+                format_hint = 'mp3'
+            elif 'wav' in mime_type:
+                format_hint = 'wav'
+
+            result = self.client.audio.speech.create(
+                model=self.model,
+                voice=voice_name,
+                input=text,
+                format=format_hint,
+            )
+
+            # openai v1 returns bytes in .read() or .content; handle both
+            audio_bytes = getattr(result, 'content', None)
+            if audio_bytes is None and hasattr(result, 'read'):
+                audio_bytes = result.read()
+
+            if not audio_bytes:
+                logger.warning("TTS produced no audio")
+                return AudioBlob(data=b"", mime_type=mime_type)
+
+            logger.info("TTS completed (OpenAI)")
+            return AudioBlob(data=audio_bytes, mime_type=mime_type)
+
+        except Exception as e:
+            logger.error(f"TTS error: {e}")
+            return AudioBlob(data=b"", mime_type=mime_type)
 
 
