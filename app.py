@@ -78,26 +78,20 @@ class ThreadSafeWhatsAppWorkflow:
 
             # Enhanced AI processor with deep workflow integration
             self.ai = None
+            # Prepare AI config once (avoid NameError in fallback path)
+            ai_disable_on_quota = self.config.get('ai_disable_on_quota', True)
+            ai_fallback_enabled = self.config.get('ai_fallback_enabled', True)
+            if isinstance(ai_disable_on_quota, str):
+                ai_disable_on_quota = ai_disable_on_quota.lower() == 'true'
+            if isinstance(ai_fallback_enabled, str):
+                ai_fallback_enabled = ai_fallback_enabled.lower() == 'true'
+            ai_config = {
+                'ai_quota_cache_duration': int(self.config.get('ai_quota_cache_duration', 300)),
+                'ai_disable_on_quota': ai_disable_on_quota,
+                'ai_fallback_enabled': ai_fallback_enabled
+            }
             try:
-                # Try to use enhanced AI processor first
                 from ai.enhanced_processor import EnhancedAIProcessor
-                
-                # Fix boolean configuration handling
-                ai_disable_on_quota = self.config.get('ai_disable_on_quota', True)
-                ai_fallback_enabled = self.config.get('ai_fallback_enabled', True)
-                
-                # Convert string values to boolean if needed
-                if isinstance(ai_disable_on_quota, str):
-                    ai_disable_on_quota = ai_disable_on_quota.lower() == 'true'
-                if isinstance(ai_fallback_enabled, str):
-                    ai_fallback_enabled = ai_fallback_enabled.lower() == 'true'
-                
-                ai_config = {
-                    'ai_quota_cache_duration': int(self.config.get('ai_quota_cache_duration', 300)),
-                    'ai_disable_on_quota': ai_disable_on_quota,
-                    'ai_fallback_enabled': ai_fallback_enabled
-                }
-                
                 if self.config.get('openai_api_key'):
                     self.ai = EnhancedAIProcessor(
                         api_key=self.config.get('openai_api_key'),
@@ -107,12 +101,9 @@ class ThreadSafeWhatsAppWorkflow:
                     logger.info("✅ Enhanced AI processor initialized with deep workflow integration")
                 else:
                     logger.warning("⚠️ OpenAI API key not provided, enhanced AI features disabled")
-                    
             except ImportError:
-                # Fallback to standard AI processor
                 try:
                     from ai.processor import AIProcessor
-                    
                     if self.config.get('openai_api_key'):
                         self.ai = AIProcessor(self.config.get('openai_api_key'), ai_config, self.db)
                         logger.info("✅ Standard AI processor initialized (enhanced processor not available)")
@@ -124,8 +115,8 @@ class ThreadSafeWhatsAppWorkflow:
                     logger.error(f"❌ Error initializing AI processor: {e}")
                     self.ai = None
 
-            # Thread-safe message handler
-            self.handler = ThreadSafeMessageHandler(self.db, self.ai, None)
+            # Thread-safe message handler (pass whatsapp client for voice pipeline)
+            self.handler = ThreadSafeMessageHandler(self.db, self.ai, None, whatsapp_client=self.whatsapp)
             logger.info("✅ Thread-safe message handler initialized")
 
             # Start background tasks
@@ -516,6 +507,11 @@ def create_flask_app():
                 try:
                     # Process message through thread-safe workflow
                     response = workflow.handle_whatsapp_message(message)
+
+                    # If voice pipeline already handled sending, skip sending here
+                    if isinstance(response, dict) and response.get('type') == 'handled':
+                        logger.info(f"✅ Voice message handled for {phone_number}")
+                        continue
 
                     # Send response
                     success = workflow.send_whatsapp_message(phone_number, response)
