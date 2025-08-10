@@ -26,8 +26,11 @@ class OpenAITTS(TTSService):
                 format_hint = 'mp3'
             elif 'wav' in mime_type:
                 format_hint = 'wav'
+            elif 'ogg' in mime_type:
+                # OpenAI expects 'opus' to generate OGG/Opus compatible audio
+                format_hint = 'opus'
             else:
-                format_hint = 'ogg'
+                format_hint = 'mp3'
 
             result = self.client.audio.speech.create(
                 model=self.model,
