@@ -46,7 +46,7 @@ class VoicePipeline:
                 self.whatsapp.send_text_message(phone_number, "لم أتمكن من فهم الرسالة الصوتية. الرجاء إعادة إرسال ملاحظة صوتية أقصر أو أوضح.")
                 return True
 
-            # Build a synthetic text message for downstream handler
+            # Build a synthetic text message for downstream handler (use transcript)
             synthetic_message = {
                 'from': phone_number,
                 'text': {'body': transcript.text},
@@ -85,8 +85,7 @@ class VoicePipeline:
                 self.whatsapp.send_text_message(phone_number, reply_text)
                 return True
 
-            # Optionally send text too (can be toggled later)
-            self.whatsapp.send_text_message(phone_number, reply_text)
+            # Voice-only behavior: do not also send text when original message was voice
             return True
 
         except Exception as e:

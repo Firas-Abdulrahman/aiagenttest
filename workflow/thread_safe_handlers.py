@@ -80,7 +80,9 @@ class ThreadSafeMessageHandler:
                 # If voice message, route to voice pipeline
                 if message_data.get('audio') and self.voice_pipeline and hasattr(self, 'whatsapp_client'):
                     try:
-                        pipeline = VoicePipeline(self.voice_pipeline['asr'], self.voice_pipeline['tts'], self.whatsapp_client, self.main_handler)
+                        # Prefer enhanced handler if available for natural language understanding
+                        handler_for_voice = self.enhanced_handler if getattr(self, 'enhanced_handler', None) else self.main_handler
+                        pipeline = VoicePipeline(self.voice_pipeline['asr'], self.voice_pipeline['tts'], self.whatsapp_client, handler_for_voice)
                         ok = pipeline.process_voice_message(phone_number, message_data)
                         if ok:
                             return { 'type': 'handled' }
