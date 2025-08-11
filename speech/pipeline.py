@@ -101,7 +101,7 @@ class VoiceMessagePipeline:
         if audio_response.data:
             media_upload_mime = audio_response.mime_type
             file_extension = 'ogg' if 'ogg' in media_upload_mime else ('mp3' if 'mp3' in media_upload_mime else 'audio')
-            uploaded_media_id = self.whatsapp.upload_media(audio_response.data, media_upload_mime, filename=f"response.{file_extension}")
+            uploaded_media_id = self.whatsapp.upload_media(audio_response.data, media_upload_mime)
 
             if uploaded_media_id:
                 is_voice_note = 'ogg' in media_upload_mime or 'opus' in media_upload_mime
