@@ -1,8 +1,7 @@
 # ai/menu_aware_prompts.py
 """
-Enhanced Menu Awareness Enhancement for AI Prompts
+Simple Menu Awareness Enhancement for AI Prompts
 Makes the AI fully aware of the menu structure and able to understand natural language requests
-with advanced personalization and context awareness
 """
 import logging
 
@@ -10,20 +9,20 @@ logger = logging.getLogger(__name__)
 
 
 class MenuAwarePrompts:
-    """Enhanced prompts with advanced menu awareness and personalization"""
+    """Enhanced prompts with simple menu awareness"""
 
     @staticmethod
     def get_menu_context(database_manager) -> str:
-        """Get comprehensive menu context for AI understanding with advanced insights"""
+        """Get comprehensive menu context for AI understanding"""
         try:
             # Get all menu data in a structured format
             main_categories = database_manager.get_main_categories()
-            menu_context = "COMPLETE MENU KNOWLEDGE WITH ADVANCED INSIGHTS:\n"
-            menu_context += "=" * 60 + "\n"
+            menu_context = "COMPLETE MENU KNOWLEDGE:\n"
+            menu_context += "=" * 50 + "\n"
 
             for main_cat in main_categories:
                 menu_context += f"\nMAIN CATEGORY {main_cat['id']}: {main_cat['name_ar']} / {main_cat['name_en']}\n"
-                menu_context += "-" * 50 + "\n"
+                menu_context += "-" * 40 + "\n"
 
                 # Get sub-categories
                 sub_categories = database_manager.get_sub_categories(main_cat['id'])
@@ -45,8 +44,8 @@ class MenuAwarePrompts:
 
             # Add intelligent attribute mapping for natural language understanding
             menu_context += """
-INTELLIGENT UNDERSTANDING GUIDE WITH PERSONALIZATION:
-====================================================
+INTELLIGENT UNDERSTANDING GUIDE:
+================================
 
 TEMPERATURE PREFERENCES:
 - "cold", "iced", "chilled", "بارد", "مثلج", "منعش" → Main Category 1 (Cold Drinks)
@@ -95,20 +94,6 @@ COMBINATION UNDERSTANDING:
 - "hot + creamy" → Lattes & Specialties (ID: 9)
 - "sweet + food" → Cake Slices (ID: 15)
 - "savory + food" → Toast (ID: 11), Sandwiches (ID: 12), Pies (ID: 14)
-
-PERSONALIZATION FEATURES:
-- Remember user's favorite categories and items
-- Suggest based on previous successful orders
-- Provide time-of-day appropriate recommendations
-- Offer seasonal and occasion-based suggestions
-- Learn from user behavior patterns
-
-CONTEXT-AWARE SUGGESTIONS:
-- Morning: Coffee + Pastries, Fresh Juices + Toast
-- Afternoon: Iced Tea + Light Food, Frappuccino + Cake
-- Evening: Hot Drinks + Comfort Food, Warm Pastries
-- Social: Mojito + Appetizers, Sharing Platters
-- Work/Study: Energy Drinks + Quick Bites, Coffee + Sandwiches
 """
 
             return menu_context
@@ -119,15 +104,12 @@ CONTEXT-AWARE SUGGESTIONS:
 
     @staticmethod
     def get_enhanced_understanding_prompt(user_message: str, current_step: str, context: dict, database_manager) -> str:
-        """Enhanced AI understanding prompt with complete menu awareness and personalization"""
+        """Enhanced AI understanding prompt with complete menu awareness"""
 
         # Get comprehensive menu context
         menu_context = MenuAwarePrompts.get_menu_context(database_manager)
 
-        # Build personalized context
-        personalized_context = MenuAwarePrompts._build_personalized_context(context)
-
-        return f"""You are an intelligent AI assistant for Hef Cafe with COMPLETE MENU KNOWLEDGE and ADVANCED PERSONALIZATION CAPABILITIES. You can understand natural language requests and intelligently suggest menu items with personalized recommendations.
+        return f"""You are an intelligent AI assistant for Hef Cafe with COMPLETE MENU KNOWLEDGE. You can understand natural language requests and intelligently suggest menu items.
 
 🚨 CRITICAL INSTRUCTION FOR waiting_for_additional STEP:
 When the user is at the "waiting_for_additional" step and they say "نعم" (Arabic for Yes), you MUST set yes_no="yes" in your response.
@@ -138,9 +120,6 @@ EXAMPLE: If user says "نعم" at waiting_for_additional step, your response MUS
 
 {menu_context}
 
-PERSONALIZED CONTEXT:
-{personalized_context}
-
 CURRENT CONVERSATION STATE:
 ==========================
 - User is at step: {current_step}
@@ -148,23 +127,15 @@ CURRENT CONVERSATION STATE:
 - Language preference: {context.get('language', 'arabic')}
 - Available main categories: {len(context.get('available_categories', []))}
 - Current category items: {len(context.get('current_category_items', []))}
-- Time of day: {context.get('time_of_day', 'unknown')}
-- User preferences: {context.get('user_preferences', {})}
 
-INTELLIGENT RESPONSE RULES WITH PERSONALIZATION:
-===============================================
+INTELLIGENT RESPONSE RULES:
+==========================
 1. NATURAL LANGUAGE UNDERSTANDING:
    - Analyze the user's natural language request
    - Map their preferences to menu categories and items
-   - Provide intelligent suggestions based on their needs AND preferences
+   - Provide intelligent suggestions based on their needs
 
-2. PERSONALIZATION FEATURES:
-   - Use user's favorite categories and items when appropriate
-   - Suggest based on previous successful orders
-   - Provide time-of-day appropriate recommendations
-   - Offer seasonal and occasion-based suggestions
-
-3. EXAMPLES OF INTELLIGENT UNDERSTANDING WITH PERSONALIZATION:
+2. EXAMPLES OF INTELLIGENT UNDERSTANDING:
    - "I want something cold and sweet" → Suggest Frappuccino (ID: 2) or Milkshakes (ID: 3)
    - "اريد شي بارد ومنعش" → Suggest Iced Tea (ID: 4) or Mojito (ID: 6)
    - "I need energy" → Suggest Coffee & Espresso (ID: 8) or Iced Coffee (ID: 1)
@@ -173,15 +144,13 @@ INTELLIGENT RESPONSE RULES WITH PERSONALIZATION:
    - "اريد مشروب ساخن" → Suggest Main Category 2 (Hot Drinks)
    - "I want food" → Suggest Main Category 3 (Pastries & Sweets)
 
-4. RESPONSE STRATEGY WITH PERSONALIZATION:
+3. RESPONSE STRATEGY:
    - If you can identify specific preferences, suggest the most suitable sub-category
    - If request is broad, suggest the appropriate main category
    - Always explain WHY you're suggesting something
    - Use the user's preferred language
-   - Include personalized suggestions based on user context
-   - Provide context insights about why certain suggestions are made
 
-5. WORKFLOW STEPS:
+4. WORKFLOW STEPS:
    - waiting_for_language: Detect language preference
    - waiting_for_main_category: User selects from 3 main categories
    - waiting_for_sub_category: User selects specific sub-category (e.g., "موهيتو", "ايس كوفي", "فرابتشينو")
@@ -192,7 +161,7 @@ INTELLIGENT RESPONSE RULES WITH PERSONALIZATION:
    - waiting_for_location: Table number or address
    - waiting_for_confirmation: Final order confirmation
 
-6. STEP-SPECIFIC RULES:
+5. STEP-SPECIFIC RULES:
    - At waiting_for_category: If user says "1" or "١", use action "category_selection" with suggested_main_category=1
    - At waiting_for_category: If user says "2" or "٢", use action "category_selection" with suggested_main_category=2  
    - At waiting_for_category: If user says "3" or "٣", use action "category_selection" with suggested_main_category=3
@@ -231,20 +200,16 @@ RESPOND WITH CLEAN JSON (no extra text):
         "location": "string or null"
     }},
     "clarification_needed": false,
-    "response_message": "Helpful response in user's language with intelligent suggestions and explanation",
-    "personalized_suggestions": ["suggestion1", "suggestion2"],
-    "context_insights": "Brief insight about user's choice or preference"
-}}
+    "response_message": "Helpful response in user's language with intelligent suggestions and explanation"
 
 IMPORTANT VALIDATION RULES:
 ==========================
 - For service_selection: ONLY accept "1" or "2" as valid numbers. Numbers 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, etc. are INVALID for service selection.
-- If user enters invalid service number, return error message asking them to choose 1 or 2 only.
-- Always include personalized_suggestions and context_insights in your response.
-- Use user preferences when available to provide better suggestions.
+- If user enters invalid service number, return error message asking them to choose 1 or 2 only."
+}}
 
-CRITICAL EXAMPLES WITH PERSONALIZATION:
-======================================
+CRITICAL EXAMPLES:
+==================
 User: "1" (at waiting_for_category step)
 Response: {{
     "understood_intent": "User wants to select main category number 1 (Cold Drinks)",
@@ -262,9 +227,47 @@ Response: {{
         "location": null
     }},
     "clarification_needed": false,
-    "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!",
-    "personalized_suggestions": ["موهيتو", "فرابتشينو", "ايس كوفي"],
-    "context_insights": "Cold Drinks are perfect for refreshing moments! Great choice for energy and refreshment."
+    "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!"
+}}
+
+User: "4" (at waiting_for_category step)
+Response: {{
+    "understood_intent": "User wants to select main category number 1 (Cold Drinks)",
+    "confidence": "high",
+    "action": "category_selection",
+    "extracted_data": {{
+        "language": "arabic",
+        "suggested_main_category": 1,
+        "suggested_sub_category": null,
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!"
+}}
+
+User: "6" (at waiting_for_category step)
+Response: {{
+    "understood_intent": "User wants to select main category number 1 (Cold Drinks)",
+    "confidence": "high",
+    "action": "category_selection",
+    "extracted_data": {{
+        "language": "arabic",
+        "suggested_main_category": 1,
+        "suggested_sub_category": null,
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!"
 }}
 
 User: "I want something cold and sweet"
@@ -284,9 +287,7 @@ Response: {{
         "location": null
     }},
     "clarification_needed": false,
-    "response_message": "I understand you want something cold and sweet! Perfect choice for a refreshing treat.\\n\\nI recommend our Frappuccinos - they're cold, creamy, and deliciously sweet:\\n\\n1. Caramel Frappuccino - 5000 IQD\\n2. Vanilla Frappuccino - 5000 IQD\\n3. Hazelnut Frappuccino - 5000 IQD\\n4. Chocolate Frappuccino - 5000 IQD\\n\\nOr try our Milkshakes if you prefer something thicker and creamier!\\n\\nChoose a number or tell me which one sounds good to you!",
-    "personalized_suggestions": ["Frappuccino", "Milkshake", "Iced Coffee"],
-    "context_insights": "Cold and sweet combination is perfect for hot days and sweet cravings. Frappuccinos are our most popular choice!"
+    "response_message": "I understand you want something cold and sweet! Perfect choice for a refreshing treat.\\n\\nI recommend our Frappuccinos - they're cold, creamy, and deliciously sweet:\\n\\n1. Caramel Frappuccino - 5000 IQD\\n2. Vanilla Frappuccino - 5000 IQD\\n3. Hazelnut Frappuccino - 5000 IQD\\n4. Chocolate Frappuccino - 5000 IQD\\n\\nOr try our Milkshakes if you prefer something thicker and creamier!\\n\\nChoose a number or tell me which one sounds good to you!"
 }}
 
 User: "اريد شي بارد ومنعش"
@@ -306,67 +307,165 @@ Response: {{
         "location": null
     }},
     "clarification_needed": false,
-    "response_message": "فهمت أنك تريد شيء بارد ومنعش! اختيار ممتاز لإنعاش يومك.\\n\\nأنصحك بالشاي المثلج - بارد ومنعش تماماً:\\n\\n1. شاي مثلج بالخوخ - 5000 دينار\\n2. شاي مثلج بفاكهة العاطفة - 5000 دينار\\n\\nأو جرب الموهيتو إذا كنت تحب شيء أكثر انتعاشاً مع النعناع!\\n\\nاختر الرقم أو قلي أيش يعجبك!",
-    "personalized_suggestions": ["شاي مثلج", "موهيتو", "عصائر طازجة"],
-    "context_insights": "Cold and refreshing drinks are perfect for hot days and afternoon breaks. Iced Tea is our most popular refreshing choice!"
+    "response_message": "فهمت أنك تريد شيء بارد ومنعش! اختيار ممتاز لإنعاش يومك.\\n\\nأنصحك بالشاي المثلج - بارد ومنعش تماماً:\\n\\n1. شاي مثلج بالخوخ - 5000 دينار\\n2. شاي مثلج بفاكهة العاطفة - 5000 دينار\\n\\nأو جرب الموهيتو إذا كنت تحب شيء أكثر انتعاشاً مع النعناع!\\n\\nاختر الرقم أو قلي أيش يعجبك!"
 }}
 
-Now analyze the user's message and respond with appropriate JSON including personalization."""
+User: "موهيتو" (at waiting_for_sub_category step)
+Response: {{
+    "understood_intent": "User wants to select mojito sub-category",
+    "confidence": "high",
+    "action": "sub_category_selection",
+    "extracted_data": {{
+        "language": "arabic",
+        "sub_category_name": "موهيتو",
+        "sub_category_id": 6,
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! سأعرض لك قائمة الموهيتو:\\n\\n1. موهيتو ازرق - 5000 دينار\\n2.  . موهيتو توت ازرق - 5000 دينار\\n3. موهيتو روزبيري - 5000 دينار\\n4. موهيتو فراولة - 5000 دينار\\n5. موهيتو بينا كولادا - 5000 دينار\\n6. موهيتو علكة - 5000 دينار\\n7. موهيتو دراغون - 5000 دينار\\n8. موهيتو هيف - 5000 دينار\\n9. . موهيتو خوخ - 5000 دينار\\n\\nاختر الرقم الذي تفضله!"
+}}
 
-    @staticmethod
-    def _build_personalized_context(context: dict) -> str:
-        """Build personalized context for enhanced understanding"""
-        personalized_info = []
-        
-        # Time-based context
-        time_of_day = context.get('time_of_day', '')
-        if time_of_day:
-            if time_of_day == 'morning':
-                personalized_info.append("🌅 Morning Context: Coffee + Pastries, Fresh Juices + Toast are perfect choices")
-            elif time_of_day == 'afternoon':
-                personalized_info.append("🌞 Afternoon Context: Iced Tea + Light Food, Frappuccino + Cake are ideal")
-            elif time_of_day == 'evening':
-                personalized_info.append("🌆 Evening Context: Hot Drinks + Comfort Food, Warm Pastries are great")
-            elif time_of_day == 'night':
-                personalized_info.append("🌙 Night Context: Warm Drinks + Light Snacks are perfect")
-        
-        # User preferences context
-        user_prefs = context.get('user_preferences', {})
-        if user_prefs:
-            if user_prefs.get('favorite_categories'):
-                personalized_info.append(f"❤️ User's Favorite Categories: {', '.join(map(str, user_prefs['favorite_categories']))}")
-            if user_prefs.get('favorite_items'):
-                personalized_info.append(f"⭐ User's Favorite Items: {', '.join(user_prefs['favorite_items'][:3])}")
-        
-        # Seasonal context
-        seasonal = context.get('seasonal_suggestions', {})
-        if seasonal:
-            seasonal_tips = []
-            if seasonal.get('hot_drinks') == 'high':
-                seasonal_tips.append("Hot drinks are perfect for this season")
-            if seasonal.get('cold_drinks') == 'high':
-                seasonal_tips.append("Cold drinks are ideal for this season")
-            if seasonal.get('comfort_food') == 'high':
-                seasonal_tips.append("Comfort food is great for this season")
-            
-            if seasonal_tips:
-                personalized_info.append(f"🌤️ Seasonal Tips: {'; '.join(seasonal_tips)}")
-        
-        # Popular combinations context
-        popular = context.get('popular_combinations', [])
-        if popular:
-            combo_tips = []
-            for item in popular[:3]:
-                combo_tips.append(f"{item.get('drink', 'Unknown')}+{item.get('food', 'Unknown')}")
-            
-            if combo_tips:
-                personalized_info.append(f"🔥 Popular Combinations: {', '.join(combo_tips)}")
-        
-        return "\n".join(personalized_info) if personalized_info else "No personalized context available"
+User: "موهيتو" (at waiting_for_item step)
+Response: {{
+    "understood_intent": "User wants to navigate to mojito sub-category",
+    "confidence": "high",
+    "action": "sub_category_selection",
+    "extracted_data": {{
+        "language": "arabic",
+        "sub_category_name": "موهيتو",
+        "sub_category_id": 6,
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! سأعرض لك قائمة الموهيتو:\\n\\n1. موهيتو ازرق - 5000 دينار\\n2. موهيتو فاكهة العاطفة - 5000 دينار\\n3. موهيتو توت ازرق - 5000 دينار\\n4. موهيتو روزبيري - 5000 دينار\\n5. موهيتو فراولة - 5000 دينار\\n6. موهيتو بينا كولادا - 5000 دينار\\n7. موهيتو علكة - 5000 دينار\\n8. موهيتو دراغون - 5000 دينار\\n9. موهيتو هيف - 5000 دينار\\n10. موهيتو رمان - 5000 دينار\\n11. موهيتو خوخ - 5000 دينار\\n\\nاختر الرقم الذي تفضله!"
+}}
+
+User: "موهيتو ازرق" (at waiting_for_item step)
+Response: {{
+    "understood_intent": "User wants to order Blue Mojito specifically",
+    "confidence": "high",
+    "action": "item_selection",
+    "extracted_data": {{
+        "language": "arabic",
+        "item_name": "موهيتو ازرق",
+        "item_id": null,
+        "category_id": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! تم اختيار: موهيتو ازرق\\nالسعر: 5000 دينار\\nكم الكمية المطلوبة؟"
+}}
+
+User: "ايس كوفي" (at waiting_for_sub_category step)
+Response: {{
+    "understood_intent": "User wants to select iced coffee sub-category",
+    "confidence": "high",
+    "action": "sub_category_selection",
+    "extracted_data": {{
+        "language": "arabic",
+        "sub_category_name": "ايس كوفي",
+        "sub_category_id": 1,
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! سأعرض لك قائمة ايس كوفي:\\n\\n1. ايس كوفي - 3000 دينار\\n2. ايس امريكانو - 4000 دينار\\n3. لاتيه مثلج عادي - 4000 دينار\\n4. لاتيه مثلج كراميل - 5000 دينار\\n5. لاتيه مثلج فانيلا - 5000 دينار\\n6. لاتيه مثلج بندق - 5000 دينار\\n7. ايس موكا - 5000 دينار\\n8. لاتيه اسباني مثلج - 6000 دينار\\n\\nاختر الرقم الذي تفضله!"
+}}
+
+User: "1" (at waiting_for_additional step)
+Response: {{
+    "understood_intent": "User wants to add more items to their order",
+    "confidence": "high",
+    "action": "yes_no",
+    "extracted_data": {{
+        "language": "arabic",
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": "yes",
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! سأعرض لك قائمة الأصناف مرة أخرى:\\n\\n1. مشروبات باردة\\n2. مشروبات ساخنة\\n3. معجنات وحلويات\\n\\nاختر رقم الصنف الذي تريده:"
+}}
+
+User: "2" (at waiting_for_additional step)
+Response: {{
+    "understood_intent": "User wants to finish their order and not add more items",
+    "confidence": "high",
+    "action": "yes_no",
+    "extracted_data": {{
+        "language": "arabic",
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": "no",
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! لننتقل إلى اختيار نوع الخدمة. هل تفضل تناول الطعام في المقهى أم التوصيل للمنزل؟"
+}}
+
+User: "نعم" (at waiting_for_additional step)
+Response: {{
+    "understood_intent": "User wants to add more items to their order",
+    "confidence": "high",
+    "action": "yes_no",
+    "extracted_data": {{
+        "language": "arabic",
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": "yes",
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! سأعرض لك قائمة الأصناف مرة أخرى:\\n\\n1. مشروبات باردة\\n2. مشروبات ساخنة\\n3. معجنات وحلويات\\n\\nاختر رقم الصنف الذي تريده:"
+}}
+
+User: "لا" (at waiting_for_additional step)
+Response: {{
+    "understood_intent": "User wants to finish their order and not add more items",
+    "confidence": "high",
+    "action": "yes_no",
+    "extracted_data": {{
+        "language": "arabic",
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": "no",
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! لننتقل إلى اختيار نوع الخدمة. هل تفضل تناول الطعام في المقهى أم التوصيل للمنزل؟"
+}}
+
+Now analyze the user's message and respond with appropriate JSON."""
 
     @staticmethod
     def detect_natural_language_intent(user_message: str) -> dict:
-        """Enhanced detection of natural language intents with personalization"""
+        """Simple detection of natural language intents"""
         message_lower = user_message.lower().strip()
 
         intent = {
@@ -375,14 +474,13 @@ Now analyze the user's message and respond with appropriate JSON including perso
             'sweetness': None,
             'energy': None,
             'food_request': None,
-            'drink_type': None,
-            'personalization_level': 'low'
+            'drink_type': None
         }
 
         # Check if this is a natural language request
         natural_indicators = [
             'i want', 'i need', 'something', 'اريد', 'بدي', 'شي', 'شيء',
-            'give me', 'اعطني', 'احتاج', 'ممكن', 'prefer', 'like', 'favorite'
+            'give me', 'اعطني', 'احتاج', 'ممكن'
         ]
 
         if any(indicator in message_lower for indicator in natural_indicators):
@@ -420,32 +518,17 @@ Now analyze the user's message and respond with appropriate JSON including perso
         elif any(word in message_lower for word in ['juice', 'عصير']):
             intent['drink_type'] = 'juice'
 
-        # Personalization level detection
-        personalization_indicators = ['prefer', 'like', 'favorite', 'usually', 'always', 'prefer', 'بدي', 'مفضل', 'احب']
-        if any(indicator in message_lower for indicator in personalization_indicators):
-            intent['personalization_level'] = 'high'
-
         return intent
 
     @staticmethod
-    def map_intent_to_suggestions(intent: dict, user_preferences: dict = None) -> dict:
-        """Enhanced mapping of detected intent to menu suggestions with personalization"""
+    def map_intent_to_suggestions(intent: dict) -> dict:
+        """Map detected intent to menu suggestions"""
         suggestions = {
             'main_category': None,
             'sub_categories': [],
             'confidence': 0.0,
-            'reason': '',
-            'personalized': False
+            'reason': ''
         }
-
-        # Apply user preferences if available
-        if user_preferences and intent.get('personalization_level') == 'high':
-            if user_preferences.get('favorite_categories'):
-                suggestions['main_category'] = user_preferences['favorite_categories'][0]
-                suggestions['personalized'] = True
-                suggestions['reason'] = 'Based on user preferences'
-                suggestions['confidence'] = 0.9
-                return suggestions
 
         # Food requests
         if intent.get('food_request'):

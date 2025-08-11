@@ -247,14 +247,9 @@ class EnhancedMessageHandler:
         if suggested_main_category and current_step == 'waiting_for_category':
             # Get the suggested main category
             main_categories = self.db.get_main_categories()
-            # Find by actual ID, not by array position
-            selected_category = None
-            for cat in main_categories:
-                if cat['id'] == suggested_main_category:
-                    selected_category = cat
-                    break
-            
-            if selected_category:
+            if 1 <= suggested_main_category <= len(main_categories):
+                selected_category = main_categories[suggested_main_category - 1]
+                
                 # Update session
                 self.db.create_or_update_session(
                     phone_number, 'waiting_for_sub_category', language,
@@ -265,7 +260,7 @@ class EnhancedMessageHandler:
                 # Show sub-categories
                 return self._show_sub_categories(phone_number, selected_category, language)
             else:
-                logger.warning(f"⚠️ Main category with ID {suggested_main_category} not found, falling back to structured processing")
+                logger.warning(f"⚠️ Invalid main category suggestion: {suggested_main_category}, falling back to structured processing")
                 # Fall back to structured processing with original message
                 return self._handle_structured_message(phone_number, original_user_message, current_step, session, user_context)
 
@@ -305,14 +300,9 @@ class EnhancedMessageHandler:
             sub_categories = self.db.get_sub_categories(main_category_id)
             logger.info(f"🔍 Sub-category selection: suggested={suggested_sub_category}, available={len(sub_categories)}, main_category={main_category_id}")
             
-            # Find by actual ID, not by array position
-            selected_sub_category = None
-            for sub_cat in sub_categories:
-                if sub_cat['id'] == suggested_sub_category:
-                    selected_sub_category = sub_cat
-                    break
-            
-            if selected_sub_category:
+            if 1 <= suggested_sub_category <= len(sub_categories):
+                selected_sub_category = sub_categories[suggested_sub_category - 1]
+                
                 # Update session
                 self.db.create_or_update_session(
                     phone_number, 'waiting_for_item', language,
@@ -324,7 +314,7 @@ class EnhancedMessageHandler:
                 # Show items
                 return self._show_sub_category_items(phone_number, selected_sub_category, language)
             else:
-                logger.warning(f"⚠️ Sub-category with ID {suggested_sub_category} not found in main category {main_category_id}")
+                logger.warning(f"⚠️ Invalid sub-category number: {suggested_sub_category}, max: {len(sub_categories)}")
                 # Fall back to structured processing with original message
                 logger.info(f"🔄 Falling back to structured processing for invalid AI suggestion with original message: '{original_user_message}'")
                 return self._handle_structured_message(phone_number, original_user_message, current_step, session, user_context)
@@ -358,13 +348,10 @@ class EnhancedMessageHandler:
         language = user_context.get('language')
 
         if category_id:
-            # Direct category ID selection - find by actual ID, not by array position
+            # Direct category ID selection
             main_categories = self.db.get_main_categories()
-            selected_category = None
-            for cat in main_categories:
-                if cat['id'] == category_id:
-                    selected_category = cat
-                    break
+            if 1 <= category_id <= len(main_categories):
+                selected_category = main_categories[category_id - 1]
                 
                 # Update session
                 self.db.create_or_update_session(
@@ -374,9 +361,6 @@ class EnhancedMessageHandler:
                 )
                 
                 return self._show_sub_categories(phone_number, selected_category, language)
-            else:
-                logger.warning(f"⚠️ Category with ID {category_id} not found")
-                return self._create_response("عذراً، لم نجد الفئة المطلوبة. الرجاء المحاولة مرة أخرى")
 
         elif category_name:
             # Category name matching
@@ -421,14 +405,9 @@ class EnhancedMessageHandler:
                     return self._create_response("خطأ في النظام. الرجاء المحاولة مرة أخرى")
             
             items = self.db.get_sub_category_items(sub_category_id)
-            # Find by actual ID, not by array position
-            selected_item = None
-            for item in items:
-                if item['id'] == item_id:
-                    selected_item = item
-                    break
-            
-            if selected_item:
+            if 1 <= item_id <= len(items):
+                selected_item = items[item_id - 1]
+                
                 # Update session
                 self.db.create_or_update_session(
                     phone_number, 'waiting_for_quantity', language,
@@ -439,9 +418,6 @@ class EnhancedMessageHandler:
                 )
                 
                 return self._show_quantity_selection(phone_number, selected_item, language)
-            else:
-                logger.warning(f"⚠️ Item with ID {item_id} not found in sub-category {sub_category_id}")
-                return self._create_response("عذراً، لم نجد المنتج المطلوب. الرجاء المحاولة مرة أخرى")
 
         elif item_name:
             # Item name matching
@@ -509,11 +485,9 @@ class EnhancedMessageHandler:
         selected_sub_category = None
         
         if sub_category_id:
-            # Direct ID selection - find by actual ID, not by array position
-            for sub_cat in sub_categories:
-                if sub_cat['id'] == sub_category_id:
-                    selected_sub_category = sub_cat
-                    break
+            # Direct ID selection
+            if 1 <= sub_category_id <= len(sub_categories):
+                selected_sub_category = sub_categories[sub_category_id - 1]
         
         elif sub_category_name:
             # Name-based selection
