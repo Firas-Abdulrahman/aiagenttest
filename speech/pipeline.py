@@ -50,7 +50,9 @@ class VoicePipeline:
             synthetic_message = {
                 'from': phone_number,
                 'text': {'body': transcript.text},
-                'id': message.get('id')
+                'id': message.get('id'),
+                'type': 'text',
+                'contacts': message.get('contacts', [])
             }
 
             response = self.handler.handle_message(synthetic_message)
