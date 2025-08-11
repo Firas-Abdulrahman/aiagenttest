@@ -79,8 +79,11 @@ class ThreadSafeMessageHandler:
             with session_manager.user_session_lock(phone_number):
                 # If voice message, route to voice pipeline
                 if message_data.get('audio') and self.voice_pipeline and hasattr(self, 'whatsapp_client'):
+                    logger.info(f"🎙️ Voice message detected for {phone_number}, routing to voice pipeline")
                     try:
-                        from ..speech.pipeline import VoiceMessagePipeline
+                        from speech.pipeline import VoiceMessagePipeline
+                        logger.info(f"✅ VoiceMessagePipeline imported successfully")
+                        
                         # Create voice pipeline with all required components
                         pipeline = VoiceMessagePipeline(
                             asr_service=self.voice_pipeline['asr'],
@@ -97,19 +100,23 @@ class ThreadSafeMessageHandler:
                                 'voice_reply_text_fallback': True
                             }
                         )
-                        # Process voice message asynchronously
-                        import asyncio
-                        try:
-                            loop = asyncio.get_event_loop()
-                        except RuntimeError:
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
+                        logger.info(f"✅ VoiceMessagePipeline created successfully")
                         
-                        ok = loop.run_until_complete(pipeline.process_voice_message(message_data))
+                        # Process voice message synchronously
+                        logger.info(f"✅ Processing voice message")
+                        ok = pipeline.process_voice_message(message_data)
+                        logger.info(f"✅ Voice pipeline completed with result: {ok}")
                         if ok:
                             return { 'type': 'handled' }
                     except Exception as e:
-                        logger.error(f"Voice pipeline failed: {e}")
+                        logger.error(f"❌ Voice pipeline failed: {e}")
+                        import traceback
+                        logger.error(f"❌ Voice pipeline traceback: {traceback.format_exc()}")
+                        # Don't fall back to text processing for voice messages - return error
+                        return self._create_error_response(
+                            "عذراً، لم أتمكن من معالجة رسالتك الصوتية. الرجاء المحاولة مرة أخرى أو إرسال رسالة نصية.\n"
+                            "Sorry, I couldn't process your voice message. Please try again or send a text message."
+                        )
 
                 return self._process_user_message_safely(phone_number, text, message_data)
 

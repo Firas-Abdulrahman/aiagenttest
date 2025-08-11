@@ -6,7 +6,7 @@ from .asr_service import ASRService
 from .tts_service import TTSService
 from ..whatsapp.client import WhatsAppClient
 from ..database.thread_safe_manager import ThreadSafeDatabaseManager
-from ..workflow.thread_safe_handlers import ThreadSafeMessageHandler
+from workflow.thread_safe_handlers import ThreadSafeMessageHandler
 from .types import Transcript, AudioBlob
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class VoiceMessagePipeline:
 
         logger.info(f"✅ Voice pipeline initialized: ASR={self.asr_enabled}, TTS={self.tts_enabled}")
 
-    async def process_voice_message(self, message_data: Dict[str, Any]) -> bool:
+    def process_voice_message(self, message_data: Dict[str, Any]) -> bool:
         phone_number = message_data.get('from')
         audio_id = message_data.get('audio', {}).get('id')
         message_id = message_data.get('id')
