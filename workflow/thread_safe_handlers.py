@@ -11,7 +11,7 @@ from utils.thread_safe_session import session_manager
 from database.thread_safe_manager import ThreadSafeDatabaseManager
 from workflow.handlers import MessageHandler
 from workflow.enhanced_handlers import EnhancedMessageHandler
-# VoicePipeline import removed - using VoiceMessagePipeline instead
+from speech.pipeline import VoicePipeline
 from speech.providers.openai_asr import OpenAIASR
 from speech.providers.openai_tts import OpenAITTS
 
@@ -79,44 +79,15 @@ class ThreadSafeMessageHandler:
             with session_manager.user_session_lock(phone_number):
                 # If voice message, route to voice pipeline
                 if message_data.get('audio') and self.voice_pipeline and hasattr(self, 'whatsapp_client'):
-                    logger.info(f"🎙️ Voice message detected for {phone_number}, routing to voice pipeline")
                     try:
-                        from speech.pipeline import VoiceMessagePipeline
-                        logger.info(f"✅ VoiceMessagePipeline imported successfully")
-                        
-                        # Create voice pipeline with all required components
-                        pipeline = VoiceMessagePipeline(
-                            asr_service=self.voice_pipeline['asr'],
-                            tts_service=self.voice_pipeline['tts'],
-                            whatsapp_client=self.whatsapp_client,
-                            db_manager=self.db,
-                            message_handler=self,  # Pass self as the message handler
-                            config={
-                                'asr_enabled': True,
-                                'tts_enabled': True,
-                                'tts_mime': 'audio/ogg',
-                                'tts_voice_ar': 'shimmer',
-                                'tts_voice_en': 'alloy',
-                                'voice_reply_text_fallback': True
-                            }
-                        )
-                        logger.info(f"✅ VoiceMessagePipeline created successfully")
-                        
-                        # Process voice message synchronously
-                        logger.info(f"✅ Processing voice message")
-                        ok = pipeline.process_voice_message(message_data)
-                        logger.info(f"✅ Voice pipeline completed with result: {ok}")
+                        # Prefer enhanced handler if available for natural language understanding
+                        handler_for_voice = self.enhanced_handler if getattr(self, 'enhanced_handler', None) else self.main_handler
+                        pipeline = VoicePipeline(self.voice_pipeline['asr'], self.voice_pipeline['tts'], self.whatsapp_client, handler_for_voice)
+                        ok = pipeline.process_voice_message(phone_number, message_data)
                         if ok:
                             return { 'type': 'handled' }
                     except Exception as e:
-                        logger.error(f"❌ Voice pipeline failed: {e}")
-                        import traceback
-                        logger.error(f"❌ Voice pipeline traceback: {traceback.format_exc()}")
-                        # Don't fall back to text processing for voice messages - return error
-                        return self._create_error_response(
-                            "عذراً، لم أتمكن من معالجة رسالتك الصوتية. الرجاء المحاولة مرة أخرى أو إرسال رسالة نصية.\n"
-                            "Sorry, I couldn't process your voice message. Please try again or send a text message."
-                        )
+                        logger.error(f"Voice pipeline failed: {e}")
 
                 return self._process_user_message_safely(phone_number, text, message_data)
 
