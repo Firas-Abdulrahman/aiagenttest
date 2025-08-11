@@ -4,8 +4,8 @@ from datetime import datetime
 
 from .asr_service import ASRService
 from .tts_service import TTSService
-from ..whatsapp.client import WhatsAppClient
-from ..database.thread_safe_manager import ThreadSafeDatabaseManager
+from whatsapp.client import WhatsAppClient
+from database.thread_safe_manager import ThreadSafeDatabaseManager
 from workflow.thread_safe_handlers import ThreadSafeMessageHandler
 from .types import Transcript, AudioBlob
 
