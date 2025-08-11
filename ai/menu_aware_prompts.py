@@ -1,7 +1,8 @@
 # ai/menu_aware_prompts.py
 """
-Simple Menu Awareness Enhancement for AI Prompts
+Enhanced Menu Awareness Enhancement for AI Prompts
 Makes the AI fully aware of the menu structure and able to understand natural language requests
+with advanced personalization and context awareness
 """
 import logging
 
@@ -9,20 +10,20 @@ logger = logging.getLogger(__name__)
 
 
 class MenuAwarePrompts:
-    """Enhanced prompts with simple menu awareness"""
+    """Enhanced prompts with advanced menu awareness and personalization"""
 
     @staticmethod
     def get_menu_context(database_manager) -> str:
-        """Get comprehensive menu context for AI understanding"""
+        """Get comprehensive menu context for AI understanding with advanced insights"""
         try:
             # Get all menu data in a structured format
             main_categories = database_manager.get_main_categories()
-            menu_context = "COMPLETE MENU KNOWLEDGE:\n"
-            menu_context += "=" * 50 + "\n"
+            menu_context = "COMPLETE MENU KNOWLEDGE WITH ADVANCED INSIGHTS:\n"
+            menu_context += "=" * 60 + "\n"
 
             for main_cat in main_categories:
                 menu_context += f"\nMAIN CATEGORY {main_cat['id']}: {main_cat['name_ar']} / {main_cat['name_en']}\n"
-                menu_context += "-" * 40 + "\n"
+                menu_context += "-" * 50 + "\n"
 
                 # Get sub-categories
                 sub_categories = database_manager.get_sub_categories(main_cat['id'])
@@ -44,8 +45,8 @@ class MenuAwarePrompts:
 
             # Add intelligent attribute mapping for natural language understanding
             menu_context += """
-INTELLIGENT UNDERSTANDING GUIDE:
-================================
+INTELLIGENT UNDERSTANDING GUIDE WITH PERSONALIZATION:
+====================================================
 
 TEMPERATURE PREFERENCES:
 - "cold", "iced", "chilled", "بارد", "مثلج", "منعش" → Main Category 1 (Cold Drinks)
@@ -94,6 +95,20 @@ COMBINATION UNDERSTANDING:
 - "hot + creamy" → Lattes & Specialties (ID: 9)
 - "sweet + food" → Cake Slices (ID: 15)
 - "savory + food" → Toast (ID: 11), Sandwiches (ID: 12), Pies (ID: 14)
+
+PERSONALIZATION FEATURES:
+- Remember user's favorite categories and items
+- Suggest based on previous successful orders
+- Provide time-of-day appropriate recommendations
+- Offer seasonal and occasion-based suggestions
+- Learn from user behavior patterns
+
+CONTEXT-AWARE SUGGESTIONS:
+- Morning: Coffee + Pastries, Fresh Juices + Toast
+- Afternoon: Iced Tea + Light Food, Frappuccino + Cake
+- Evening: Hot Drinks + Comfort Food, Warm Pastries
+- Social: Mojito + Appetizers, Sharing Platters
+- Work/Study: Energy Drinks + Quick Bites, Coffee + Sandwiches
 """
 
             return menu_context
@@ -104,235 +119,110 @@ COMBINATION UNDERSTANDING:
 
     @staticmethod
     def get_enhanced_understanding_prompt(user_message: str, current_step: str, context: dict, database_manager) -> str:
-        """Get enhanced understanding prompt with menu awareness and context"""
-        try:
-            # Get comprehensive menu context
-            menu_context = MenuAwarePrompts.get_menu_context(database_manager)
-            
-            # Get user-specific context
-            user_context = MenuAwarePrompts._build_user_context(context)
-            
-            # Get step-specific guidance
-            step_guidance = MenuAwarePrompts._get_step_specific_guidance(current_step)
-            
-            prompt = f"""
-ENHANCED MENU-AWARE AI UNDERSTANDING
-====================================
+        """Enhanced AI understanding prompt with complete menu awareness and personalization"""
 
-CURRENT SITUATION:
-- User is at step: {current_step}
-- User said: "{user_message}"
-- Language preference: {context.get('language_preference', 'arabic')}
+        # Get comprehensive menu context
+        menu_context = MenuAwarePrompts.get_menu_context(database_manager)
 
-USER CONTEXT:
-{user_context}
+        # Build personalized context
+        personalized_context = MenuAwarePrompts._build_personalized_context(context)
 
-STEP-SPECIFIC GUIDANCE:
-{step_guidance}
+        return f"""You are an intelligent AI assistant for Hef Cafe with COMPLETE MENU KNOWLEDGE and ADVANCED PERSONALIZATION CAPABILITIES. You can understand natural language requests and intelligently suggest menu items with personalized recommendations.
 
-COMPLETE MENU KNOWLEDGE:
+🚨 CRITICAL INSTRUCTION FOR waiting_for_additional STEP:
+When the user is at the "waiting_for_additional" step and they say "نعم" (Arabic for Yes), you MUST set yes_no="yes" in your response.
+When the user is at the "waiting_for_additional" step and they say "لا" (Arabic for No), you MUST set yes_no="no" in your response.
+This is a CRITICAL requirement - do NOT misinterpret these Arabic words.
+
+EXAMPLE: If user says "نعم" at waiting_for_additional step, your response MUST include "yes_no": "yes"
+
 {menu_context}
 
-NATURAL LANGUAGE UNDERSTANDING RULES:
-====================================
+PERSONALIZED CONTEXT:
+{personalized_context}
 
-1. CONTEXT AWARENESS:
-   - Consider user's current order progress
-   - Use previous selections to guide understanding
-   - Remember user's language preference
-   - Consider time of day and weather context
-
-2. INTENT RECOGNITION:
-   - Look for explicit menu selections (numbers, names)
-   - Detect implicit preferences (mood, weather, time)
-   - Understand natural language requests
-   - Handle multiple requests in one message
-
-3. MENU MAPPING:
-   - Map natural language to specific menu items
-   - Consider category relationships
-   - Handle synonyms and variations
-   - Support both Arabic and English
-
-4. VALIDATION:
-   - Ensure selections are valid for current step
-   - Check item availability
-   - Validate quantities and options
-   - Provide helpful error messages
-
-RESPOND WITH ENHANCED JSON:
-{{
-    "understood_intent": "clear description of what user wants",
-    "confidence": "high/medium/low",
-    "action": "language_selection/category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu/help_request/stay_current_step",
-    "extracted_data": {{
-        "language": "arabic/english/null",
-        "category_id": "number or null",
-        "category_name": "string or null",
-        "item_id": "number or null",
-        "item_name": "string or null",
-        "quantity": "number or null",
-        "yes_no": "yes/no/null",
-        "service_type": "dine-in/delivery/null",
-        "location": "string or null"
-    }},
-    "clarification_needed": "true/false",
-    "clarification_question": "question to ask if clarification needed",
-    "response_message": "natural response to user in their preferred language",
-    "menu_context_used": "specific menu elements that helped understanding",
-    "suggested_alternatives": "alternative items if requested item unavailable"
-}}
-
-IMPORTANT: Use the complete menu knowledge to provide accurate and helpful responses.
-"""
-            return prompt
-            
-        except Exception as e:
-            logger.error(f"Error generating enhanced menu-aware prompt: {e}")
-            # Fallback to basic prompt
-            return MenuAwarePrompts._get_basic_prompt(user_message, current_step, context)
-
-    # NEW: Build user context for better understanding
-    @staticmethod
-    def _build_user_context(context: dict) -> str:
-        """Build comprehensive user context for AI understanding"""
-        user_context = []
-        
-        # Basic user info
-        if context.get('customer_name'):
-            user_context.append(f"- Customer: {context['customer_name']}")
-        
-        if context.get('language_preference'):
-            user_context.append(f"- Language: {context['language_preference']}")
-        
-        # Current order progress
-        if context.get('selected_main_category'):
-            user_context.append(f"- Selected main category: {context['selected_main_category']}")
-        
-        if context.get('selected_sub_category'):
-            user_context.append(f"- Selected sub-category: {context['selected_sub_category']}")
-        
-        if context.get('selected_item'):
-            user_context.append(f"- Selected item: {context['selected_item']}")
-        
-        # Order context
-        if context.get('current_order_items'):
-            items = context['current_order_items']
-            if items:
-                user_context.append(f"- Current order has {len(items)} items")
-                for item in items[-3:]:  # Show last 3 items
-                    user_context.append(f"  * {item.get('name', 'Unknown')} x{item.get('quantity', 1)}")
-        
-        # Preferences and patterns
-        if context.get('user_preferences'):
-            prefs = context['user_preferences']
-            for key, value in prefs.items():
-                user_context.append(f"- Preference: {key} = {value}")
-        
-        return "\n".join(user_context) if user_context else "No specific user context available"
-
-    # NEW: Get step-specific guidance with menu awareness
-    @staticmethod
-    def _get_step_specific_guidance(step: str) -> str:
-        """Get step-specific guidance with menu awareness"""
-        guidance = {
-            'waiting_for_language': """
-                LANGUAGE SELECTION WITH MENU AWARENESS:
-                - Detect user's preferred language
-                - Consider cultural context and greetings
-                - Prepare to show menu in detected language
-                - Remember language preference for future interactions
-            """,
-            
-            'waiting_for_main_category': """
-                MAIN CATEGORY SELECTION WITH MENU AWARENESS:
-                - Show all 3 main categories clearly
-                - Explain what each category contains
-                - Consider user's mood and preferences
-                - Suggest popular combinations
-            """,
-            
-            'waiting_for_sub_category': """
-                SUB-CATEGORY SELECTION WITH MENU AWARENESS:
-                - Show relevant sub-categories for selected main category
-                - Highlight popular items in each sub-category
-                - Consider user's previous preferences
-                - Suggest complementary items
-            """,
-            
-            'waiting_for_item': """
-                ITEM SELECTION WITH MENU AWARENESS:
-                - Show all items in selected sub-category
-                - Include prices and descriptions
-                - Highlight popular and recommended items
-                - Consider dietary preferences and restrictions
-            """,
-            
-            'waiting_for_quantity': """
-                QUANTITY SELECTION WITH MENU AWARENESS:
-                - Accept various quantity formats
-                - Suggest appropriate quantities based on item type
-                - Consider sharing vs. personal use
-                - Mention bulk pricing if applicable
-            """,
-            
-            'waiting_for_additional': """
-                ADDITIONAL ITEMS WITH MENU AWARENESS:
-                - Suggest complementary items
-                - Consider popular combinations
-                - Mention special offers or deals
-                - Respect user's budget and preferences
-            """,
-            
-            'waiting_for_service': """
-                SERVICE SELECTION WITH MENU AWARENESS:
-                - Explain service options clearly
-                - Consider time of day and availability
-                - Mention delivery areas and timing
-                - Consider user's previous service choices
-            """,
-            
-            'waiting_for_location': """
-                LOCATION INPUT WITH MENU AWARENESS:
-                - Accept various location formats
-                - Confirm delivery area coverage
-                - Mention delivery time estimates
-                - Consider user's previous delivery locations
-            """,
-            
-            'waiting_for_confirmation': """
-                ORDER CONFIRMATION WITH MENU AWARENESS:
-                - Show complete order summary
-                - Confirm all selections and quantities
-                - Mention total cost and delivery fee if applicable
-                - Provide modification options
-            """
-        }
-        
-        return guidance.get(step, "Use general menu guidance for this step")
-
-    # NEW: Get basic prompt as fallback
-    @staticmethod
-    def _get_basic_prompt(user_message: str, current_step: str, context: dict) -> str:
-        """Get basic prompt as fallback when enhanced prompt fails"""
-        return f"""
-BASIC AI UNDERSTANDING PROMPT
-=============================
-
-CURRENT SITUATION:
+CURRENT CONVERSATION STATE:
+==========================
 - User is at step: {current_step}
 - User said: "{user_message}"
-- Language preference: {context.get('language_preference', 'arabic')}
+- Language preference: {context.get('language', 'arabic')}
+- Available main categories: {len(context.get('available_categories', []))}
+- Current category items: {len(context.get('current_category_items', []))}
+- Time of day: {context.get('time_of_day', 'unknown')}
+- User preferences: {context.get('user_preferences', {})}
 
-RESPOND WITH JSON:
+INTELLIGENT RESPONSE RULES WITH PERSONALIZATION:
+===============================================
+1. NATURAL LANGUAGE UNDERSTANDING:
+   - Analyze the user's natural language request
+   - Map their preferences to menu categories and items
+   - Provide intelligent suggestions based on their needs AND preferences
+
+2. PERSONALIZATION FEATURES:
+   - Use user's favorite categories and items when appropriate
+   - Suggest based on previous successful orders
+   - Provide time-of-day appropriate recommendations
+   - Offer seasonal and occasion-based suggestions
+
+3. EXAMPLES OF INTELLIGENT UNDERSTANDING WITH PERSONALIZATION:
+   - "I want something cold and sweet" → Suggest Frappuccino (ID: 2) or Milkshakes (ID: 3)
+   - "اريد شي بارد ومنعش" → Suggest Iced Tea (ID: 4) or Mojito (ID: 6)
+   - "I need energy" → Suggest Coffee & Espresso (ID: 8) or Iced Coffee (ID: 1)
+   - "بدي شي حلو اكله" → Suggest Cake Slices (ID: 15)
+   - "Something to wake me up" → Suggest strong Coffee & Espresso (ID: 8)
+   - "اريد مشروب ساخن" → Suggest Main Category 2 (Hot Drinks)
+   - "I want food" → Suggest Main Category 3 (Pastries & Sweets)
+
+4. RESPONSE STRATEGY WITH PERSONALIZATION:
+   - If you can identify specific preferences, suggest the most suitable sub-category
+   - If request is broad, suggest the appropriate main category
+   - Always explain WHY you're suggesting something
+   - Use the user's preferred language
+   - Include personalized suggestions based on user context
+   - Provide context insights about why certain suggestions are made
+
+5. WORKFLOW STEPS:
+   - waiting_for_language: Detect language preference
+   - waiting_for_main_category: User selects from 3 main categories
+   - waiting_for_sub_category: User selects specific sub-category (e.g., "موهيتو", "ايس كوفي", "فرابتشينو")
+   - waiting_for_item: User selects specific item (e.g., "موهيتو ازرق", "ايس امريكانو")
+   - waiting_for_quantity: User specifies how many
+   - waiting_for_additional: Ask if they want more items
+   - waiting_for_service: Dine-in or delivery
+   - waiting_for_location: Table number or address
+   - waiting_for_confirmation: Final order confirmation
+
+6. STEP-SPECIFIC RULES:
+   - At waiting_for_category: If user says "1" or "١", use action "category_selection" with suggested_main_category=1
+   - At waiting_for_category: If user says "2" or "٢", use action "category_selection" with suggested_main_category=2  
+   - At waiting_for_category: If user says "3" or "٣", use action "category_selection" with suggested_main_category=3
+   - At waiting_for_category: If user says "4" or "٤", use action "category_selection" with suggested_main_category=1 (Cold Drinks)
+   - At waiting_for_category: If user says "5" or "٥", use action "category_selection" with suggested_main_category=1 (Cold Drinks)
+   - At waiting_for_category: If user says "6" or "٦", use action "category_selection" with suggested_main_category=1 (Cold Drinks)
+   - At waiting_for_category: If user says "7" or "٧", use action "category_selection" with suggested_main_category=1 (Cold Drinks)
+   - At waiting_for_sub_category: If user says "موهيتو", use action "sub_category_selection"
+   - At waiting_for_sub_category: If user says "موهيتو ازرق", use action "item_selection"
+   - At waiting_for_item: If user says "موهيتو", navigate to mojito sub-category
+   - At waiting_for_item: If user says "موهيتو ازرق", select that specific item
+   - At waiting_for_additional: If user says "1" or "نعم" or "yes" or "اي", use action "yes_no" with yes_no="yes"
+   - At waiting_for_additional: If user says "2" or "لا" or "no" or "لأ", use action "yes_no" with yes_no="no"
+   - At waiting_for_service: If user says "1" or "١" or "في المقهى" or "داخل" or "dine", use action "service_selection" with service_type="dine-in"
+   - At waiting_for_service: If user says "2" or "٢" or "توصيل" or "delivery", use action "service_selection" with service_type="delivery"
+   - At waiting_for_service: If user says "3" or "4" or "5" or "6" or "7" or "8" or "9" or "10" or "11" or "12" or any number > 2, DO NOT accept it as valid service selection
+
+RESPOND WITH CLEAN JSON (no extra text):
+=======================================
 {{
-    "understood_intent": "clear description of what user wants",
+    "understood_intent": "Clear description of what the user wants",
     "confidence": "high/medium/low",
-    "action": "language_selection/category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu/help_request/stay_current_step",
+    "action": "intelligent_suggestion/language_selection/category_selection/sub_category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu",
     "extracted_data": {{
         "language": "arabic/english/null",
+        "suggested_main_category": "number if you can intelligently suggest main category",
+        "suggested_sub_category": "number if you can intelligently suggest specific sub-category",
+        "sub_category_id": "number or null",
+        "sub_category_name": "string or null",
         "category_id": "number or null",
-        "category_name": "string or null",
         "item_id": "number or null",
         "item_name": "string or null",
         "quantity": "number or null",
@@ -340,15 +230,143 @@ RESPOND WITH JSON:
         "service_type": "dine-in/delivery/null",
         "location": "string or null"
     }},
-    "clarification_needed": "true/false",
-    "clarification_question": "question to ask if clarification needed",
-    "response_message": "natural response to user in their preferred language"
+    "clarification_needed": false,
+    "response_message": "Helpful response in user's language with intelligent suggestions and explanation",
+    "personalized_suggestions": ["suggestion1", "suggestion2"],
+    "context_insights": "Brief insight about user's choice or preference"
 }}
-"""
+
+IMPORTANT VALIDATION RULES:
+==========================
+- For service_selection: ONLY accept "1" or "2" as valid numbers. Numbers 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, etc. are INVALID for service selection.
+- If user enters invalid service number, return error message asking them to choose 1 or 2 only.
+- Always include personalized_suggestions and context_insights in your response.
+- Use user preferences when available to provide better suggestions.
+
+CRITICAL EXAMPLES WITH PERSONALIZATION:
+======================================
+User: "1" (at waiting_for_category step)
+Response: {{
+    "understood_intent": "User wants to select main category number 1 (Cold Drinks)",
+    "confidence": "high",
+    "action": "category_selection",
+    "extracted_data": {{
+        "language": "arabic",
+        "suggested_main_category": 1,
+        "suggested_sub_category": null,
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!",
+    "personalized_suggestions": ["موهيتو", "فرابتشينو", "ايس كوفي"],
+    "context_insights": "Cold Drinks are perfect for refreshing moments! Great choice for energy and refreshment."
+}}
+
+User: "I want something cold and sweet"
+Response: {{
+    "understood_intent": "User wants a cold and sweet drink",
+    "confidence": "high",
+    "action": "intelligent_suggestion",
+    "extracted_data": {{
+        "language": "english",
+        "suggested_main_category": 1,
+        "suggested_sub_category": 2,
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "I understand you want something cold and sweet! Perfect choice for a refreshing treat.\\n\\nI recommend our Frappuccinos - they're cold, creamy, and deliciously sweet:\\n\\n1. Caramel Frappuccino - 5000 IQD\\n2. Vanilla Frappuccino - 5000 IQD\\n3. Hazelnut Frappuccino - 5000 IQD\\n4. Chocolate Frappuccino - 5000 IQD\\n\\nOr try our Milkshakes if you prefer something thicker and creamier!\\n\\nChoose a number or tell me which one sounds good to you!",
+    "personalized_suggestions": ["Frappuccino", "Milkshake", "Iced Coffee"],
+    "context_insights": "Cold and sweet combination is perfect for hot days and sweet cravings. Frappuccinos are our most popular choice!"
+}}
+
+User: "اريد شي بارد ومنعش"
+Response: {{
+    "understood_intent": "User wants something cold and refreshing",
+    "confidence": "high", 
+    "action": "intelligent_suggestion",
+    "extracted_data": {{
+        "language": "arabic",
+        "suggested_main_category": 1,
+        "suggested_sub_category": 4,
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "فهمت أنك تريد شيء بارد ومنعش! اختيار ممتاز لإنعاش يومك.\\n\\nأنصحك بالشاي المثلج - بارد ومنعش تماماً:\\n\\n1. شاي مثلج بالخوخ - 5000 دينار\\n2. شاي مثلج بفاكهة العاطفة - 5000 دينار\\n\\nأو جرب الموهيتو إذا كنت تحب شيء أكثر انتعاشاً مع النعناع!\\n\\nاختر الرقم أو قلي أيش يعجبك!",
+    "personalized_suggestions": ["شاي مثلج", "موهيتو", "عصائر طازجة"],
+    "context_insights": "Cold and refreshing drinks are perfect for hot days and afternoon breaks. Iced Tea is our most popular refreshing choice!"
+}}
+
+Now analyze the user's message and respond with appropriate JSON including personalization."""
+
+    @staticmethod
+    def _build_personalized_context(context: dict) -> str:
+        """Build personalized context for enhanced understanding"""
+        personalized_info = []
+        
+        # Time-based context
+        time_of_day = context.get('time_of_day', '')
+        if time_of_day:
+            if time_of_day == 'morning':
+                personalized_info.append("🌅 Morning Context: Coffee + Pastries, Fresh Juices + Toast are perfect choices")
+            elif time_of_day == 'afternoon':
+                personalized_info.append("🌞 Afternoon Context: Iced Tea + Light Food, Frappuccino + Cake are ideal")
+            elif time_of_day == 'evening':
+                personalized_info.append("🌆 Evening Context: Hot Drinks + Comfort Food, Warm Pastries are great")
+            elif time_of_day == 'night':
+                personalized_info.append("🌙 Night Context: Warm Drinks + Light Snacks are perfect")
+        
+        # User preferences context
+        user_prefs = context.get('user_preferences', {})
+        if user_prefs:
+            if user_prefs.get('favorite_categories'):
+                personalized_info.append(f"❤️ User's Favorite Categories: {', '.join(map(str, user_prefs['favorite_categories']))}")
+            if user_prefs.get('favorite_items'):
+                personalized_info.append(f"⭐ User's Favorite Items: {', '.join(user_prefs['favorite_items'][:3])}")
+        
+        # Seasonal context
+        seasonal = context.get('seasonal_suggestions', {})
+        if seasonal:
+            seasonal_tips = []
+            if seasonal.get('hot_drinks') == 'high':
+                seasonal_tips.append("Hot drinks are perfect for this season")
+            if seasonal.get('cold_drinks') == 'high':
+                seasonal_tips.append("Cold drinks are ideal for this season")
+            if seasonal.get('comfort_food') == 'high':
+                seasonal_tips.append("Comfort food is great for this season")
+            
+            if seasonal_tips:
+                personalized_info.append(f"🌤️ Seasonal Tips: {'; '.join(seasonal_tips)}")
+        
+        # Popular combinations context
+        popular = context.get('popular_combinations', [])
+        if popular:
+            combo_tips = []
+            for item in popular[:3]:
+                combo_tips.append(f"{item.get('drink', 'Unknown')}+{item.get('food', 'Unknown')}")
+            
+            if combo_tips:
+                personalized_info.append(f"🔥 Popular Combinations: {', '.join(combo_tips)}")
+        
+        return "\n".join(personalized_info) if personalized_info else "No personalized context available"
 
     @staticmethod
     def detect_natural_language_intent(user_message: str) -> dict:
-        """Simple detection of natural language intents"""
+        """Enhanced detection of natural language intents with personalization"""
         message_lower = user_message.lower().strip()
 
         intent = {
@@ -357,13 +375,14 @@ RESPOND WITH JSON:
             'sweetness': None,
             'energy': None,
             'food_request': None,
-            'drink_type': None
+            'drink_type': None,
+            'personalization_level': 'low'
         }
 
         # Check if this is a natural language request
         natural_indicators = [
             'i want', 'i need', 'something', 'اريد', 'بدي', 'شي', 'شيء',
-            'give me', 'اعطني', 'احتاج', 'ممكن'
+            'give me', 'اعطني', 'احتاج', 'ممكن', 'prefer', 'like', 'favorite'
         ]
 
         if any(indicator in message_lower for indicator in natural_indicators):
@@ -401,17 +420,32 @@ RESPOND WITH JSON:
         elif any(word in message_lower for word in ['juice', 'عصير']):
             intent['drink_type'] = 'juice'
 
+        # Personalization level detection
+        personalization_indicators = ['prefer', 'like', 'favorite', 'usually', 'always', 'prefer', 'بدي', 'مفضل', 'احب']
+        if any(indicator in message_lower for indicator in personalization_indicators):
+            intent['personalization_level'] = 'high'
+
         return intent
 
     @staticmethod
-    def map_intent_to_suggestions(intent: dict) -> dict:
-        """Map detected intent to menu suggestions"""
+    def map_intent_to_suggestions(intent: dict, user_preferences: dict = None) -> dict:
+        """Enhanced mapping of detected intent to menu suggestions with personalization"""
         suggestions = {
             'main_category': None,
             'sub_categories': [],
             'confidence': 0.0,
-            'reason': ''
+            'reason': '',
+            'personalized': False
         }
+
+        # Apply user preferences if available
+        if user_preferences and intent.get('personalization_level') == 'high':
+            if user_preferences.get('favorite_categories'):
+                suggestions['main_category'] = user_preferences['favorite_categories'][0]
+                suggestions['personalized'] = True
+                suggestions['reason'] = 'Based on user preferences'
+                suggestions['confidence'] = 0.9
+                return suggestions
 
         # Food requests
         if intent.get('food_request'):

@@ -23,7 +23,7 @@ except ImportError:
 
 
 class EnhancedAIProcessor:
-    """Enhanced AI Processor with Deep Workflow Integration"""
+    """Enhanced AI Processor with Deep Workflow Integration and Advanced Context Awareness"""
 
     def __init__(self, api_key: str = None, config: Dict = None, database_manager=None):
         self.api_key = api_key
@@ -36,11 +36,10 @@ class EnhancedAIProcessor:
         self.failure_window_start = None
         self.failure_window_duration = 300  # 5 minutes
 
-        # NEW: Enhanced context management
-        self.conversation_memory = {}  # Store conversation history per user
-        self.user_preferences = {}     # Store user preferences and patterns
-        self.error_patterns = {}       # Track common error patterns
-        self.success_strategies = {}   # Store successful resolution strategies
+        # Advanced context tracking
+        self.user_preferences = {}  # Store user preferences across sessions
+        self.conversation_memory = {}  # Enhanced conversation memory
+        self.menu_insights = {}  # Menu popularity and combination insights
 
         # Configuration
         if config:
@@ -55,7 +54,7 @@ class EnhancedAIProcessor:
         if OPENAI_AVAILABLE and api_key:
             try:
                 self.client = openai.OpenAI(api_key=api_key)
-                logger.info("✅ Enhanced AI Processor initialized with deep workflow integration")
+                logger.info("✅ Enhanced AI Processor initialized with advanced context awareness")
             except Exception as e:
                 logger.error(f"⚠️ OpenAI initialization failed: {e}")
                 self.client = None
@@ -84,472 +83,163 @@ class EnhancedAIProcessor:
     def understand_natural_language(self, user_message: str, current_step: str, 
                                   user_context: Dict, language: str = 'arabic') -> Dict:
         """
-        Primary method for natural language understanding with deep workflow integration
+        Primary method for natural language understanding with advanced context awareness
         """
         if not self.is_available():
             logger.warning("Enhanced AI unavailable, using fallback")
             return self._generate_enhanced_fallback(user_message, current_step, user_context, language)
 
         try:
-            # NEW: Enhanced pre-processing with context
-            processed_message = self._preprocess_message(user_message)
+            # Pre-process message with advanced understanding
+            processed_message = self._preprocess_message_advanced(user_message)
             
-            # NEW: Build comprehensive context with conversation memory
-            enhanced_context = self._build_enhanced_context(current_step, user_context, language)
+            # Build comprehensive enhanced context
+            enhanced_context = self._build_enhanced_context_advanced(current_step, user_context, language)
             
-            # NEW: Generate enhanced prompt with conversation history
-            prompt = self._generate_enhanced_prompt(processed_message, current_step, enhanced_context)
+            # Generate enhanced prompt with advanced features
+            prompt = self._generate_enhanced_prompt_advanced(processed_message, current_step, enhanced_context)
             
-            logger.info(f"🧠 Enhanced AI analyzing: '{processed_message}' at step '{current_step}'")
+            logger.info(f"🧠 Advanced AI analyzing: '{processed_message}' at step '{current_step}'")
 
             # Call OpenAI with enhanced parameters
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": self._get_enhanced_system_prompt()},
+                    {"role": "system", "content": self._get_enhanced_system_prompt_advanced()},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.3,
-                max_tokens=800,
-                response_format={"type": "json_object"}
+                max_tokens=1500,  # Increased for more detailed responses
+                temperature=0.4,  # Slightly higher for more creative understanding
+                timeout=45,  # Increased timeout for complex processing
             )
 
-            # NEW: Enhanced response parsing with fallback strategies
-            ai_response = response.choices[0].message.content
-            result = self._parse_enhanced_response(ai_response, current_step, user_message)
+            ai_response = response.choices[0].message.content.strip()
+            
+            # Parse and validate response with advanced validation
+            result = self._parse_enhanced_response_advanced(ai_response, current_step, processed_message)
             
             if result:
-                # NEW: Validate and monitor the response
-                result = self._validate_and_monitor_response(result, user_message, current_step, enhanced_context)
+                # Update user preferences and insights
+                self._update_user_insights(user_context.get('phone_number'), result, user_message)
                 
-                # NEW: Update conversation memory and learn from success
-                self._update_conversation_memory(user_context.get('phone_number'), user_message, result, True)
+                # Enhance response with context and personalization
+                result = self._enhance_response_with_context(result, user_context)
+                
+                # Check if steps can be skipped
+                if self._should_skip_steps(result, current_step, user_context):
+                    skip_suggestions = self._get_skip_suggestions(result, current_step)
+                    if skip_suggestions:
+                        result['skip_suggestions'] = skip_suggestions
+                        result['can_skip_steps'] = True
+                
+                logger.info(f"✅ Advanced AI Understanding: {result.get('understood_intent', 'N/A')} "
+                           f"(confidence: {result.get('confidence', 'N/A')}, action: {result.get('action', 'N/A')})")
                 self._reset_failure_counter()
                 return result
             else:
-                # NEW: Try alternative parsing strategies
-                logger.warning("🔄 Primary parsing failed, trying alternative strategies")
-                fallback_result = self._try_alternative_parsing(ai_response, current_step, user_message, user_context)
-                
-                if fallback_result:
-                    # NEW: Validate and monitor the fallback result
-                    fallback_result = self._validate_and_monitor_response(fallback_result, user_message, current_step, enhanced_context)
-                    
-                    # NEW: Update conversation memory with fallback result
-                    self._update_conversation_memory(user_context.get('phone_number'), user_message, fallback_result, False)
-                    return fallback_result
-                else:
-                    # NEW: Generate enhanced fallback with validation
-                    enhanced_fallback = self._generate_enhanced_fallback(user_message, current_step, user_context, language)
-                    enhanced_fallback = self._validate_and_monitor_response(enhanced_fallback, user_message, current_step, enhanced_context)
-                    
-                    # NEW: Update conversation memory with enhanced fallback
-                    self._update_conversation_memory(user_context.get('phone_number'), user_message, enhanced_fallback, False)
-                    return enhanced_fallback
+                logger.error("❌ Failed to parse advanced AI response")
+                self._handle_ai_failure(Exception("Invalid advanced AI response format"))
+                return self._generate_enhanced_fallback(user_message, current_step, user_context, language)
 
         except Exception as e:
-            logger.error(f"❌ Enhanced AI processing error: {str(e)}")
             self._handle_ai_failure(e)
             return self._generate_enhanced_fallback(user_message, current_step, user_context, language)
 
-    # NEW: Enhanced conversation memory management
-    def _update_conversation_memory(self, phone_number: str, user_message: str, ai_result: Dict, success: bool):
-        """Update conversation memory and learn from interactions"""
-        if not phone_number:
-            return
-            
-        if phone_number not in self.conversation_memory:
-            self.conversation_memory[phone_number] = {
-                'history': [],
-                'preferences': {},
-                'error_patterns': [],
-                'success_patterns': []
-            }
-        
-        # Add to conversation history (keep last 10 exchanges)
-        memory = self.conversation_memory[phone_number]
-        memory['history'].append({
-            'user_message': user_message,
-            'ai_result': ai_result,
-            'timestamp': time.time(),
-            'success': success
-        })
-        
-        # Keep only last 10 exchanges
-        if len(memory['history']) > 10:
-            memory['history'] = memory['history'][-10:]
-        
-        # Learn from success/failure
-        if success:
-            memory['success_patterns'].append({
-                'message_type': user_message[:50],  # First 50 chars
-                'step': ai_result.get('current_step', 'unknown'),
-                'action': ai_result.get('action', 'unknown')
-            })
-        else:
-            memory['error_patterns'].append({
-                'message_type': user_message[:50],
-                'step': ai_result.get('current_step', 'unknown'),
-                'error': str(ai_result.get('error', 'unknown'))
-            })
+    def _get_enhanced_system_prompt_advanced(self) -> str:
+        """Get advanced system prompt for OpenAI with enhanced capabilities"""
+        return """You are an intelligent WhatsApp bot for a café ordering system with ADVANCED CONTEXT AWARENESS and INTELLIGENT MENU UNDERSTANDING. Your role is to understand natural language requests and guide users through the ordering process with personalized recommendations.
 
-    # NEW: Alternative parsing strategies
-    def _try_alternative_parsing(self, ai_response: str, current_step: str, user_message: str, user_context: Dict) -> Optional[Dict]:
-        """Try alternative parsing strategies when primary parsing fails"""
-        strategies = [
-            self._try_regex_parsing,
-            self._try_keyword_parsing,
-            self._try_contextual_parsing,
-            self._try_fallback_parsing
-        ]
-        
-        for strategy in strategies:
-            try:
-                result = strategy(ai_response, current_step, user_message, user_context)
-                if result:
-                    logger.info(f"✅ Alternative parsing strategy succeeded: {strategy.__name__}")
-                    return result
-            except Exception as e:
-                logger.warning(f"⚠️ Alternative parsing strategy failed: {strategy.__name__} - {e}")
-                continue
-        
-        return None
-
-    # NEW: Regex-based parsing fallback
-    def _try_regex_parsing(self, ai_response: str, current_step: str, user_message: str, user_context: Dict) -> Optional[Dict]:
-        """Try to parse response using regex patterns"""
-        import re
-        
-        # Extract key information using regex
-        patterns = {
-            'action': r'"action":\s*"([^"]+)"',
-            'confidence': r'"confidence":\s*"([^"]+)"',
-            'language': r'"language":\s*"([^"]+)"',
-            'quantity': r'"quantity":\s*(\d+)',
-            'yes_no': r'"yes_no":\s*"([^"]+)"'
-        }
-        
-        extracted_data = {}
-        for key, pattern in patterns.items():
-            match = re.search(pattern, ai_response)
-            if match:
-                extracted_data[key] = match.group(1) if key != 'quantity' else int(match.group(1))
-        
-        if extracted_data:
-            return self._build_fallback_result(extracted_data, current_step, user_message, user_context)
-        
-        return None
-
-    # NEW: Keyword-based parsing fallback
-    def _try_keyword_parsing(self, ai_response: str, current_step: str, user_message: str, user_context: Dict) -> Optional[Dict]:
-        """Try to parse response using keyword analysis"""
-        keywords = {
-            'language_selection': ['arabic', 'english', 'عربي', 'انجليزي'],
-            'category_selection': ['category', 'category_id', 'category_name'],
-            'item_selection': ['item', 'item_id', 'item_name'],
-            'quantity_selection': ['quantity', 'number', 'amount'],
-            'service_selection': ['service', 'dine-in', 'delivery'],
-            'confirmation': ['confirm', 'yes', 'no']
-        }
-        
-        # Analyze response content for keywords
-        response_lower = ai_response.lower()
-        detected_actions = []
-        
-        for action, action_keywords in keywords.items():
-            if any(keyword in response_lower for keyword in action_keywords):
-                detected_actions.append(action)
-        
-        if detected_actions:
-            # Use the most relevant action
-            action = detected_actions[0]
-            return self._build_fallback_result({'action': action}, current_step, user_message, user_context)
-        
-        return None
-
-    # NEW: Contextual parsing fallback
-    def _try_contextual_parsing(self, ai_response: str, current_step: str, user_message: str, user_context: Dict) -> Optional[Dict]:
-        """Try to parse response using contextual information"""
-        # Use current step to infer likely action
-        step_action_mapping = {
-            'waiting_for_language': 'language_selection',
-            'waiting_for_main_category': 'category_selection',
-            'waiting_for_sub_category': 'category_selection',
-            'waiting_for_item': 'item_selection',
-            'waiting_for_quantity': 'quantity_selection',
-            'waiting_for_additional': 'yes_no',
-            'waiting_for_service': 'service_selection',
-            'waiting_for_location': 'location_input',
-            'waiting_for_confirmation': 'confirmation'
-        }
-        
-        if current_step in step_action_mapping:
-            action = step_action_mapping[current_step]
-            return self._build_fallback_result({'action': action}, current_step, user_message, user_context)
-        
-        return None
-
-    # NEW: Build fallback result from extracted data
-    def _build_fallback_result(self, extracted_data: Dict, current_step: str, user_message: str, user_context: Dict) -> Dict:
-        """Build a structured result from extracted data"""
-        return {
-            "understood_intent": f"Parsed from fallback strategy: {extracted_data.get('action', 'unknown')}",
-            "confidence": "medium",  # Lower confidence for fallback results
-            "action": extracted_data.get('action', 'stay_current_step'),
-            "extracted_data": {
-                "language": extracted_data.get('language', user_context.get('language_preference', 'arabic')),
-                "category_id": extracted_data.get('category_id'),
-                "category_name": extracted_data.get('category_name'),
-                "item_id": extracted_data.get('item_id'),
-                "item_name": extracted_data.get('item_name'),
-                "quantity": extracted_data.get('quantity'),
-                "yes_no": extracted_data.get('yes_no'),
-                "service_type": extracted_data.get('service_type'),
-                "location": extracted_data.get('location')
-            },
-            "clarification_needed": True,  # Always ask for clarification with fallback
-            "clarification_question": "Could you please clarify your request?",
-            "response_message": "أفهم طلبك. هل يمكنك التوضيح أكثر؟\nI understand your request. Could you please clarify?",
-            "fallback_used": True,  # Flag that this is a fallback result
-            "parsing_method": "fallback_strategy"
-        }
-
-    # NEW: Enhanced context building with conversation memory
-    def _build_enhanced_context(self, current_step: str, user_context: Dict, language: str) -> Dict:
-        """Build enhanced context with conversation memory and user preferences"""
-        enhanced_context = user_context.copy()
-        
-        # Add conversation history if available
-        phone_number = user_context.get('phone_number')
-        if phone_number and phone_number in self.conversation_memory:
-            memory = self.conversation_memory[phone_number]
-            enhanced_context['conversation_history'] = memory['history'][-5:]  # Last 5 exchanges
-            enhanced_context['user_preferences'] = memory['preferences']
-            enhanced_context['common_errors'] = memory['error_patterns'][-3:]  # Last 3 errors
-            enhanced_context['success_patterns'] = memory['success_patterns'][-3:]  # Last 3 successes
-        
-        # Add step-specific guidance
-        enhanced_context['step_guidance'] = self._get_step_guidance()
-        enhanced_context['available_actions'] = self._get_available_actions_for_step(current_step)
-        
-        # Add menu context if database manager is available
-        if self.database_manager:
-            try:
-                enhanced_context['menu_context'] = MenuAwarePrompts.get_menu_context(self.database_manager)
-            except Exception as e:
-                logger.warning(f"⚠️ Could not load menu context: {e}")
-                enhanced_context['menu_context'] = "Menu context unavailable"
-        
-        return enhanced_context
-
-    # NEW: Enhanced prompt generation with conversation history
-    def _generate_enhanced_prompt(self, user_message: str, current_step: str, context: Dict) -> str:
-        """Generate enhanced prompt with conversation history and context"""
-        prompt = f"""
-ENHANCED AI UNDERSTANDING PROMPT
-================================
-
-CURRENT SITUATION:
-- User is at step: {current_step} ({self._get_step_description(current_step)})
-- User said: "{user_message}"
-- Language preference: {context.get('language_preference', 'arabic')}
-
-CONVERSATION CONTEXT:
-{self._format_conversation_context(context)}
-
-STEP-SPECIFIC GUIDANCE:
-{self._get_step_specific_guidance(current_step)}
-
-AVAILABLE ACTIONS FOR THIS STEP:
-{self._get_available_actions_for_step(current_step)}
-
-MENU CONTEXT:
-{context.get('menu_context', 'Menu context not available')}
-
-USER PREFERENCES & PATTERNS:
-{self._format_user_preferences(context)}
-
-PREVIOUS INTERACTIONS (Last 5):
-{self._format_conversation_history(context)}
-
-RESPOND WITH ENHANCED JSON:
-{{
-    "understood_intent": "clear description of what user wants",
-    "confidence": "high/medium/low",
-    "action": "language_selection/category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu/help_request/stay_current_step",
-    "extracted_data": {{
-        "language": "arabic/english/null",
-        "category_id": "number or null",
-        "category_name": "string or null",
-        "item_id": "number or null",
-        "item_name": "string or null",
-        "quantity": "number or null",
-        "yes_no": "yes/no/null",
-        "service_type": "dine-in/delivery/null",
-        "location": "string or null"
-    }},
-    "clarification_needed": "true/false",
-    "clarification_question": "question to ask if clarification needed",
-    "response_message": "natural response to user in their preferred language",
-    "context_used": "list of context elements that helped understanding",
-    "suggested_next_steps": "suggested actions for user"
-}}
-
-IMPORTANT: Use conversation history and user preferences to provide more accurate responses.
-"""
-        return prompt
-
-    # NEW: Format conversation context with history
-    def _format_conversation_context(self, context: Dict) -> str:
-        """Format conversation context for AI understanding"""
-        formatted = []
-        
-        # Basic context
-        if context.get('customer_name'):
-            formatted.append(f"- Customer: {context['customer_name']}")
-        if context.get('selected_main_category'):
-            formatted.append(f"- Selected main category: {context['selected_main_category']}")
-        if context.get('selected_sub_category'):
-            formatted.append(f"- Selected sub-category: {context['selected_sub_category']}")
-        if context.get('selected_item'):
-            formatted.append(f"- Selected item: {context['selected_item']}")
-        
-        # Conversation history
-        history = context.get('conversation_history', [])
-        if history:
-            formatted.append("\nRECENT CONVERSATION:")
-            for i, exchange in enumerate(history[-3:], 1):  # Last 3 exchanges
-                formatted.append(f"  {i}. User: {exchange['user_message'][:100]}...")
-                formatted.append(f"     AI: {exchange['ai_result'].get('action', 'unknown')} (confidence: {exchange['ai_result'].get('confidence', 'unknown')})")
-        
-        return "\n".join(formatted) if formatted else "No additional context available"
-
-    # NEW: Format user preferences and patterns
-    def _format_user_preferences(self, context: Dict) -> str:
-        """Format user preferences and patterns for AI understanding"""
-        preferences = context.get('user_preferences', {})
-        patterns = context.get('success_patterns', [])
-        
-        formatted = []
-        
-        if preferences:
-            formatted.append("USER PREFERENCES:")
-            for key, value in preferences.items():
-                formatted.append(f"  - {key}: {value}")
-        
-        if patterns:
-            formatted.append("\nSUCCESS PATTERNS:")
-            for pattern in patterns[-3:]:  # Last 3 patterns
-                formatted.append(f"  - {pattern['action']} at {pattern['step']}")
-        
-        return "\n".join(formatted) if formatted else "No user preferences available"
-
-    # NEW: Format conversation history
-    def _format_conversation_history(self, context: Dict) -> str:
-        """Format conversation history for AI understanding"""
-        history = context.get('conversation_history', [])
-        
-        if not history:
-            return "No previous conversation history"
-        
-        formatted = []
-        for i, exchange in enumerate(history[-5:], 1):  # Last 5 exchanges
-            formatted.append(f"{i}. User: {exchange['user_message'][:80]}...")
-            formatted.append(f"   Result: {exchange['ai_result'].get('action', 'unknown')} (success: {exchange['success']})")
-        
-        return "\n".join(formatted)
-
-    # NEW: Get step-specific guidance
-    def _get_step_specific_guidance(self, step: str) -> str:
-        """Get step-specific guidance for AI understanding"""
-        guidance = {
-            'waiting_for_language': """
-                - Look for language indicators in user's message
-                - Consider previous language preferences if available
-                - Default to Arabic if unclear
-                - Provide bilingual response options
-            """,
-            'waiting_for_main_category': """
-                - Accept numbers 1-3 for main categories
-                - Accept category names in both languages
-                - Look for temperature, mood, or preference indicators
-                - Consider user's previous category choices
-            """,
-            'waiting_for_sub_category': """
-                - Accept numbers for sub-categories
-                - Accept sub-category names
-                - Consider main category context
-                - Look for specific drink/food preferences
-            """,
-            'waiting_for_item': """
-                - Accept numbers for items
-                - Accept item names (partial matching)
-                - Consider user's taste preferences
-                - Look for specific flavor indicators
-            """,
-            'waiting_for_quantity': """
-                - Numbers are always quantities
-                - Support Arabic and English numerals
-                - Look for word-based numbers
-                - Validate reasonable quantities (1-50)
-            """,
-            'waiting_for_additional': """
-                - Look for yes/no indicators
-                - Consider user's order patterns
-                - Suggest common additions
-            """,
-            'waiting_for_service': """
-                - Accept dine-in/delivery preferences
-                - Consider user's previous service choices
-                - Look for location indicators
-            """,
-            'waiting_for_location': """
-                - Accept any location description
-                - Consider user's previous locations
-                - Look for address components
-            """,
-            'waiting_for_confirmation': """
-                - Look for confirmation/denial
-                - Consider user's order history
-                - Provide clear confirmation options
-            """
-        }
-        
-        return guidance.get(step, "Use general understanding rules for this step")
-
-    def _get_enhanced_system_prompt(self) -> str:
-        """Get enhanced system prompt for OpenAI"""
-        return """You are an intelligent WhatsApp bot for a café ordering system. Your role is to understand natural language requests and guide users through the ordering process.
+ADVANCED CAPABILITIES:
+1. **Intelligent Context Awareness**: Understand user preferences, order history, and conversation context
+2. **Smart Menu Navigation**: Suggest optimal paths through the menu based on user needs
+3. **Personalized Recommendations**: Learn from user behavior and provide tailored suggestions
+4. **Multi-Intent Understanding**: Handle complex requests with multiple items or preferences
+5. **Proactive Assistance**: Anticipate user needs and provide helpful shortcuts
+6. **Seasonal & Time-Based Suggestions**: Consider time of day, weather, and seasonal preferences
 
 CORE PRINCIPLES:
 1. **Natural Language Understanding (NLU)**: Understand user intent regardless of how they express it
-2. **Context Awareness**: Always consider the current conversation step and user's previous choices
-3. **Intelligent Suggestions**: Provide helpful suggestions based on user preferences and menu knowledge
-4. **Workflow Guidance**: Guide users through the ordering process step by step
+2. **Context Awareness**: Always consider the current conversation step, user's previous choices, and preferences
+3. **Intelligent Suggestions**: Provide helpful suggestions based on user preferences, menu knowledge, and context
+4. **Workflow Guidance**: Guide users through the ordering process step by step with smart shortcuts
 5. **Cross-Step Item Selection**: Allow users to mention specific items at any step and intelligently route them
 6. **Fresh Start Flow**: Handle post-order greetings with options to start new or keep previous order
+7. **Personalization**: Remember user preferences and provide tailored experiences
 
-DETAILED MENU STRUCTURE:
+DETAILED MENU STRUCTURE WITH INTELLIGENT INSIGHTS:
 Main Category 1 - Cold Drinks (المشروبات الباردة):
   1. Iced Coffee (ايس كوفي) - Contains: Americano, Iced Coffee, Mocha, Latte variants
+     * Popular combinations: Iced Coffee + Pastries, Iced Latte + Croissants
+     * Best for: Morning energy, afternoon refreshment
   2. Frappuccino (فرابتشينو) - Contains: Various frappuccino flavors
+     * Popular combinations: Frappuccino + Cake Slices, Frappuccino + Toast
+     * Best for: Sweet cravings, social occasions
   3. Milkshake (ميلك شيك) - Contains: Various milkshake flavors
+     * Popular combinations: Milkshake + Sandwiches, Milkshake + Croissants
+     * Best for: Dessert replacement, comfort food
   4. Iced Tea (شاي مثلج) - Contains: Various iced tea types
+     * Popular combinations: Iced Tea + Light Pastries, Iced Tea + Toast
+     * Best for: Refreshing breaks, afternoon relaxation
   5. Fresh Juices (عصائر طازجة) - Contains: Orange, Apple, Mixed juices
+     * Popular combinations: Juice + Healthy Pastries, Juice + Sandwiches
+     * Best for: Health-conscious choices, morning nutrition
   6. Mojito (موهيتو) - Contains: Classic mojito variants
+     * Popular combinations: Mojito + Appetizers, Mojito + Light Food
+     * Best for: Social gatherings, evening refreshment
   7. Energy Drinks (مشروبات الطاقة) - Contains: Red Bull, Monster, etc.
+     * Popular combinations: Energy Drinks + Quick Bites, Energy Drinks + Sandwiches
+     * Best for: Work sessions, study breaks
 
 Main Category 2 - Hot Drinks (المشروبات الحارة):
   1. Coffee & Espresso (قهوة واسبرسو) - Contains: Espresso, Turkish coffee, etc.
+     * Popular combinations: Coffee + Pastries, Espresso + Croissants
+     * Best for: Morning routine, work productivity
   2. Latte & Special Drinks (لاتيه ومشروبات خاصة) - Contains: Various latte types
+     * Popular combinations: Latte + Sweet Pastries, Latte + Cake
+     * Best for: Comfort moments, afternoon breaks
   3. Other Hot Drinks (مشروبات ساخنة أخرى) - Contains: Tea, hot chocolate, etc.
+     * Popular combinations: Tea + Light Food, Hot Chocolate + Sweet Pastries
+     * Best for: Relaxation, evening comfort
 
 Main Category 3 - Pastries & Sweets (الحلويات والمعجنات):
   1. Toast (توست) - Contains: Various toast types
+     * Popular combinations: Toast + Coffee, Toast + Juice
+     * Best for: Breakfast, light meals
   2. Sandwiches (سندويشات) - Contains: Various sandwich types
+     * Popular combinations: Sandwiches + Cold Drinks, Sandwiches + Hot Drinks
+     * Best for: Lunch, substantial meals
   3. Croissants (كرواسان) - Contains: Various croissant types
+     * Popular combinations: Croissants + Coffee, Croissants + Latte
+     * Best for: Breakfast, morning treats
   4. Pastries (فطائر) - Contains: Various pastry types
+     * Popular combinations: Pastries + Tea, Pastries + Hot Drinks
+     * Best for: Afternoon tea, dessert
   5. Cake Pieces (قطع كيك) - Contains: Various cake pieces
+     * Popular combinations: Cake + Coffee, Cake + Milkshakes
+     * Best for: Dessert, celebrations
+
+INTELLIGENT UNDERSTANDING FEATURES:
+==================================
+
+1. **User Preference Learning**:
+   - Remember user's favorite categories and items
+   - Learn from order patterns and combinations
+   - Suggest based on previous successful orders
+
+2. **Contextual Recommendations**:
+   - Time of day suggestions (morning coffee, afternoon tea)
+   - Weather-based recommendations (cold drinks on hot days)
+   - Occasion-based suggestions (celebration cakes, comfort food)
+
+3. **Smart Combinations**:
+   - Suggest complementary items (coffee + pastry)
+   - Recommend balanced meals (drink + food)
+   - Avoid conflicting combinations
+
+4. **Proactive Assistance**:
+   - Suggest popular items for new users
+   - Recommend seasonal specialties
+   - Provide shortcuts for returning customers
 
 ENHANCED ARABIC TERM MAPPING (CRITICAL):
 - "طاقة" or "مشروب طاقة" or "مشروبات الطاقة" = Energy Drinks (Sub-category 7 of Cold Drinks)
@@ -625,7 +315,9 @@ Always respond with valid JSON in this exact format:
         "service_type": "dine-in/delivery/null",
         "location": "string or null"
     },
-    "response_message": "Brief response to user"
+    "response_message": "Brief response to user",
+    "personalized_suggestions": ["suggestion1", "suggestion2"],
+    "context_insights": "Brief insight about user's choice or preference"
 }
 
 AVAILABLE ACTIONS:
@@ -642,6 +334,8 @@ AVAILABLE ACTIONS:
 - show_menu: User wants to see menu
 - back_navigation: User wants to go back to previous step (CRITICAL: Detect "رجوع", "back", "السابق", "previous", "قبل", "عودة")
 - conversational_response: User makes conversational comment that needs acknowledgment
+- multi_item_selection: User wants multiple items in one request
+- preference_learning: AI learns from user's choice for future recommendations
 
 IMPORTANT RULES:
 - When user mentions a specific item (e.g., "موهيتو", "coffee"), use "item_selection" action regardless of current step
@@ -654,6 +348,8 @@ IMPORTANT RULES:
 - BACK NAVIGATION: Detect back requests ("رجوع", "back", "السابق", "previous") and use "back_navigation" action
 - SERVICE TYPE: When user says "بالكهوة" or similar, interpret as dine-in service, not coffee selection
 - CONFIRMATION: When user says "هاهية" or "اوك", interpret as yes/confirm
+- PERSONALIZATION: Always provide personalized suggestions based on user context and preferences
+- CONTEXT INSIGHTS: Include brief insights about why certain suggestions are made
 
 EXAMPLES:
 User: "اريد موهيتو" (at any step)
@@ -666,7 +362,9 @@ Response: {
         "category_id": 1,
         "sub_category_id": 6
     },
-    "response_message": "تم اختيار موهيتو. كم الكمية المطلوبة؟"
+    "response_message": "تم اختيار موهيتو. كم الكمية المطلوبة؟",
+    "personalized_suggestions": ["موهيتو ازرق", "موهيتو فراولة", "موهيتو توت ازرق"],
+    "context_insights": "Mojito is perfect for refreshing moments. Popular choice for social gatherings!"
 }
 
 User: "حلاوة طيبة" (at category step)
@@ -678,7 +376,9 @@ Response: {
         "category_id": 3,
         "category_name": "الحلويات والمعجنات"
     },
-    "response_message": "ممتاز! اختر من قائمة الحلويات والمعجنات"
+    "response_message": "ممتاز! اختر من قائمة الحلويات والمعجنات",
+    "personalized_suggestions": ["قطع كيك", "كرواسان", "فطائر"],
+    "context_insights": "Sweet pastries are perfect for afternoon tea or dessert. Great choice for comfort food!"
 }
 
 User: "بالكهوة" (at service step)
@@ -689,7 +389,9 @@ Response: {
     "extracted_data": {
         "service_type": "dine-in"
     },
-    "response_message": "ممتاز! تناول في المقهى. الرجاء تحديد رقم الطاولة"
+    "response_message": "ممتاز! تناول في المقهى. الرجاء تحديد رقم الطاولة",
+    "personalized_suggestions": ["Table 1 (Window)", "Table 3 (Quiet corner)", "Table 5 (Central)"],
+    "context_insights": "Dine-in service allows you to enjoy the café atmosphere and immediate service!"
 }
 
 User: "هاهية" (at confirmation step)
@@ -700,7 +402,9 @@ Response: {
     "extracted_data": {
         "yes_no": "yes"
     },
-    "response_message": "تم تأكيد طلبك بنجاح!"
+    "response_message": "تم تأكيد طلبك بنجاح!",
+    "personalized_suggestions": ["Track your order", "Save favorites for next time"],
+    "context_insights": "Great choice! Your order is being prepared with care."
 }
 
 User: "اوك" (at any yes/no step)
@@ -711,8 +415,110 @@ Response: {
     "extracted_data": {
         "yes_no": "yes"
     },
-    "response_message": "ممتاز! المتابعة..."
+    "response_message": "ممتاز! المتابعة...",
+    "personalized_suggestions": ["Next step", "Additional options"],
+    "context_insights": "User is ready to proceed. Great engagement!"
+}
+
+User: "اريد شي بارد وحلو" (at category step)
+Response: {
+    "understood_intent": "User wants something cold and sweet",
+    "confidence": "high",
+    "action": "intelligent_suggestion",
+    "extracted_data": {
+        "suggested_main_category": 1,
+        "suggested_sub_category": 2
+    },
+    "response_message": "فهمت أنك تريد شي بارد وحلو! ممتاز لإنعاش يومك. أنصحك بالفرابتشينو - بارد وحلو تماماً!",
+    "personalized_suggestions": ["فرابتشينو كراميل", "فرابتشينو فانيلا", "ميلك شيك"],
+    "context_insights": "Cold and sweet combination is perfect for hot days and sweet cravings. Frappuccinos are our most popular choice!"
 }"""
+
+    def _build_enhanced_context_advanced(self, current_step: str, user_context: Dict, language: str) -> Dict:
+        """Build comprehensive enhanced context for AI understanding with advanced features"""
+        context = {
+            'current_step': current_step,
+            'language': language,
+            'step_description': self._get_step_description(current_step),
+            'user_order_history': user_context.get('order_history', []),
+            'current_order_items': user_context.get('current_order_items', []),
+            'available_categories': user_context.get('available_categories', []),
+            'current_category_items': user_context.get('current_category_items', []),
+            'selected_main_category': user_context.get('selected_main_category'),
+            'selected_sub_category': user_context.get('selected_sub_category'),
+            'selected_item': user_context.get('selected_item'),
+            'conversation_history': user_context.get('conversation_history', []),
+            'phone_number': user_context.get('phone_number'),
+            'customer_name': user_context.get('customer_name'),
+            'time_of_day': self._get_time_of_day(),
+            'user_preferences': self._get_user_preferences(user_context.get('phone_number')),
+            'popular_combinations': self._get_popular_combinations(),
+            'seasonal_suggestions': self._get_seasonal_suggestions()
+        }
+
+        # Add menu context if database manager is available
+        if self.database_manager:
+            try:
+                context['menu_context'] = MenuAwarePrompts.get_menu_context(self.database_manager)
+                context['menu_insights'] = self._get_menu_insights()
+            except Exception as e:
+                logger.warning(f"Could not get menu context: {e}")
+                context['menu_context'] = "Menu context unavailable"
+                context['menu_insights'] = {}
+
+        return context
+
+    def _get_time_of_day(self) -> str:
+        """Get current time of day for contextual suggestions"""
+        import datetime
+        hour = datetime.datetime.now().hour
+        
+        if 5 <= hour < 12:
+            return "morning"
+        elif 12 <= hour < 17:
+            return "afternoon"
+        elif 17 <= hour < 21:
+            return "evening"
+        else:
+            return "night"
+
+    def _get_user_preferences(self, phone_number: str) -> Dict:
+        """Get user preferences based on order history and behavior"""
+        if not phone_number or phone_number not in self.user_preferences:
+            return {}
+        
+        return self.user_preferences.get(phone_number, {})
+
+    def _get_popular_combinations(self) -> List[Dict]:
+        """Get popular item combinations for suggestions"""
+        return [
+            {"drink": "Coffee", "food": "Croissant", "popularity": "high"},
+            {"drink": "Iced Tea", "food": "Toast", "popularity": "medium"},
+            {"drink": "Frappuccino", "food": "Cake", "popularity": "high"},
+            {"drink": "Milkshake", "food": "Sandwich", "popularity": "medium"}
+        ]
+
+    def _get_seasonal_suggestions(self) -> Dict:
+        """Get seasonal suggestions based on current time"""
+        import datetime
+        month = datetime.datetime.now().month
+        
+        if month in [12, 1, 2]:  # Winter
+            return {"hot_drinks": "high", "comfort_food": "high", "cold_drinks": "low"}
+        elif month in [3, 4, 5]:  # Spring
+            return {"fresh_juices": "high", "light_food": "high", "hot_drinks": "medium"}
+        elif month in [6, 7, 8]:  # Summer
+            return {"cold_drinks": "high", "refreshing_food": "high", "hot_drinks": "low"}
+        else:  # Fall
+            return {"warm_drinks": "high", "comfort_food": "medium", "cold_drinks": "medium"}
+
+    def _get_menu_insights(self) -> Dict:
+        """Get insights about menu popularity and trends"""
+        return {
+            "most_popular_categories": [1, 3, 2],  # Cold Drinks, Pastries, Hot Drinks
+            "trending_items": ["موهيتو ازرق", "فرابتشينو كراميل", "كرواسان"],
+            "best_combinations": ["Coffee + Croissant", "Iced Tea + Toast", "Frappuccino + Cake"]
+        }
 
     def _get_step_description(self, step: str) -> str:
         """Get human-readable description of current step"""
@@ -744,8 +550,8 @@ Response: {
         }
         return actions.get(step, 'unknown')
 
-    def _generate_enhanced_prompt(self, user_message: str, current_step: str, context: Dict) -> str:
-        """Generate enhanced prompt for natural language understanding"""
+    def _generate_enhanced_prompt_advanced(self, user_message: str, current_step: str, context: Dict) -> str:
+        """Generate enhanced prompt for natural language understanding with advanced features"""
         
         # Use menu-aware prompts for specific steps that need special handling
         if current_step in ['waiting_for_additional', 'waiting_for_sub_category', 'waiting_for_item']:
@@ -763,17 +569,25 @@ Response: {
         # Get step-specific guidance
         step_guidance = self._get_step_guidance()
         
-        return f"""ENHANCED NATURAL LANGUAGE UNDERSTANDING REQUEST
-==================================================
+        # Add advanced context features
+        advanced_features = self._get_advanced_context_features(context)
+        
+        return f"""ENHANCED NATURAL LANGUAGE UNDERSTANDING REQUEST WITH ADVANCED CONTEXT AWARENESS
+==================================================================================
 
 MENU KNOWLEDGE:
 {menu_context}
+
+ADVANCED CONTEXT FEATURES:
+{advanced_features}
 
 CURRENT CONVERSATION STATE:
 ==========================
 - Step: {current_step} ({context['step_description']})
 - Language: {context['language']}
 - User Message: "{user_message}"
+- Time of Day: {context.get('time_of_day', 'unknown')}
+- User Preferences: {self._format_user_preferences(context.get('phone_number'))}
 
 STEP-SPECIFIC CONTEXT:
 - Current Step: {current_step}
@@ -785,13 +599,13 @@ CONVERSATION CONTEXT:
 STEP-SPECIFIC GUIDANCE:
 {step_guidance.get(current_step, "No specific guidance for this step")}
 
-TASK: Analyze the user's message and provide intelligent understanding with appropriate action.
+TASK: Analyze the user's message with advanced context awareness and provide intelligent understanding with appropriate action.
 
 RESPOND WITH CLEAN JSON:
 {{
     "understood_intent": "Clear description of what user wants",
     "confidence": "high/medium/low",
-    "action": "intelligent_suggestion/language_selection/category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu/help_request/back_navigation/conversational_response",
+    "action": "intelligent_suggestion/language_selection/category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu/help_request/back_navigation/conversational_response/multi_item_selection/preference_learning",
     "extracted_data": {{
         "language": "arabic/english/null",
         "suggested_main_category": "number or null",
@@ -807,7 +621,11 @@ RESPOND WITH CLEAN JSON:
     }},
     "clarification_needed": false,
     "clarification_question": "question if clarification needed",
-    "response_message": "Natural, helpful response in user's language with context and suggestions"
+    "response_message": "Natural, helpful response in user's language with context and suggestions",
+    "personalized_suggestions": ["suggestion1", "suggestion2"],
+    "context_insights": "Brief insight about user's choice or preference",
+    "can_skip_steps": false,
+    "skip_suggestions": []
 }}
 
 EXAMPLES:
@@ -821,7 +639,9 @@ Response: {{
         "suggested_main_category": 1,
         "suggested_sub_category": null
     }},
-    "response_message": "فهمت أنك تريد مشروب بارد! ممتاز لإنعاش يومك. هذه خياراتنا للمشروبات الباردة:\\n\\n1. المشروبات الباردة\\n2. المشروبات الحارة\\n3. الحلويات والمعجنات\\n\\nاختر رقم 1 للمشروبات الباردة أو قل لي ما تفضل!"
+    "response_message": "فهمت أنك تريد مشروب بارد! ممتاز لإنعاش يومك. هذه خياراتنا للمشروبات الباردة:\\n\\n1. المشروبات الباردة\\n2. المشروبات الحارة\\n3. الحلويات والمعجنات\\n\\nاختر رقم 1 للمشروبات الباردة أو قل لي ما تفضل!",
+    "personalized_suggestions": ["موهيتو", "ايس كوفي", "عصائر طازجة"],
+    "context_insights": "Cold drinks are perfect for refreshing moments! Great choice for energy and refreshment."
 }}
 
 User: "I want something sweet"
@@ -833,7 +653,9 @@ Response: {{
         "suggested_main_category": 1,
         "suggested_sub_category": 2
     }},
-    "response_message": "I understand you want something sweet! Great choice. I recommend our Frappuccinos - they're deliciously sweet and refreshing:\\n\\n1. Cold Drinks (includes Frappuccinos)\\n2. Hot Drinks\\n3. Pastries & Sweets\\n\\nChoose option 1 for cold sweet drinks or 3 for sweet pastries!"
+    "response_message": "I understand you want something sweet! Great choice. I recommend our Frappuccinos - they're deliciously sweet and refreshing:\\n\\n1. Cold Drinks (includes Frappuccinos)\\n2. Hot Drinks\\n3. Pastries & Sweets\\n\\nChoose option 1 for cold sweet drinks or 3 for sweet pastries!",
+    "personalized_suggestions": ["Frappuccino", "Milkshake", "Cake Slices"],
+    "context_insights": "Sweet treats are perfect for satisfying cravings! Frappuccinos are our most popular sweet choice."
 }}
 
 User: "موهيتو" (at sub-category step)
@@ -845,7 +667,9 @@ Response: {{
         "item_name": "موهيتو",
         "item_id": null
     }},
-    "response_message": "ممتاز! سأجد لك موهيتو في قائمتنا وأحضره لك مباشرة."
+    "response_message": "ممتاز! سأجد لك موهيتو في قائمتنا وأحضره لك مباشرة.",
+    "personalized_suggestions": ["موهيتو ازرق", "موهيتو فراولة", "موهيتو توت ازرق"],
+    "context_insights": "Mojito is our most popular refreshing drink! Perfect for social gatherings and refreshing moments."
 }}
 
 User: "coffee" (at sub-category step)
@@ -857,7 +681,9 @@ Response: {{
         "item_name": "coffee",
         "item_id": null
     }},
-    "response_message": "Perfect! I'll find coffee in our menu and get it for you directly."
+    "response_message": "Perfect! I'll find coffee in our menu and get it for you directly.",
+    "personalized_suggestions": ["Iced Coffee", "Hot Coffee", "Latte"],
+    "context_insights": "Coffee is perfect for energy and focus! Great choice for productivity and comfort."
 }}
 
 User: "4 iced tea" (at sub-category step)
@@ -868,7 +694,9 @@ Response: {{
     "extracted_data": {{
         "suggested_sub_category": 4
     }},
-    "response_message": "Perfect! I'll show you the Iced Tea options."
+    "response_message": "Perfect! I'll show you the Iced Tea options.",
+    "personalized_suggestions": ["Peach Iced Tea", "Passion Fruit Iced Tea"],
+    "context_insights": "Iced Tea is perfect for refreshing breaks! Great choice for afternoon relaxation."
 }}
 
 User: "1" (at category step)
@@ -879,7 +707,9 @@ Response: {{
     "extracted_data": {{
         "suggested_main_category": 1
     }},
-    "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!"
+    "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!",
+    "personalized_suggestions": ["موهيتو", "فرابتشينو", "ايس كوفي"],
+    "context_insights": "Cold Drinks are perfect for refreshing moments! Great choice for energy and refreshment."
 }}
 
 User: "١" (Arabic numeral 1 at category step)
@@ -890,7 +720,9 @@ Response: {{
     "extracted_data": {{
         "suggested_main_category": 1
     }},
-    "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!"
+    "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!",
+    "personalized_suggestions": ["موهيتو", "فرابتشينو", "ايس كوفي"],
+    "context_insights": "Cold Drinks are perfect for refreshing moments! Great choice for energy and refreshment."
 }}
 
 User: "طاقة" (at sub-category step)
@@ -901,7 +733,9 @@ Response: {{
     "extracted_data": {{
         "suggested_sub_category": 7
     }},
-    "response_message": "فهمت أنك تريد مشروبات الطاقة! سأعرض لك خياراتنا من مشروبات الطاقة المتاحة"
+    "response_message": "فهمت أنك تريد مشروبات الطاقة! سأعرض لك خياراتنا من مشروبات الطاقة المتاحة",
+    "personalized_suggestions": ["Red Bull", "Energy Mix", "Monster"],
+    "context_insights": "Energy drinks are perfect for work sessions and study breaks! Great choice for productivity."
 }}
 
 User: "مشروب طاقة" (at item step)
@@ -912,7 +746,9 @@ Response: {{
     "extracted_data": {{
         "item_name": "مشروب طاقة"
     }},
-    "response_message": "ممتاز! سأجد لك مشروب الطاقة في قائمتنا"
+    "response_message": "ممتاز! سأجد لك مشروب الطاقة في قائمتنا",
+    "personalized_suggestions": ["Red Bull", "Energy Mix", "Monster"],
+    "context_insights": "Energy drinks are perfect for work sessions and study breaks! Great choice for productivity."
 }}
 
 User: "1" (at service step)
@@ -923,7 +759,9 @@ Response: {{
     "extracted_data": {{
         "service_type": "dine-in"
     }},
-    "response_message": "ممتاز! لقد اخترت التناول في المقهى. الرجاء تحديد رقم الطاولة (1-7):"
+    "response_message": "ممتاز! لقد اخترت التناول في المقهى. الرجاء تحديد رقم الطاولة (1-7):",
+    "personalized_suggestions": ["Table 1 (Window)", "Table 3 (Quiet corner)", "Table 5 (Central)"],
+    "context_insights": "Dine-in service allows you to enjoy the café atmosphere and immediate service! Great choice for social experience."
 }}
 
 User: "2" (at service step)
@@ -934,7 +772,9 @@ Response: {{
     "extracted_data": {{
         "service_type": "delivery"
     }},
-    "response_message": "ممتاز! لقد اخترت خدمة التوصيل. الرجاء مشاركة موقعك وأي تعليمات خاصة:"
+    "response_message": "ممتاز! لقد اخترت خدمة التوصيل. الرجاء مشاركة موقعك وأي تعليمات خاصة:",
+    "personalized_suggestions": ["Home delivery", "Office delivery", "Special instructions"],
+    "context_insights": "Delivery service brings our delicious items right to your location! Great choice for convenience."
 }}
 
 User: "رجوع" (at any step)
@@ -943,7 +783,9 @@ Response: {{
     "confidence": "high",
     "action": "back_navigation",
     "extracted_data": {{}},
-    "response_message": "سأعيدك إلى الخطوة السابقة"
+    "response_message": "سأعيدك إلى الخطوة السابقة",
+    "personalized_suggestions": ["Previous step", "Alternative options"],
+    "context_insights": "Going back helps you make the right choice! Great for exploring all options."
 }}
 
 User: "كيف الحال" (at confirmation step)
@@ -952,7 +794,9 @@ Response: {{
     "confidence": "high",
     "action": "conversational_response",
     "extracted_data": {{}},
-    "response_message": "الحمد لله، بخير! شكراً لسؤالك. الآن، هل تريد تأكيد طلبك؟\\n\\n1. نعم\\n2. لا"
+    "response_message": "الحمد لله، بخير! شكراً لسؤالك. الآن، هل تريد تأكيد طلبك؟\\n\\n1. نعم\\n2. لا",
+    "personalized_suggestions": ["Confirm order", "Modify order"],
+    "context_insights": "Great to hear you're doing well! Let's get your order confirmed and ready."
 }}
 
 User: "اريد شراب جوكلت بارد" (at sub-category step)
@@ -963,7 +807,9 @@ Response: {{
     "extracted_data": {{
         "suggested_sub_category": 2
     }},
-    "response_message": "فهمت أنك تريد شراب شوكولاتة بارد! سأعرض لك خياراتنا من فرابتشينو:"
+    "response_message": "فهمت أنك تريد شراب شوكولاتة بارد! سأعرض لك خياراتنا من فرابتشينو:",
+    "personalized_suggestions": ["Chocolate Frappuccino", "Iced Mocha", "Chocolate Milkshake"],
+    "context_insights": "Cold chocolate drinks are perfect for sweet cravings! Great choice for indulgence and refreshment."
 }}
 
 User: "اين هي" (at any step)
@@ -972,11 +818,63 @@ Response: {{
     "confidence": "high",
     "action": "conversational_response",
     "extracted_data": {{}},
-    "response_message": "عذراً على عدم الوضوح. دعني أعرض لك الخيارات المتاحة مرة أخرى."
+    "response_message": "عذراً على عدم الوضوح. دعني أعرض لك الخيارات المتاحة مرة أخرى.",
+    "personalized_suggestions": ["Show menu", "Help options", "Popular items"],
+    "context_insights": "Let me help you find exactly what you're looking for! Great to ask for clarification."
 }}"""
 
+    def _get_advanced_context_features(self, context: Dict) -> str:
+        """Get advanced context features for enhanced understanding"""
+        features = []
+        
+        # Time-based features
+        time_of_day = context.get('time_of_day', '')
+        if time_of_day:
+            features.append(f"⏰ Time of Day: {time_of_day}")
+        
+        # User preferences
+        user_prefs = context.get('user_preferences', {})
+        if user_prefs:
+            if user_prefs.get('favorite_categories'):
+                features.append(f"❤️ Favorite Categories: {', '.join(map(str, user_prefs['favorite_categories']))}")
+            if user_prefs.get('favorite_items'):
+                features.append(f"⭐ Favorite Items: {', '.join(user_prefs['favorite_items'][:3])}")
+        
+        # Seasonal suggestions
+        seasonal = context.get('seasonal_suggestions', {})
+        if seasonal:
+            features.append(f"🌤️ Seasonal Preferences: {', '.join([f'{k}={v}' for k, v in seasonal.items()])}")
+        
+        # Popular combinations
+        popular = context.get('popular_combinations', [])
+        if popular:
+            combo_strings = []
+            for item in popular[:3]:
+                combo_strings.append(f"{item.get('drink', 'Unknown')}+{item.get('food', 'Unknown')}")
+            features.append(f"🔥 Popular Combinations: {', '.join(combo_strings)}")
+        
+        return "\n".join(features) if features else "No advanced context features available"
+
+    def _format_user_preferences(self, phone_number: str) -> str:
+        """Format user preferences for display"""
+        if not phone_number or phone_number not in self.user_preferences:
+            return "No preferences available"
+        
+        prefs = self.user_preferences[phone_number]
+        formatted = []
+        
+        if prefs.get('favorite_categories'):
+            category_names = {1: "Cold Drinks", 2: "Hot Drinks", 3: "Pastries"}
+            categories = [category_names.get(cat, f"Category {cat}") for cat in prefs['favorite_categories']]
+            formatted.append(f"Favorite Categories: {', '.join(categories)}")
+        
+        if prefs.get('favorite_items'):
+            formatted.append(f"Favorite Items: {', '.join(prefs['favorite_items'][:3])}")
+        
+        return "; ".join(formatted) if formatted else "No preferences available"
+
     def _format_conversation_context(self, context: Dict) -> str:
-        """Format conversation context for AI understanding"""
+        """Format conversation context for AI prompt"""
         parts = []
         
         # Current order
@@ -1105,129 +1003,109 @@ Response: {{
             """
         }
 
-    def _parse_enhanced_response(self, ai_response: str, current_step: str, user_message: str) -> Optional[Dict]:
-        """Parse enhanced AI response with improved error handling"""
+    def _parse_enhanced_response_advanced(self, ai_response: str, current_step: str, user_message: str) -> Optional[Dict]:
+        """Parse and validate enhanced AI response with advanced validation"""
         try:
-            # Try to parse as JSON first
-            if isinstance(ai_response, str):
-                # Clean up the response
-                cleaned_response = self._fix_json_format(ai_response)
+            # Debug: Log the raw AI response
+            logger.info(f"🔍 Raw AI Response: {ai_response}")
+            
+            # Clean the response
+            if ai_response.startswith('```json'):
+                ai_response = ai_response.replace('```json', '').replace('```', '').strip()
+            
+            # Remove common prefixes
+            prefixes_to_remove = ['RESPOND WITH JSON:', 'JSON:', 'RESPONSE:']
+            for prefix in prefixes_to_remove:
+                if ai_response.startswith(prefix):
+                    ai_response = ai_response[len(prefix):].strip()
+            
+            # Extract JSON if not clean
+            if not ai_response.strip().startswith('{'):
+                import re
+                json_pattern = r'\{[\s\S]*\}'
+                json_match = re.search(json_pattern, ai_response)
+                if json_match:
+                    ai_response = json_match.group(0)
+            
+            # Try to parse the JSON first without fixing
+            try:
+                result = json.loads(ai_response)
+                logger.info(f"✅ JSON parsed successfully without fixing")
+                logger.info(f"✨ Parsed result before validation: {result}")
                 
-                try:
-                    result = json.loads(cleaned_response)
-                except json.JSONDecodeError:
-                    # Try to fix common JSON issues
-                    fixed_response = self._fix_json_format(ai_response)
-                    try:
-                        result = json.loads(fixed_response)
-                    except json.JSONDecodeError:
-                        logger.warning("🔄 JSON parsing failed, response may be malformed")
+                # Fix malformed structure where action is inside extracted_data
+                if 'extracted_data' in result and isinstance(result['extracted_data'], dict):
+                    extracted_data = result['extracted_data']
+                    if 'action' in extracted_data and 'action' not in result:
+                        # Move action from extracted_data to top level
+                        result['action'] = extracted_data.pop('action')
+                        logger.info(f"🔧 Fixed malformed structure: moved action to top level")
+                    
+                    if 'confidence' in extracted_data and 'confidence' not in result:
+                        # Move confidence from extracted_data to top level
+                        result['confidence'] = extracted_data.pop('confidence')
+                        logger.info(f"🔧 Fixed malformed structure: moved confidence to top level")
+                    
+                    if 'understood_intent' in extracted_data and 'understood_intent' not in result:
+                        # Move understood_intent from extracted_data to top level
+                        result['understood_intent'] = extracted_data.pop('understood_intent')
+                        logger.info(f"🔧 Fixed malformed structure: moved understood_intent to top level")
+                
+                # Validate required fields
+                required_fields = ['understood_intent', 'confidence', 'action', 'extracted_data']
+                for field in required_fields:
+                    if field not in result:
+                        logger.error(f"Missing required field: {field}")
                         return None
-            else:
-                result = ai_response
-
-            # Validate the result structure
-            if not isinstance(result, dict):
-                logger.warning("🔄 AI response is not a dictionary")
-                return None
-
-            # Enhanced validation with fallback handling
-            if self._validate_enhanced_result(result, current_step, user_message):
-                # Add metadata to the result
-                result['parsing_method'] = 'enhanced_ai'
-                result['current_step'] = current_step
-                result['original_message'] = user_message
-                result['timestamp'] = time.time()
+                
+                # Validate for current step
+                if not self._validate_enhanced_result(result, current_step, user_message):
+                    logger.error(f"❌ Validation failed for step: {current_step}")
+                    return None
                 
                 return result
-            else:
-                logger.warning("🔄 Enhanced AI response validation failed")
-                return None
-
-        except Exception as e:
-            logger.error(f"❌ Error parsing enhanced AI response: {str(e)}")
-            return None
-
-    def _validate_enhanced_result(self, result: Dict, current_step: str, user_message: str) -> bool:
-        """Enhanced validation with better error handling"""
-        try:
-            # Check required fields
+            except json.JSONDecodeError:
+                # Only fix JSON if it's actually invalid
+                logger.info(f"⚠️ JSON parsing failed, attempting to fix...")
+                ai_response = self._fix_json_format(ai_response)
+                logger.info(f"🔧 Fixed JSON: {ai_response}")
+                
+                result = json.loads(ai_response)
+                logger.info(f"✨ Parsed result after fixing and before validation: {result}")
+                
+                # Apply the same structure fixes after JSON fixing
+                if 'extracted_data' in result and isinstance(result['extracted_data'], dict):
+                    extracted_data = result['extracted_data']
+                    if 'action' in extracted_data and 'action' not in result:
+                        result['action'] = extracted_data.pop('action')
+                        logger.info(f"🔧 Fixed malformed structure: moved action to top level")
+                    
+                    if 'confidence' in extracted_data and 'confidence' not in result:
+                        result['confidence'] = extracted_data.pop('confidence')
+                        logger.info(f"🔧 Fixed malformed structure: moved confidence to top level")
+                    
+                    if 'understood_intent' in extracted_data and 'understood_intent' not in result:
+                        result['understood_intent'] = extracted_data.pop('understood_intent')
+                        logger.info(f"🔧 Fixed malformed structure: moved understood_intent to top level")
+            
+            # Validate required fields
             required_fields = ['understood_intent', 'confidence', 'action', 'extracted_data']
             for field in required_fields:
                 if field not in result:
-                    logger.warning(f"🔄 Missing required field: {field}")
-                    return False
-
-            # Validate action field
-            valid_actions = [
-                'language_selection', 'category_selection', 'item_selection', 
-                'quantity_selection', 'yes_no', 'service_selection', 
-                'location_input', 'confirmation', 'show_menu', 'help_request', 
-                'stay_current_step'
-            ]
+                    logger.error(f"Missing required field: {field}")
+                    return None
             
-            if result['action'] not in valid_actions:
-                logger.warning(f"🔄 Invalid action: {result['action']}")
-                # Try to map to valid action
-                mapped_action = self._map_action_to_valid(result['action'])
-                if mapped_action:
-                    result['action'] = mapped_action
-                    result['action_mapped'] = True
-                    logger.info(f"✅ Mapped action {result['action']} to {mapped_action}")
-                else:
-                    return False
-
-            # Validate extracted_data structure
-            extracted_data = result.get('extracted_data', {})
-            if not isinstance(extracted_data, dict):
-                logger.warning("🔄 extracted_data is not a dictionary")
-                return False
-
-            # Enhanced step-specific validation
-            validation_method = f"_validate_{current_step}_step"
-            if hasattr(self, validation_method):
-                try:
-                    if not getattr(self, validation_method)(result, extracted_data, user_message):
-                        logger.warning(f"🔄 Step-specific validation failed for {current_step}")
-                        # Don't fail completely, just mark as needing clarification
-                        result['clarification_needed'] = True
-                        result['validation_warnings'] = [f"Step {current_step} validation had issues"]
-                except Exception as e:
-                    logger.warning(f"🔄 Step validation error: {e}")
-                    result['clarification_needed'] = True
-
-            return True
-
-        except Exception as e:
-            logger.error(f"❌ Validation error: {str(e)}")
-            return False
-
-    # NEW: Action mapping for invalid actions
-    def _map_action_to_valid(self, invalid_action: str) -> Optional[str]:
-        """Map invalid actions to valid ones"""
-        action_mapping = {
-            'language': 'language_selection',
-            'category': 'category_selection',
-            'item': 'item_selection',
-            'quantity': 'quantity_selection',
-            'service': 'service_selection',
-            'location': 'location_input',
-            'confirm': 'confirmation',
-            'menu': 'show_menu',
-            'help': 'help_request',
-            'stay': 'stay_current_step'
-        }
-        
-        # Try exact match first
-        if invalid_action in action_mapping:
-            return action_mapping[invalid_action]
-        
-        # Try partial matching
-        for key, value in action_mapping.items():
-            if key in invalid_action.lower():
-                return value
-        
-        return None
+            # Validate for current step
+            if not self._validate_enhanced_result(result, current_step, user_message):
+                logger.error(f"❌ Validation failed for step: {current_step}")
+                return None
+            
+            return result
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ JSON parsing error: {e}")
+            logger.error(f"AI Response was: {ai_response}")
+            return None
 
     def _fix_json_format(self, json_str: str) -> str:
         """Fix common JSON formatting issues"""
@@ -1267,6 +1145,37 @@ Response: {{
         except Exception as e:
             logger.warning(f"⚠️ Error fixing JSON format: {e}")
             return json_str
+
+    def _validate_enhanced_result(self, result: Dict, current_step: str, user_message: str) -> bool:
+        """Validate enhanced AI result for current step"""
+        action = result.get('action')
+        extracted_data = result.get('extracted_data', {})
+        
+        # Step-specific validation
+        validators = {
+            'waiting_for_language': self._validate_language_step,
+            'waiting_for_category': self._validate_category_step,
+            'waiting_for_main_category': self._validate_category_step,
+            'waiting_for_sub_category': self._validate_sub_category_step,
+            'waiting_for_item': self._validate_item_step,
+            'waiting_for_quantity': self._validate_quantity_step,
+            'waiting_for_additional': self._validate_additional_step,
+            'waiting_for_service': self._validate_service_step,
+            'waiting_for_location': self._validate_location_step,
+            'waiting_for_confirmation': self._validate_confirmation_step,
+            'waiting_for_fresh_start_choice': self._validate_fresh_start_choice_step
+        }
+        
+        validator = validators.get(current_step)
+        if validator:
+            # Always run step-specific validation, even for intelligent_suggestion
+            return validator(result, extracted_data, user_message)
+        
+        # Accept intelligent suggestions and navigation actions if no step-specific validation
+        if action in ['intelligent_suggestion', 'back_navigation', 'conversational_response']:
+            return True
+        
+        return True
 
     def _validate_language_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
         """Validate language selection step"""
@@ -1502,7 +1411,7 @@ Response: {{
 
     def _generate_enhanced_fallback(self, user_message: str, current_step: str, 
                                   user_context: Dict, language: str) -> Dict:
-        """Generate enhanced fallback response when AI is unavailable"""
+        """Generate enhanced fallback response when AI is unavailable with context awareness"""
         logger.info(f"🔄 Generating enhanced fallback for step: {current_step}")
         
         # Enhanced fallback with better understanding
@@ -1542,6 +1451,9 @@ Response: {{
                     'extracted_data': {'yes_no': yes_no},
                     'confidence': 'medium'
                 })
+        
+        # Enhance fallback with context-aware suggestions
+        fallback_result = self._enhance_fallback_with_context(fallback_result, user_context)
         
         return fallback_result
 
@@ -1636,7 +1548,7 @@ Response: {{
         
         return messages.get(current_step, 'Please provide a valid response.')
 
-    def _preprocess_message(self, message: str) -> str:
+    def _preprocess_message_advanced(self, message: str) -> str:
         """Preprocess message for better AI understanding with enhanced Arabic quantity recognition"""
         if not message:
             return ""
@@ -1681,240 +1593,24 @@ Response: {{
         return processed_message.strip()
 
     def _handle_ai_failure(self, error: Exception) -> None:
-        """Enhanced AI failure handling with recovery strategies"""
-        try:
-            # Log the error with context
-            logger.error(f"❌ AI processing failure: {str(error)}")
-            logger.error(f"❌ Error type: {type(error).__name__}")
-            
-            # Update failure tracking
-            self.consecutive_failures += 1
-            if not self.failure_window_start:
-                self.failure_window_start = time.time()
-            
-            # Log failure pattern
-            error_type = type(error).__name__
-            if error_type not in self.error_patterns:
-                self.error_patterns[error_type] = 0
-            self.error_patterns[error_type] += 1
-            
-            # Determine recovery strategy
-            recovery_strategy = self._determine_recovery_strategy(error)
-            logger.info(f"🔄 Using recovery strategy: {recovery_strategy}")
-            
-            # Execute recovery strategy
-            self._execute_recovery_strategy(recovery_strategy, error)
-            
-        except Exception as recovery_error:
-            logger.error(f"❌ Error in failure recovery: {str(recovery_error)}")
-
-    # NEW: Determine recovery strategy based on error type
-    def _determine_recovery_strategy(self, error: Exception) -> str:
-        """Determine the best recovery strategy for the given error"""
-        error_type = type(error).__name__
+        """Handle AI processing failures"""
+        self.consecutive_failures += 1
         
-        if 'quota' in str(error).lower() or 'rate' in str(error).lower():
-            return 'quota_exceeded'
-        elif 'timeout' in str(error).lower() or 'timed' in str(error).lower():
-            return 'timeout_retry'
-        elif 'json' in str(error).lower() or 'parse' in str(error).lower():
-            return 'parsing_fallback'
-        elif 'network' in str(error).lower() or 'connection' in str(error).lower():
-            return 'network_retry'
-        elif 'authentication' in str(error).lower() or 'unauthorized' in str(error).lower():
-            return 'auth_error'
+        if self.failure_window_start is None:
+            self.failure_window_start = time.time()
+        
+        error_msg = str(error).lower()
+        
+        if "quota" in error_msg or "insufficient_quota" in error_msg or "429" in error_msg:
+            logger.warning("⚠️ OpenAI quota exceeded, using fallback")
+        elif "rate limit" in error_msg:
+            logger.warning("⚠️ OpenAI rate limit hit, using fallback")
+        elif "timeout" in error_msg:
+            logger.warning("⚠️ OpenAI request timeout, using fallback")
         else:
-            return 'general_fallback'
-
-    # NEW: Execute recovery strategy
-    def _execute_recovery_strategy(self, strategy: str, error: Exception) -> None:
-        """Execute the determined recovery strategy"""
-        try:
-            if strategy == 'quota_exceeded':
-                self._handle_quota_exceeded()
-            elif strategy == 'timeout_retry':
-                self._handle_timeout_retry()
-            elif strategy == 'parsing_fallback':
-                self._handle_parsing_fallback()
-            elif strategy == 'network_retry':
-                self._handle_network_retry()
-            elif strategy == 'auth_error':
-                self._handle_auth_error()
-            elif strategy == 'general_fallback':
-                self._handle_general_fallback()
-            
-        except Exception as recovery_error:
-            logger.error(f"❌ Recovery strategy execution failed: {str(recovery_error)}")
-
-    # NEW: Handle quota exceeded errors
-    def _handle_quota_exceeded(self) -> None:
-        """Handle API quota exceeded errors"""
-        logger.warning("⚠️ API quota exceeded, implementing quota management")
+            logger.error(f"❌ Enhanced AI processing error: {error}")
         
-        # Extend failure window for quota issues
-        self.failure_window_duration = 600  # 10 minutes for quota issues
-        
-        # Update configuration if possible
-        if hasattr(self, 'disable_on_quota') and self.disable_on_quota:
-            logger.info("🔄 Disabling AI processing due to quota exceeded")
-            # The is_available() method will handle this
-
-    # NEW: Handle timeout errors
-    def _handle_timeout_retry(self) -> None:
-        """Handle timeout errors with retry logic"""
-        logger.warning("⚠️ Timeout error detected, implementing retry logic")
-        
-        # Reduce failure window for timeout issues
-        self.failure_window_duration = 180  # 3 minutes for timeout issues
-        
-        # Log timeout pattern for optimization
-        if 'timeout' not in self.error_patterns:
-            self.error_patterns['timeout'] = 0
-        self.error_patterns['timeout'] += 1
-
-    # NEW: Handle parsing fallback
-    def _handle_parsing_fallback(self) -> None:
-        """Handle parsing errors with fallback strategies"""
-        logger.warning("⚠️ Parsing error detected, enabling fallback strategies")
-        
-        # Enable all fallback strategies
-        self.fallback_enabled = True
-        
-        # Log parsing error pattern
-        if 'parsing' not in self.error_patterns:
-            self.error_patterns['parsing'] = 0
-        self.error_patterns['parsing'] += 1
-
-    # NEW: Handle network retry
-    def _handle_network_retry(self) -> None:
-        """Handle network errors with retry logic"""
-        logger.warning("⚠️ Network error detected, implementing retry logic")
-        
-        # Short failure window for network issues
-        self.failure_window_duration = 120  # 2 minutes for network issues
-        
-        # Log network error pattern
-        if 'network' not in self.error_patterns:
-            self.error_patterns['network'] = 0
-        self.error_patterns['network'] += 1
-
-    # NEW: Handle authentication errors
-    def _handle_auth_error(self) -> None:
-        """Handle authentication errors"""
-        logger.error("❌ Authentication error detected")
-        
-        # Long failure window for auth issues
-        self.failure_window_duration = 1800  # 30 minutes for auth issues
-        
-        # Log auth error pattern
-        if 'authentication' not in self.error_patterns:
-            self.error_patterns['authentication'] = 0
-        self.error_patterns['authentication'] += 1
-
-    # NEW: Handle general fallback
-    def _handle_general_fallback(self) -> None:
-        """Handle general errors with fallback strategies"""
-        logger.warning("⚠️ General error detected, enabling all fallback strategies")
-        
-        # Enable all fallback strategies
-        self.fallback_enabled = True
-        
-        # Standard failure window
-        self.failure_window_duration = 300  # 5 minutes for general issues
-
-    # NEW: Extract basic information from user message
-    def _extract_basic_info(self, user_message: str, current_step: str, language: str) -> Dict:
-        """Extract basic information from user message using fallback strategies"""
-        extracted_data = {}
-        
-        try:
-            # Language detection
-            if self._detect_language_fallback(user_message):
-                extracted_data['language'] = self._detect_language_fallback(user_message)
-            
-            # Number extraction for quantities
-            if 'waiting_for_quantity' in current_step:
-                quantity = self._extract_number_fallback(user_message)
-                if quantity:
-                    extracted_data['quantity'] = quantity
-            
-            # Yes/No detection
-            if 'waiting_for_additional' in current_step or 'waiting_for_confirmation' in current_step:
-                yes_no = self._detect_yes_no_fallback(user_message, language)
-                if yes_no:
-                    extracted_data['yes_no'] = yes_no
-            
-            # Action mapping based on current step
-            action = self._map_step_to_action(current_step)
-            if action:
-                extracted_data['action'] = action
-            
-        except Exception as e:
-            logger.warning(f"⚠️ Error in basic info extraction: {e}")
-        
-        return extracted_data
-
-    # NEW: Map current step to likely action
-    def _map_step_to_action(self, current_step: str) -> Optional[str]:
-        """Map current step to likely user action"""
-        step_action_mapping = {
-            'waiting_for_language': 'language_selection',
-            'waiting_for_main_category': 'category_selection',
-            'waiting_for_sub_category': 'category_selection',
-            'waiting_for_item': 'item_selection',
-            'waiting_for_quantity': 'quantity_selection',
-            'waiting_for_additional': 'yes_no',
-            'waiting_for_service': 'service_selection',
-            'waiting_for_location': 'location_input',
-            'waiting_for_confirmation': 'confirmation'
-        }
-        
-        return step_action_mapping.get(current_step)
-
-    # NEW: Get fallback clarification question
-    def _get_fallback_clarification_question(self, current_step: str, language: str) -> str:
-        """Get appropriate clarification question for fallback responses"""
-        questions = {
-            'waiting_for_language': {
-                'arabic': 'أي لغة تفضل؟ العربية أم الإنجليزية؟',
-                'english': 'Which language do you prefer? Arabic or English?'
-            },
-            'waiting_for_main_category': {
-                'arabic': 'أي فئة تريد؟ المشروبات الباردة، المشروبات الحارة، أم الحلويات؟',
-                'english': 'Which category would you like? Cold Drinks, Hot Drinks, or Food?'
-            },
-            'waiting_for_quantity': {
-                'arabic': 'كم عدد تريد؟',
-                'english': 'How many would you like?'
-            },
-            'waiting_for_additional': {
-                'arabic': 'هل تريد إضافة شيء آخر؟',
-                'english': 'Would you like to add anything else?'
-            }
-        }
-        
-        step_questions = questions.get(current_step, {
-            'arabic': 'هل يمكنك التوضيح أكثر؟',
-            'english': 'Could you please clarify?'
-        })
-        
-        return step_questions.get(language, step_questions['arabic'])
-
-    # NEW: Get basic fallback response
-    def _get_basic_fallback_response(self, current_step: str, language: str) -> Dict:
-        """Get basic fallback response when enhanced fallback fails"""
-        return {
-            "understood_intent": "Basic fallback processing",
-            "confidence": "low",
-            "action": "stay_current_step",
-            "extracted_data": {},
-            "clarification_needed": True,
-            "clarification_question": "Could you please clarify your request?",
-            "response_message": "أفهم طلبك. هل يمكنك التوضيح أكثر؟\nI understand your request. Could you please clarify?",
-            "fallback_used": True,
-            "parsing_method": "basic_fallback",
-            "error_context": "Fallback processing failed, using basic response"
-        }
+        logger.warning(f"⚠️ Consecutive failures: {self.consecutive_failures}/{self.max_consecutive_failures}")
 
     def _reset_failure_counter(self) -> None:
         """Reset failure counter on successful AI processing"""
@@ -1923,366 +1619,259 @@ Response: {{
             self.consecutive_failures = 0
             self.failure_window_start = None 
 
-    # NEW: Fallback parsing method
-    def _try_fallback_parsing(self, ai_response: str, current_step: str, user_message: str, user_context: Dict) -> Optional[Dict]:
-        """Try to parse response using general fallback strategies"""
-        # Try to extract any meaningful information from the response
-        extracted_data = {}
+    def _update_user_insights(self, phone_number: str, ai_result: Dict, user_message: str) -> None:
+        """Update user preferences and insights based on AI result"""
+        if not phone_number:
+            return
         
-        # Look for any JSON-like structure
-        if '{' in ai_response and '}' in ai_response:
-            try:
-                # Try to extract JSON content
-                start = ai_response.find('{')
-                end = ai_response.rfind('}') + 1
-                json_content = ai_response[start:end]
-                
-                # Try to parse as JSON
-                parsed = json.loads(json_content)
-                if isinstance(parsed, dict):
-                    # Extract any valid fields
-                    for key in ['action', 'confidence', 'language', 'quantity', 'yes_no']:
-                        if key in parsed:
-                            extracted_data[key] = parsed[key]
-            except:
-                pass
-        
-        # If we found some data, build a result
-        if extracted_data:
-            return self._build_fallback_result(extracted_data, current_step, user_message, user_context)
-        
-        # Last resort: use contextual inference
-        return self._try_contextual_parsing(ai_response, current_step, user_message, user_context)
-
-    # NEW: Enhanced response validation and monitoring system
-    def _validate_and_monitor_response(self, ai_response: Dict, user_message: str, current_step: str, user_context: Dict) -> Dict:
-        """Validate AI response and monitor performance metrics"""
-        try:
-            # Initialize monitoring data
-            monitoring_data = {
-                'timestamp': time.time(),
-                'user_message': user_message,
-                'current_step': current_step,
-                'response_quality': 'unknown',
-                'validation_issues': [],
-                'performance_metrics': {}
+        # Initialize user preferences if not exists
+        if phone_number not in self.user_preferences:
+            self.user_preferences[phone_number] = {
+                'favorite_categories': [],
+                'favorite_items': [],
+                'preferred_combinations': [],
+                'order_patterns': [],
+                'last_interaction': time.time()
             }
-            
-            # Validate response structure
-            structure_validation = self._validate_response_structure(ai_response)
-            if not structure_validation['valid']:
-                monitoring_data['validation_issues'].extend(structure_validation['issues'])
-                monitoring_data['response_quality'] = 'poor'
-            
-            # Validate response content
-            content_validation = self._validate_response_content(ai_response, current_step, user_context)
-            if not content_validation['valid']:
-                monitoring_data['validation_issues'].extend(content_validation['issues'])
-                monitoring_data['response_quality'] = 'poor'
-            
-            # Validate response logic
-            logic_validation = self._validate_response_logic(ai_response, current_step, user_context)
-            if not logic_validation['valid']:
-                monitoring_data['validation_issues'].extend(logic_validation['issues'])
-                monitoring_data['response_quality'] = 'poor'
-            
-            # Calculate response quality score
-            quality_score = self._calculate_response_quality(ai_response, monitoring_data)
-            monitoring_data['response_quality'] = quality_score['level']
-            monitoring_data['quality_score'] = quality_score['score']
-            
-            # Update performance metrics
-            self._update_performance_metrics(monitoring_data)
-            
-            # Log validation results
-            if monitoring_data['validation_issues']:
-                logger.warning(f"🔄 Response validation issues: {monitoring_data['validation_issues']}")
-            else:
-                logger.info(f"✅ Response validation passed with quality: {quality_score['level']}")
-            
-            # Add monitoring data to response
-            ai_response['monitoring_data'] = monitoring_data
-            
-            return ai_response
-            
-        except Exception as e:
-            logger.error(f"❌ Error in response validation and monitoring: {str(e)}")
-            # Return response with basic monitoring data
-            ai_response['monitoring_data'] = {
-                'timestamp': time.time(),
-                'response_quality': 'unknown',
-                'validation_error': str(e)
+        
+        user_prefs = self.user_preferences[phone_number]
+        
+        # Update last interaction
+        user_prefs['last_interaction'] = time.time()
+        
+        # Learn from category selection
+        if ai_result.get('action') == 'category_selection':
+            category_id = ai_result.get('extracted_data', {}).get('category_id')
+            if category_id:
+                if category_id not in user_prefs['favorite_categories']:
+                    user_prefs['favorite_categories'].append(category_id)
+                logger.info(f"📚 Learned user {phone_number} prefers category {category_id}")
+        
+        # Learn from item selection
+        if ai_result.get('action') == 'item_selection':
+            item_name = ai_result.get('extracted_data', {}).get('item_name')
+            if item_name:
+                if item_name not in user_prefs['favorite_items']:
+                    user_prefs['favorite_items'].append(item_name)
+                logger.info(f"📚 Learned user {phone_number} likes item: {item_name}")
+        
+        # Learn from intelligent suggestions
+        if ai_result.get('action') == 'intelligent_suggestion':
+            suggested_category = ai_result.get('extracted_data', {}).get('suggested_main_category')
+            if suggested_category:
+                if suggested_category not in user_prefs['favorite_categories']:
+                    user_prefs['favorite_categories'].append(suggested_category)
+                logger.info(f"📚 Learned user {phone_number} interested in category {suggested_category}")
+        
+        # Store order patterns
+        if ai_result.get('action') in ['item_selection', 'category_selection']:
+            pattern = {
+                'action': ai_result.get('action'),
+                'data': ai_result.get('extracted_data'),
+                'timestamp': time.time()
             }
-            return ai_response
+            user_prefs['order_patterns'].append(pattern)
+            
+            # Keep only last 10 patterns
+            if len(user_prefs['order_patterns']) > 10:
+                user_prefs['order_patterns'] = user_prefs['order_patterns'][-10:]
 
-    # NEW: Validate response structure
-    def _validate_response_structure(self, ai_response: Dict) -> Dict:
-        """Validate the structure of AI response"""
-        validation_result = {
-            'valid': True,
-            'issues': []
-        }
+    def _get_personalized_suggestions(self, phone_number: str, current_step: str, context: Dict) -> List[str]:
+        """Get personalized suggestions based on user preferences and context"""
+        if not phone_number or phone_number not in self.user_preferences:
+            return []
         
-        # Check required fields
-        required_fields = ['understood_intent', 'confidence', 'action', 'extracted_data']
-        for field in required_fields:
-            if field not in ai_response:
-                validation_result['valid'] = False
-                validation_result['issues'].append(f"Missing required field: {field}")
+        user_prefs = self.user_preferences[phone_number]
+        suggestions = []
         
-        # Check field types
-        if 'extracted_data' in ai_response and not isinstance(ai_response['extracted_data'], dict):
-            validation_result['valid'] = False
-            validation_result['issues'].append("extracted_data must be a dictionary")
+        # Time-based suggestions
+        time_of_day = context.get('time_of_day', '')
+        if time_of_day == 'morning':
+            suggestions.extend(['Coffee + Croissant', 'Fresh Juice + Toast', 'Iced Coffee'])
+        elif time_of_day == 'afternoon':
+            suggestions.extend(['Iced Tea + Light Pastry', 'Frappuccino + Cake', 'Mojito'])
+        elif time_of_day == 'evening':
+            suggestions.extend(['Hot Chocolate + Pastry', 'Tea + Cake', 'Warm Drinks'])
         
-        if 'confidence' in ai_response and ai_response['confidence'] not in ['high', 'medium', 'low']:
-            validation_result['valid'] = False
-            validation_result['issues'].append("confidence must be 'high', 'medium', or 'low'")
+        # Preference-based suggestions
+        if user_prefs.get('favorite_categories'):
+            for category_id in user_prefs['favorite_categories'][:2]:  # Top 2 categories
+                if category_id == 1:  # Cold Drinks
+                    suggestions.extend(['Frappuccino', 'Iced Coffee', 'Mojito'])
+                elif category_id == 2:  # Hot Drinks
+                    suggestions.extend(['Coffee', 'Latte', 'Tea'])
+                elif category_id == 3:  # Pastries
+                    suggestions.extend(['Croissant', 'Cake', 'Toast'])
         
-        return validation_result
+        # Popular combinations
+        suggestions.extend(['Coffee + Pastry', 'Iced Tea + Light Food', 'Frappuccino + Cake'])
+        
+        # Remove duplicates and limit
+        unique_suggestions = list(dict.fromkeys(suggestions))  # Preserve order
+        return unique_suggestions[:5]  # Return top 5
 
-    # NEW: Validate response content
-    def _validate_response_content(self, ai_response: Dict, current_step: str, user_context: Dict) -> Dict:
-        """Validate the content of AI response"""
-        validation_result = {
-            'valid': True,
-            'issues': []
-        }
+    def _generate_context_insights(self, ai_result: Dict, user_context: Dict) -> str:
+        """Generate contextual insights about user's choice"""
+        action = ai_result.get('action')
+        extracted_data = ai_result.get('extracted_data', {})
         
-        # Validate action appropriateness for current step
-        action = ai_response.get('action')
-        if action:
-            step_actions = self._get_valid_actions_for_step(current_step)
-            if action not in step_actions:
-                validation_result['valid'] = False
-                validation_result['issues'].append(f"Action '{action}' not valid for step '{current_step}'")
+        insights = []
         
-        # Validate extracted data consistency
-        extracted_data = ai_response.get('extracted_data', {})
-        if extracted_data:
-            data_validation = self._validate_extracted_data(extracted_data, current_step)
-            if not data_validation['valid']:
-                validation_result['valid'] = False
-                validation_result['issues'].extend(data_validation['issues'])
-        
-        return validation_result
-
-    # NEW: Validate response logic
-    def _validate_response_logic(self, ai_response: Dict, current_step: str, user_context: Dict) -> Dict:
-        """Validate the logic of AI response"""
-        validation_result = {
-            'valid': True,
-            'issues': []
-        }
-        
-        # Check for logical inconsistencies
-        action = ai_response.get('action')
-        extracted_data = ai_response.get('extracted_data', {})
-        
-        # Language selection logic
-        if action == 'language_selection' and current_step != 'waiting_for_language':
-            validation_result['valid'] = False
-            validation_result['issues'].append("Language selection action not appropriate for current step")
-        
-        # Category selection logic
+        # Category insights
         if action == 'category_selection':
-            if current_step == 'waiting_for_language':
-                validation_result['valid'] = False
-                validation_result['issues'].append("Category selection before language selection")
-            elif 'category_id' in extracted_data and not extracted_data['category_id']:
-                validation_result['valid'] = False
-                validation_result['issues'].append("Category selection action without category_id")
+            category_id = extracted_data.get('category_id')
+            if category_id == 1:  # Cold Drinks
+                insights.append("Cold drinks are perfect for refreshing moments!")
+            elif category_id == 2:  # Hot Drinks
+                insights.append("Hot drinks provide comfort and warmth!")
+            elif category_id == 3:  # Pastries
+                insights.append("Pastries are great for satisfying cravings!")
         
-        # Item selection logic
+        # Item insights
+        elif action == 'item_selection':
+            item_name = extracted_data.get('item_name', '')
+            if 'موهيتو' in item_name:
+                insights.append("Mojito is our most popular refreshing drink!")
+            elif 'فرابتشينو' in item_name:
+                insights.append("Frappuccino is perfect for sweet cravings!")
+            elif 'كرواسان' in item_name:
+                insights.append("Croissants are ideal for breakfast or coffee pairing!")
+        
+        # Time-based insights
+        time_of_day = user_context.get('time_of_day', '')
+        if time_of_day == 'morning':
+            insights.append("Great morning choice for energy and focus!")
+        elif time_of_day == 'afternoon':
+            insights.append("Perfect afternoon pick-me-up!")
+        elif time_of_day == 'evening':
+            insights.append("Excellent evening comfort choice!")
+        
+        # Combination insights
+        if user_context.get('current_order_items'):
+            insights.append("This pairs well with your current order!")
+        
+        return " ".join(insights) if insights else "Great choice! This is one of our favorites."
+
+    def _enhance_response_with_context(self, ai_result: Dict, user_context: Dict) -> Dict:
+        """Enhance AI response with personalized suggestions and context insights"""
+        phone_number = user_context.get('phone_number')
+        
+        # Add personalized suggestions
+        if phone_number:
+            personalized_suggestions = self._get_personalized_suggestions(phone_number, ai_result.get('current_step', ''), user_context)
+            ai_result['personalized_suggestions'] = personalized_suggestions
+        
+        # Add context insights
+        context_insights = self._generate_context_insights(ai_result, user_context)
+        ai_result['context_insights'] = context_insights
+        
+        # Enhance response message with insights
+        if context_insights and ai_result.get('response_message'):
+            enhanced_message = f"{ai_result['response_message']}\n\n💡 {context_insights}"
+            ai_result['response_message'] = enhanced_message
+        
+        return ai_result
+
+    def _detect_multi_intent(self, user_message: str) -> bool:
+        """Detect if user message contains multiple intents"""
+        multi_intent_indicators = [
+            'و', 'and', 'مع', 'with', 'كمان', 'also', 'بالإضافة', 'in addition',
+            'أريد', 'بدي', 'i want', 'need', 'احتاج', 'require'
+        ]
+        
+        message_lower = user_message.lower()
+        intent_count = 0
+        
+        for indicator in multi_intent_indicators:
+            if indicator in message_lower:
+                intent_count += 1
+        
+        return intent_count >= 2
+
+    def _extract_multiple_items(self, user_message: str) -> List[Dict]:
+        """Extract multiple items from a single user message"""
+        items = []
+        
+        # Simple pattern matching for multiple items
+        # This can be enhanced with more sophisticated NLP
+        if 'و' in user_message or 'and' in user_message.lower():
+            # Split by common conjunctions
+            parts = user_message.replace('و', '|').replace('and', '|').split('|')
+            
+            for part in parts:
+                part = part.strip()
+                if part:
+                    # Try to identify item type
+                    item_info = self._identify_item_from_text(part)
+                    if item_info:
+                        items.append(item_info)
+        
+        return items
+
+    def _identify_item_from_text(self, text: str) -> Optional[Dict]:
+        """Identify item information from text"""
+        text_lower = text.lower().strip()
+        
+        # Simple keyword matching - can be enhanced with AI
+        if 'موهيتو' in text_lower:
+            return {'type': 'drink', 'category': 'mojito', 'name': text.strip()}
+        elif 'قهوة' in text_lower or 'coffee' in text_lower:
+            return {'type': 'drink', 'category': 'coffee', 'name': text.strip()}
+        elif 'كرواسان' in text_lower or 'croissant' in text_lower:
+            return {'type': 'food', 'category': 'pastry', 'name': text.strip()}
+        elif 'كيك' in text_lower or 'cake' in text_lower:
+            return {'type': 'food', 'category': 'dessert', 'name': text.strip()}
+        
+        return None
+
+    def _should_skip_steps(self, ai_result: Dict, current_step: str, user_context: Dict) -> bool:
+        """Determine if steps can be skipped based on user input"""
+        action = ai_result.get('action')
+        
+        # Skip to item selection if user mentions specific item
+        if action == 'item_selection' and current_step in ['waiting_for_main_category', 'waiting_for_sub_category']:
+            return True
+        
+        # Skip to quantity if user mentions both item and quantity
+        if action == 'item_selection' and ai_result.get('extracted_data', {}).get('quantity'):
+            return True
+        
+        # Skip to service type if user mentions service preference
+        if action == 'service_selection' and current_step in ['waiting_for_main_category', 'waiting_for_sub_category', 'waiting_for_item', 'waiting_for_quantity', 'waiting_for_additional']:
+            return True
+        
+        return False
+
+    def _get_skip_suggestions(self, ai_result: Dict, current_step: str) -> List[str]:
+        """Get suggestions for steps that can be skipped"""
+        suggestions = []
+        action = ai_result.get('action')
+        
         if action == 'item_selection':
-            if not user_context.get('selected_sub_category'):
-                validation_result['valid'] = False
-                validation_result['issues'].append("Item selection without sub-category selection")
-            elif 'item_id' in extracted_data and not extracted_data['item_id']:
-                validation_result['valid'] = False
-                validation_result['issues'].append("Item selection action without item_id")
+            if current_step == 'waiting_for_main_category':
+                suggestions.append("I'll take you directly to item selection!")
+            elif current_step == 'waiting_for_sub_category':
+                suggestions.append("Great! Let me show you the specific items.")
         
-        return validation_result
+        if action == 'service_selection':
+            suggestions.append("I'll help you choose service type directly!")
+        
+        return suggestions
 
-    # NEW: Get valid actions for current step
-    def _get_valid_actions_for_step(self, current_step: str) -> List[str]:
-        """Get valid actions for the current step"""
-        step_actions = {
-            'waiting_for_language': ['language_selection', 'help_request'],
-            'waiting_for_main_category': ['category_selection', 'show_menu', 'help_request', 'back_navigation'],
-            'waiting_for_sub_category': ['category_selection', 'show_menu', 'help_request', 'back_navigation'],
-            'waiting_for_item': ['item_selection', 'show_menu', 'help_request', 'back_navigation'],
-            'waiting_for_quantity': ['quantity_selection', 'help_request', 'back_navigation'],
-            'waiting_for_additional': ['yes_no', 'item_selection', 'help_request', 'back_navigation'],
-            'waiting_for_service': ['service_selection', 'help_request', 'back_navigation'],
-            'waiting_for_location': ['location_input', 'help_request', 'back_navigation'],
-            'waiting_for_confirmation': ['confirmation', 'help_request', 'back_navigation']
-        }
+    def _enhance_fallback_with_context(self, fallback_result: Dict, user_context: Dict) -> Dict:
+        """Enhance fallback response with context-aware suggestions"""
+        phone_number = user_context.get('phone_number')
         
-        return step_actions.get(current_step, ['help_request'])
-
-    # NEW: Validate extracted data
-    def _validate_extracted_data(self, extracted_data: Dict, current_step: str) -> Dict:
-        """Validate extracted data for current step"""
-        validation_result = {
-            'valid': True,
-            'issues': []
-        }
-        
-        # Step-specific data validation
-        if current_step == 'waiting_for_language':
-            if 'language' in extracted_data and extracted_data['language'] not in ['arabic', 'english', None]:
-                validation_result['valid'] = False
-                validation_result['issues'].append("Invalid language value")
-        
-        elif current_step == 'waiting_for_quantity':
-            if 'quantity' in extracted_data and extracted_data['quantity']:
-                try:
-                    quantity = int(extracted_data['quantity'])
-                    if quantity <= 0 or quantity > 50:
-                        validation_result['valid'] = False
-                        validation_result['issues'].append("Quantity must be between 1 and 50")
-                except (ValueError, TypeError):
-                    validation_result['valid'] = False
-                    validation_result['issues'].append("Quantity must be a valid number")
-        
-        elif current_step == 'waiting_for_additional':
-            if 'yes_no' in extracted_data and extracted_data['yes_no'] not in ['yes', 'no', None]:
-                validation_result['valid'] = False
-                validation_result['issues'].append("yes_no must be 'yes', 'no', or null")
-        
-        return validation_result
-
-    # NEW: Calculate response quality score
-    def _calculate_response_quality(self, ai_response: Dict, monitoring_data: Dict) -> Dict:
-        """Calculate quality score for AI response"""
-        score = 100
-        deductions = []
-        
-        # Deduct points for validation issues
-        validation_issues = len(monitoring_data.get('validation_issues', []))
-        score -= validation_issues * 10
-        
-        # Deduct points for low confidence
-        confidence = ai_response.get('confidence', 'medium')
-        if confidence == 'low':
-            score -= 20
-        elif confidence == 'medium':
-            score -= 10
-        
-        # Deduct points for clarification needed
-        if ai_response.get('clarification_needed', False):
-            score -= 15
-        
-        # Deduct points for fallback usage
-        if ai_response.get('fallback_used', False):
-            score -= 25
-        
-        # Ensure score doesn't go below 0
-        score = max(0, score)
-        
-        # Determine quality level
-        if score >= 80:
-            level = 'excellent'
-        elif score >= 60:
-            level = 'good'
-        elif score >= 40:
-            level = 'fair'
-        elif score >= 20:
-            level = 'poor'
-        else:
-            level = 'very_poor'
-        
-        return {
-            'score': score,
-            'level': level,
-            'deductions': deductions
-        }
-
-    # NEW: Update performance metrics
-    def _update_performance_metrics(self, monitoring_data: Dict) -> None:
-        """Update performance metrics for AI processing"""
-        try:
-            # Initialize metrics if not exists
-            if not hasattr(self, 'performance_metrics'):
-                self.performance_metrics = {
-                    'total_responses': 0,
-                    'quality_scores': [],
-                    'validation_issues': [],
-                    'step_performance': {},
-                    'error_patterns': {}
-                }
+        if phone_number and phone_number in self.user_preferences:
+            user_prefs = self.user_preferences[phone_number]
             
-            # Update basic metrics
-            self.performance_metrics['total_responses'] += 1
-            self.performance_metrics['quality_scores'].append(monitoring_data.get('quality_score', 0))
-            
-            # Keep only last 100 scores for rolling average
-            if len(self.performance_metrics['quality_scores']) > 100:
-                self.performance_metrics['quality_scores'] = self.performance_metrics['quality_scores'][-100:]
-            
-            # Update step performance
-            current_step = monitoring_data.get('current_step', 'unknown')
-            if current_step not in self.performance_metrics['step_performance']:
-                self.performance_metrics['step_performance'][current_step] = {
-                    'total_responses': 0,
-                    'quality_scores': [],
-                    'validation_issues': []
-                }
-            
-            step_metrics = self.performance_metrics['step_performance'][current_step]
-            step_metrics['total_responses'] += 1
-            step_metrics['quality_scores'].append(monitoring_data.get('quality_score', 0))
-            
-            # Keep only last 50 scores per step
-            if len(step_metrics['quality_scores']) > 50:
-                step_metrics['quality_scores'] = step_metrics['quality_scores'][-50:]
-            
-            # Update validation issues
-            if monitoring_data.get('validation_issues'):
-                self.performance_metrics['validation_issues'].extend(monitoring_data['validation_issues'])
-                step_metrics['validation_issues'].extend(monitoring_data['validation_issues'])
+            # Add personalized fallback suggestions
+            if user_prefs.get('favorite_categories'):
+                favorite_category = user_prefs['favorite_categories'][0]
+                category_names = {1: "المشروبات الباردة", 2: "المشروبات الحارة", 3: "الحلويات والمعجنات"}
+                category_name = category_names.get(favorite_category, "المفضلة")
                 
-                # Keep only last 100 issues
-                if len(self.performance_metrics['validation_issues']) > 100:
-                    self.performance_metrics['validation_issues'] = self.performance_metrics['validation_issues'][-100:]
-                if len(step_metrics['validation_issues']) > 50:
-                    step_metrics['validation_issues'] = step_metrics['validation_issues'][-50:]
-            
-        except Exception as e:
-            logger.error(f"❌ Error updating performance metrics: {str(e)}")
-
-    # NEW: Get performance summary
-    def get_performance_summary(self) -> Dict:
-        """Get summary of AI performance metrics"""
-        try:
-            if not hasattr(self, 'performance_metrics'):
-                return {'error': 'No performance data available'}
-            
-            metrics = self.performance_metrics
-            
-            # Calculate averages
-            avg_quality = sum(metrics['quality_scores']) / len(metrics['quality_scores']) if metrics['quality_scores'] else 0
-            
-            # Step performance summary
-            step_summary = {}
-            for step, step_metrics in metrics['step_performance'].items():
-                step_avg = sum(step_metrics['quality_scores']) / len(step_metrics['quality_scores']) if step_metrics['quality_scores'] else 0
-                step_summary[step] = {
-                    'total_responses': step_metrics['total_responses'],
-                    'average_quality': round(step_avg, 2),
-                    'validation_issues': len(step_metrics['validation_issues'])
-                }
-            
-            return {
-                'total_responses': metrics['total_responses'],
-                'average_quality_score': round(avg_quality, 2),
-                'step_performance': step_summary,
-                'total_validation_issues': len(metrics['validation_issues']),
-                'error_patterns': self.error_patterns,
-                'conversation_memory_size': len(self.conversation_memory)
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Error getting performance summary: {str(e)}")
-            return {'error': str(e)}
+                fallback_result['personalized_suggestions'] = [f"جرب {category_name} - فئة مفضلة لديك"]
+                fallback_result['context_insights'] = "Based on your preferences, I'm suggesting your favorite category"
+        
+        return fallback_result
