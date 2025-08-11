@@ -469,6 +469,20 @@ class WhatsAppClient:
                     if change.get('field') == 'messages':
                         value = change.get('value', {})
 
+                        # If webhook payload includes metadata with phone number id,
+                        # ensure it matches the configured phone number id.
+                        metadata = value.get('metadata', {})
+                        incoming_phone_id = metadata.get('phone_number_id')
+                        if (
+                            self.phone_number_id
+                            and incoming_phone_id
+                            and incoming_phone_id != self.phone_number_id
+                        ):
+                            logger.info(
+                                f"Ignoring webhook for phone_number_id {incoming_phone_id} (configured {self.phone_number_id})"
+                            )
+                            continue
+
                         # Extract messages
                         for message in value.get('messages', []):
                             messages.append(message)
