@@ -973,11 +973,12 @@ Response: {{
     def _validate_sub_category_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
         """Validate sub-category selection step"""
         action = result.get('action')
-        valid_actions = ['category_selection', 'item_selection', 'intelligent_suggestion', 'conversational_response']
-        
+        # Accept explicit sub_category_selection in addition to others
+        valid_actions = ['sub_category_selection', 'category_selection', 'item_selection', 'intelligent_suggestion', 'conversational_response']
+
         if action not in valid_actions:
             return False
-        
+
         return True
 
     def _validate_item_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
