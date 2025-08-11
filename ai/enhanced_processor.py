@@ -36,6 +36,12 @@ class EnhancedAIProcessor:
         self.failure_window_start = None
         self.failure_window_duration = 300  # 5 minutes
 
+        # NEW: Enhanced context management
+        self.conversation_memory = {}  # Store conversation history per user
+        self.user_preferences = {}     # Store user preferences and patterns
+        self.error_patterns = {}       # Track common error patterns
+        self.success_strategies = {}   # Store successful resolution strategies
+
         # Configuration
         if config:
             self.quota_cache_duration = config.get('ai_quota_cache_duration', 300)
@@ -85,13 +91,13 @@ class EnhancedAIProcessor:
             return self._generate_enhanced_fallback(user_message, current_step, user_context, language)
 
         try:
-            # Pre-process message
+            # NEW: Enhanced pre-processing with context
             processed_message = self._preprocess_message(user_message)
             
-            # Build comprehensive context
+            # NEW: Build comprehensive context with conversation memory
             enhanced_context = self._build_enhanced_context(current_step, user_context, language)
             
-            # Generate enhanced prompt
+            # NEW: Generate enhanced prompt with conversation history
             prompt = self._generate_enhanced_prompt(processed_message, current_step, enhanced_context)
             
             logger.info(f"🧠 Enhanced AI analyzing: '{processed_message}' at step '{current_step}'")
@@ -103,29 +109,413 @@ class EnhancedAIProcessor:
                     {"role": "system", "content": self._get_enhanced_system_prompt()},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=1000,
-                temperature=0.3,  # Slightly higher for more creative understanding
-                timeout=30,
+                temperature=0.3,
+                max_tokens=800,
+                response_format={"type": "json_object"}
             )
 
-            ai_response = response.choices[0].message.content.strip()
-            
-            # Parse and validate response
-            result = self._parse_enhanced_response(ai_response, current_step, processed_message)
+            # NEW: Enhanced response parsing with fallback strategies
+            ai_response = response.choices[0].message.content
+            result = self._parse_enhanced_response(ai_response, current_step, user_message)
             
             if result:
-                logger.info(f"✅ Enhanced AI Understanding: {result.get('understood_intent', 'N/A')} "
-                           f"(confidence: {result.get('confidence', 'N/A')}, action: {result.get('action', 'N/A')})")
+                # NEW: Validate and monitor the response
+                result = self._validate_and_monitor_response(result, user_message, current_step, enhanced_context)
+                
+                # NEW: Update conversation memory and learn from success
+                self._update_conversation_memory(user_context.get('phone_number'), user_message, result, True)
                 self._reset_failure_counter()
                 return result
             else:
-                logger.error("❌ Failed to parse enhanced AI response")
-                self._handle_ai_failure(Exception("Invalid enhanced AI response format"))
-                return self._generate_enhanced_fallback(user_message, current_step, user_context, language)
+                # NEW: Try alternative parsing strategies
+                logger.warning("🔄 Primary parsing failed, trying alternative strategies")
+                fallback_result = self._try_alternative_parsing(ai_response, current_step, user_message, user_context)
+                
+                if fallback_result:
+                    # NEW: Validate and monitor the fallback result
+                    fallback_result = self._validate_and_monitor_response(fallback_result, user_message, current_step, enhanced_context)
+                    
+                    # NEW: Update conversation memory with fallback result
+                    self._update_conversation_memory(user_context.get('phone_number'), user_message, fallback_result, False)
+                    return fallback_result
+                else:
+                    # NEW: Generate enhanced fallback with validation
+                    enhanced_fallback = self._generate_enhanced_fallback(user_message, current_step, user_context, language)
+                    enhanced_fallback = self._validate_and_monitor_response(enhanced_fallback, user_message, current_step, enhanced_context)
+                    
+                    # NEW: Update conversation memory with enhanced fallback
+                    self._update_conversation_memory(user_context.get('phone_number'), user_message, enhanced_fallback, False)
+                    return enhanced_fallback
 
         except Exception as e:
+            logger.error(f"❌ Enhanced AI processing error: {str(e)}")
             self._handle_ai_failure(e)
             return self._generate_enhanced_fallback(user_message, current_step, user_context, language)
+
+    # NEW: Enhanced conversation memory management
+    def _update_conversation_memory(self, phone_number: str, user_message: str, ai_result: Dict, success: bool):
+        """Update conversation memory and learn from interactions"""
+        if not phone_number:
+            return
+            
+        if phone_number not in self.conversation_memory:
+            self.conversation_memory[phone_number] = {
+                'history': [],
+                'preferences': {},
+                'error_patterns': [],
+                'success_patterns': []
+            }
+        
+        # Add to conversation history (keep last 10 exchanges)
+        memory = self.conversation_memory[phone_number]
+        memory['history'].append({
+            'user_message': user_message,
+            'ai_result': ai_result,
+            'timestamp': time.time(),
+            'success': success
+        })
+        
+        # Keep only last 10 exchanges
+        if len(memory['history']) > 10:
+            memory['history'] = memory['history'][-10:]
+        
+        # Learn from success/failure
+        if success:
+            memory['success_patterns'].append({
+                'message_type': user_message[:50],  # First 50 chars
+                'step': ai_result.get('current_step', 'unknown'),
+                'action': ai_result.get('action', 'unknown')
+            })
+        else:
+            memory['error_patterns'].append({
+                'message_type': user_message[:50],
+                'step': ai_result.get('current_step', 'unknown'),
+                'error': str(ai_result.get('error', 'unknown'))
+            })
+
+    # NEW: Alternative parsing strategies
+    def _try_alternative_parsing(self, ai_response: str, current_step: str, user_message: str, user_context: Dict) -> Optional[Dict]:
+        """Try alternative parsing strategies when primary parsing fails"""
+        strategies = [
+            self._try_regex_parsing,
+            self._try_keyword_parsing,
+            self._try_contextual_parsing,
+            self._try_fallback_parsing
+        ]
+        
+        for strategy in strategies:
+            try:
+                result = strategy(ai_response, current_step, user_message, user_context)
+                if result:
+                    logger.info(f"✅ Alternative parsing strategy succeeded: {strategy.__name__}")
+                    return result
+            except Exception as e:
+                logger.warning(f"⚠️ Alternative parsing strategy failed: {strategy.__name__} - {e}")
+                continue
+        
+        return None
+
+    # NEW: Regex-based parsing fallback
+    def _try_regex_parsing(self, ai_response: str, current_step: str, user_message: str, user_context: Dict) -> Optional[Dict]:
+        """Try to parse response using regex patterns"""
+        import re
+        
+        # Extract key information using regex
+        patterns = {
+            'action': r'"action":\s*"([^"]+)"',
+            'confidence': r'"confidence":\s*"([^"]+)"',
+            'language': r'"language":\s*"([^"]+)"',
+            'quantity': r'"quantity":\s*(\d+)',
+            'yes_no': r'"yes_no":\s*"([^"]+)"'
+        }
+        
+        extracted_data = {}
+        for key, pattern in patterns.items():
+            match = re.search(pattern, ai_response)
+            if match:
+                extracted_data[key] = match.group(1) if key != 'quantity' else int(match.group(1))
+        
+        if extracted_data:
+            return self._build_fallback_result(extracted_data, current_step, user_message, user_context)
+        
+        return None
+
+    # NEW: Keyword-based parsing fallback
+    def _try_keyword_parsing(self, ai_response: str, current_step: str, user_message: str, user_context: Dict) -> Optional[Dict]:
+        """Try to parse response using keyword analysis"""
+        keywords = {
+            'language_selection': ['arabic', 'english', 'عربي', 'انجليزي'],
+            'category_selection': ['category', 'category_id', 'category_name'],
+            'item_selection': ['item', 'item_id', 'item_name'],
+            'quantity_selection': ['quantity', 'number', 'amount'],
+            'service_selection': ['service', 'dine-in', 'delivery'],
+            'confirmation': ['confirm', 'yes', 'no']
+        }
+        
+        # Analyze response content for keywords
+        response_lower = ai_response.lower()
+        detected_actions = []
+        
+        for action, action_keywords in keywords.items():
+            if any(keyword in response_lower for keyword in action_keywords):
+                detected_actions.append(action)
+        
+        if detected_actions:
+            # Use the most relevant action
+            action = detected_actions[0]
+            return self._build_fallback_result({'action': action}, current_step, user_message, user_context)
+        
+        return None
+
+    # NEW: Contextual parsing fallback
+    def _try_contextual_parsing(self, ai_response: str, current_step: str, user_message: str, user_context: Dict) -> Optional[Dict]:
+        """Try to parse response using contextual information"""
+        # Use current step to infer likely action
+        step_action_mapping = {
+            'waiting_for_language': 'language_selection',
+            'waiting_for_main_category': 'category_selection',
+            'waiting_for_sub_category': 'category_selection',
+            'waiting_for_item': 'item_selection',
+            'waiting_for_quantity': 'quantity_selection',
+            'waiting_for_additional': 'yes_no',
+            'waiting_for_service': 'service_selection',
+            'waiting_for_location': 'location_input',
+            'waiting_for_confirmation': 'confirmation'
+        }
+        
+        if current_step in step_action_mapping:
+            action = step_action_mapping[current_step]
+            return self._build_fallback_result({'action': action}, current_step, user_message, user_context)
+        
+        return None
+
+    # NEW: Build fallback result from extracted data
+    def _build_fallback_result(self, extracted_data: Dict, current_step: str, user_message: str, user_context: Dict) -> Dict:
+        """Build a structured result from extracted data"""
+        return {
+            "understood_intent": f"Parsed from fallback strategy: {extracted_data.get('action', 'unknown')}",
+            "confidence": "medium",  # Lower confidence for fallback results
+            "action": extracted_data.get('action', 'stay_current_step'),
+            "extracted_data": {
+                "language": extracted_data.get('language', user_context.get('language_preference', 'arabic')),
+                "category_id": extracted_data.get('category_id'),
+                "category_name": extracted_data.get('category_name'),
+                "item_id": extracted_data.get('item_id'),
+                "item_name": extracted_data.get('item_name'),
+                "quantity": extracted_data.get('quantity'),
+                "yes_no": extracted_data.get('yes_no'),
+                "service_type": extracted_data.get('service_type'),
+                "location": extracted_data.get('location')
+            },
+            "clarification_needed": True,  # Always ask for clarification with fallback
+            "clarification_question": "Could you please clarify your request?",
+            "response_message": "أفهم طلبك. هل يمكنك التوضيح أكثر؟\nI understand your request. Could you please clarify?",
+            "fallback_used": True,  # Flag that this is a fallback result
+            "parsing_method": "fallback_strategy"
+        }
+
+    # NEW: Enhanced context building with conversation memory
+    def _build_enhanced_context(self, current_step: str, user_context: Dict, language: str) -> Dict:
+        """Build enhanced context with conversation memory and user preferences"""
+        enhanced_context = user_context.copy()
+        
+        # Add conversation history if available
+        phone_number = user_context.get('phone_number')
+        if phone_number and phone_number in self.conversation_memory:
+            memory = self.conversation_memory[phone_number]
+            enhanced_context['conversation_history'] = memory['history'][-5:]  # Last 5 exchanges
+            enhanced_context['user_preferences'] = memory['preferences']
+            enhanced_context['common_errors'] = memory['error_patterns'][-3:]  # Last 3 errors
+            enhanced_context['success_patterns'] = memory['success_patterns'][-3:]  # Last 3 successes
+        
+        # Add step-specific guidance
+        enhanced_context['step_guidance'] = self._get_step_guidance()
+        enhanced_context['available_actions'] = self._get_available_actions_for_step(current_step)
+        
+        # Add menu context if database manager is available
+        if self.database_manager:
+            try:
+                enhanced_context['menu_context'] = MenuAwarePrompts.get_menu_context(self.database_manager)
+            except Exception as e:
+                logger.warning(f"⚠️ Could not load menu context: {e}")
+                enhanced_context['menu_context'] = "Menu context unavailable"
+        
+        return enhanced_context
+
+    # NEW: Enhanced prompt generation with conversation history
+    def _generate_enhanced_prompt(self, user_message: str, current_step: str, context: Dict) -> str:
+        """Generate enhanced prompt with conversation history and context"""
+        prompt = f"""
+ENHANCED AI UNDERSTANDING PROMPT
+================================
+
+CURRENT SITUATION:
+- User is at step: {current_step} ({self._get_step_description(current_step)})
+- User said: "{user_message}"
+- Language preference: {context.get('language_preference', 'arabic')}
+
+CONVERSATION CONTEXT:
+{self._format_conversation_context(context)}
+
+STEP-SPECIFIC GUIDANCE:
+{self._get_step_specific_guidance(current_step)}
+
+AVAILABLE ACTIONS FOR THIS STEP:
+{self._get_available_actions_for_step(current_step)}
+
+MENU CONTEXT:
+{context.get('menu_context', 'Menu context not available')}
+
+USER PREFERENCES & PATTERNS:
+{self._format_user_preferences(context)}
+
+PREVIOUS INTERACTIONS (Last 5):
+{self._format_conversation_history(context)}
+
+RESPOND WITH ENHANCED JSON:
+{{
+    "understood_intent": "clear description of what user wants",
+    "confidence": "high/medium/low",
+    "action": "language_selection/category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu/help_request/stay_current_step",
+    "extracted_data": {{
+        "language": "arabic/english/null",
+        "category_id": "number or null",
+        "category_name": "string or null",
+        "item_id": "number or null",
+        "item_name": "string or null",
+        "quantity": "number or null",
+        "yes_no": "yes/no/null",
+        "service_type": "dine-in/delivery/null",
+        "location": "string or null"
+    }},
+    "clarification_needed": "true/false",
+    "clarification_question": "question to ask if clarification needed",
+    "response_message": "natural response to user in their preferred language",
+    "context_used": "list of context elements that helped understanding",
+    "suggested_next_steps": "suggested actions for user"
+}}
+
+IMPORTANT: Use conversation history and user preferences to provide more accurate responses.
+"""
+        return prompt
+
+    # NEW: Format conversation context with history
+    def _format_conversation_context(self, context: Dict) -> str:
+        """Format conversation context for AI understanding"""
+        formatted = []
+        
+        # Basic context
+        if context.get('customer_name'):
+            formatted.append(f"- Customer: {context['customer_name']}")
+        if context.get('selected_main_category'):
+            formatted.append(f"- Selected main category: {context['selected_main_category']}")
+        if context.get('selected_sub_category'):
+            formatted.append(f"- Selected sub-category: {context['selected_sub_category']}")
+        if context.get('selected_item'):
+            formatted.append(f"- Selected item: {context['selected_item']}")
+        
+        # Conversation history
+        history = context.get('conversation_history', [])
+        if history:
+            formatted.append("\nRECENT CONVERSATION:")
+            for i, exchange in enumerate(history[-3:], 1):  # Last 3 exchanges
+                formatted.append(f"  {i}. User: {exchange['user_message'][:100]}...")
+                formatted.append(f"     AI: {exchange['ai_result'].get('action', 'unknown')} (confidence: {exchange['ai_result'].get('confidence', 'unknown')})")
+        
+        return "\n".join(formatted) if formatted else "No additional context available"
+
+    # NEW: Format user preferences and patterns
+    def _format_user_preferences(self, context: Dict) -> str:
+        """Format user preferences and patterns for AI understanding"""
+        preferences = context.get('user_preferences', {})
+        patterns = context.get('success_patterns', [])
+        
+        formatted = []
+        
+        if preferences:
+            formatted.append("USER PREFERENCES:")
+            for key, value in preferences.items():
+                formatted.append(f"  - {key}: {value}")
+        
+        if patterns:
+            formatted.append("\nSUCCESS PATTERNS:")
+            for pattern in patterns[-3:]:  # Last 3 patterns
+                formatted.append(f"  - {pattern['action']} at {pattern['step']}")
+        
+        return "\n".join(formatted) if formatted else "No user preferences available"
+
+    # NEW: Format conversation history
+    def _format_conversation_history(self, context: Dict) -> str:
+        """Format conversation history for AI understanding"""
+        history = context.get('conversation_history', [])
+        
+        if not history:
+            return "No previous conversation history"
+        
+        formatted = []
+        for i, exchange in enumerate(history[-5:], 1):  # Last 5 exchanges
+            formatted.append(f"{i}. User: {exchange['user_message'][:80]}...")
+            formatted.append(f"   Result: {exchange['ai_result'].get('action', 'unknown')} (success: {exchange['success']})")
+        
+        return "\n".join(formatted)
+
+    # NEW: Get step-specific guidance
+    def _get_step_specific_guidance(self, step: str) -> str:
+        """Get step-specific guidance for AI understanding"""
+        guidance = {
+            'waiting_for_language': """
+                - Look for language indicators in user's message
+                - Consider previous language preferences if available
+                - Default to Arabic if unclear
+                - Provide bilingual response options
+            """,
+            'waiting_for_main_category': """
+                - Accept numbers 1-3 for main categories
+                - Accept category names in both languages
+                - Look for temperature, mood, or preference indicators
+                - Consider user's previous category choices
+            """,
+            'waiting_for_sub_category': """
+                - Accept numbers for sub-categories
+                - Accept sub-category names
+                - Consider main category context
+                - Look for specific drink/food preferences
+            """,
+            'waiting_for_item': """
+                - Accept numbers for items
+                - Accept item names (partial matching)
+                - Consider user's taste preferences
+                - Look for specific flavor indicators
+            """,
+            'waiting_for_quantity': """
+                - Numbers are always quantities
+                - Support Arabic and English numerals
+                - Look for word-based numbers
+                - Validate reasonable quantities (1-50)
+            """,
+            'waiting_for_additional': """
+                - Look for yes/no indicators
+                - Consider user's order patterns
+                - Suggest common additions
+            """,
+            'waiting_for_service': """
+                - Accept dine-in/delivery preferences
+                - Consider user's previous service choices
+                - Look for location indicators
+            """,
+            'waiting_for_location': """
+                - Accept any location description
+                - Consider user's previous locations
+                - Look for address components
+            """,
+            'waiting_for_confirmation': """
+                - Look for confirmation/denial
+                - Consider user's order history
+                - Provide clear confirmation options
+            """
+        }
+        
+        return guidance.get(step, "Use general understanding rules for this step")
 
     def _get_enhanced_system_prompt(self) -> str:
         """Get enhanced system prompt for OpenAI"""
@@ -323,32 +713,6 @@ Response: {
     },
     "response_message": "ممتاز! المتابعة..."
 }"""
-
-    def _build_enhanced_context(self, current_step: str, user_context: Dict, language: str) -> Dict:
-        """Build comprehensive context for AI understanding"""
-        context = {
-            'current_step': current_step,
-            'language': language,
-            'step_description': self._get_step_description(current_step),
-            'user_order_history': user_context.get('order_history', []),
-            'current_order_items': user_context.get('current_order_items', []),
-            'available_categories': user_context.get('available_categories', []),
-            'current_category_items': user_context.get('current_category_items', []),
-            'selected_main_category': user_context.get('selected_main_category'),
-            'selected_sub_category': user_context.get('selected_sub_category'),
-            'selected_item': user_context.get('selected_item'),
-            'conversation_history': user_context.get('conversation_history', [])
-        }
-
-        # Add menu context if database manager is available
-        if self.database_manager:
-            try:
-                context['menu_context'] = MenuAwarePrompts.get_menu_context(self.database_manager)
-            except Exception as e:
-                logger.warning(f"Could not get menu context: {e}")
-                context['menu_context'] = "Menu context unavailable"
-
-        return context
 
     def _get_step_description(self, step: str) -> str:
         """Get human-readable description of current step"""
@@ -612,7 +976,7 @@ Response: {{
 }}"""
 
     def _format_conversation_context(self, context: Dict) -> str:
-        """Format conversation context for AI prompt"""
+        """Format conversation context for AI understanding"""
         parts = []
         
         # Current order
@@ -742,108 +1106,128 @@ Response: {{
         }
 
     def _parse_enhanced_response(self, ai_response: str, current_step: str, user_message: str) -> Optional[Dict]:
-        """Parse and validate enhanced AI response"""
+        """Parse enhanced AI response with improved error handling"""
         try:
-            # Debug: Log the raw AI response
-            logger.info(f"🔍 Raw AI Response: {ai_response}")
-            
-            # Clean the response
-            if ai_response.startswith('```json'):
-                ai_response = ai_response.replace('```json', '').replace('```', '').strip()
-            
-            # Remove common prefixes
-            prefixes_to_remove = ['RESPOND WITH JSON:', 'JSON:', 'RESPONSE:']
-            for prefix in prefixes_to_remove:
-                if ai_response.startswith(prefix):
-                    ai_response = ai_response[len(prefix):].strip()
-            
-            # Extract JSON if not clean
-            if not ai_response.strip().startswith('{'):
-                import re
-                json_pattern = r'\{[\s\S]*\}'
-                json_match = re.search(json_pattern, ai_response)
-                if json_match:
-                    ai_response = json_match.group(0)
-            
-            # Try to parse the JSON first without fixing
-            try:
-                result = json.loads(ai_response)
-                logger.info(f"✅ JSON parsed successfully without fixing")
-                logger.info(f"✨ Parsed result before validation: {result}")
+            # Try to parse as JSON first
+            if isinstance(ai_response, str):
+                # Clean up the response
+                cleaned_response = self._fix_json_format(ai_response)
                 
-                # Fix malformed structure where action is inside extracted_data
-                if 'extracted_data' in result and isinstance(result['extracted_data'], dict):
-                    extracted_data = result['extracted_data']
-                    if 'action' in extracted_data and 'action' not in result:
-                        # Move action from extracted_data to top level
-                        result['action'] = extracted_data.pop('action')
-                        logger.info(f"🔧 Fixed malformed structure: moved action to top level")
-                    
-                    if 'confidence' in extracted_data and 'confidence' not in result:
-                        # Move confidence from extracted_data to top level
-                        result['confidence'] = extracted_data.pop('confidence')
-                        logger.info(f"🔧 Fixed malformed structure: moved confidence to top level")
-                    
-                    if 'understood_intent' in extracted_data and 'understood_intent' not in result:
-                        # Move understood_intent from extracted_data to top level
-                        result['understood_intent'] = extracted_data.pop('understood_intent')
-                        logger.info(f"🔧 Fixed malformed structure: moved understood_intent to top level")
-                
-                # Validate required fields
-                required_fields = ['understood_intent', 'confidence', 'action', 'extracted_data']
-                for field in required_fields:
-                    if field not in result:
-                        logger.error(f"Missing required field: {field}")
+                try:
+                    result = json.loads(cleaned_response)
+                except json.JSONDecodeError:
+                    # Try to fix common JSON issues
+                    fixed_response = self._fix_json_format(ai_response)
+                    try:
+                        result = json.loads(fixed_response)
+                    except json.JSONDecodeError:
+                        logger.warning("🔄 JSON parsing failed, response may be malformed")
                         return None
-                
-                # Validate for current step
-                if not self._validate_enhanced_result(result, current_step, user_message):
-                    logger.error(f"❌ Validation failed for step: {current_step}")
-                    return None
+            else:
+                result = ai_response
+
+            # Validate the result structure
+            if not isinstance(result, dict):
+                logger.warning("🔄 AI response is not a dictionary")
+                return None
+
+            # Enhanced validation with fallback handling
+            if self._validate_enhanced_result(result, current_step, user_message):
+                # Add metadata to the result
+                result['parsing_method'] = 'enhanced_ai'
+                result['current_step'] = current_step
+                result['original_message'] = user_message
+                result['timestamp'] = time.time()
                 
                 return result
-            except json.JSONDecodeError:
-                # Only fix JSON if it's actually invalid
-                logger.info(f"⚠️ JSON parsing failed, attempting to fix...")
-                ai_response = self._fix_json_format(ai_response)
-                logger.info(f"🔧 Fixed JSON: {ai_response}")
-                
-                result = json.loads(ai_response)
-                logger.info(f"✨ Parsed result after fixing and before validation: {result}")
-                
-                # Apply the same structure fixes after JSON fixing
-                if 'extracted_data' in result and isinstance(result['extracted_data'], dict):
-                    extracted_data = result['extracted_data']
-                    if 'action' in extracted_data and 'action' not in result:
-                        result['action'] = extracted_data.pop('action')
-                        logger.info(f"🔧 Fixed malformed structure: moved action to top level")
-                    
-                    if 'confidence' in extracted_data and 'confidence' not in result:
-                        result['confidence'] = extracted_data.pop('confidence')
-                        logger.info(f"🔧 Fixed malformed structure: moved confidence to top level")
-                    
-                    if 'understood_intent' in extracted_data and 'understood_intent' not in result:
-                        result['understood_intent'] = extracted_data.pop('understood_intent')
-                        logger.info(f"🔧 Fixed malformed structure: moved understood_intent to top level")
-            
-            # Validate required fields
+            else:
+                logger.warning("🔄 Enhanced AI response validation failed")
+                return None
+
+        except Exception as e:
+            logger.error(f"❌ Error parsing enhanced AI response: {str(e)}")
+            return None
+
+    def _validate_enhanced_result(self, result: Dict, current_step: str, user_message: str) -> bool:
+        """Enhanced validation with better error handling"""
+        try:
+            # Check required fields
             required_fields = ['understood_intent', 'confidence', 'action', 'extracted_data']
             for field in required_fields:
                 if field not in result:
-                    logger.error(f"Missing required field: {field}")
-                    return None
+                    logger.warning(f"🔄 Missing required field: {field}")
+                    return False
+
+            # Validate action field
+            valid_actions = [
+                'language_selection', 'category_selection', 'item_selection', 
+                'quantity_selection', 'yes_no', 'service_selection', 
+                'location_input', 'confirmation', 'show_menu', 'help_request', 
+                'stay_current_step'
+            ]
             
-            # Validate for current step
-            if not self._validate_enhanced_result(result, current_step, user_message):
-                logger.error(f"❌ Validation failed for step: {current_step}")
-                return None
-            
-            return result
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"❌ JSON parsing error: {e}")
-            logger.error(f"AI Response was: {ai_response}")
-            return None
+            if result['action'] not in valid_actions:
+                logger.warning(f"🔄 Invalid action: {result['action']}")
+                # Try to map to valid action
+                mapped_action = self._map_action_to_valid(result['action'])
+                if mapped_action:
+                    result['action'] = mapped_action
+                    result['action_mapped'] = True
+                    logger.info(f"✅ Mapped action {result['action']} to {mapped_action}")
+                else:
+                    return False
+
+            # Validate extracted_data structure
+            extracted_data = result.get('extracted_data', {})
+            if not isinstance(extracted_data, dict):
+                logger.warning("🔄 extracted_data is not a dictionary")
+                return False
+
+            # Enhanced step-specific validation
+            validation_method = f"_validate_{current_step}_step"
+            if hasattr(self, validation_method):
+                try:
+                    if not getattr(self, validation_method)(result, extracted_data, user_message):
+                        logger.warning(f"🔄 Step-specific validation failed for {current_step}")
+                        # Don't fail completely, just mark as needing clarification
+                        result['clarification_needed'] = True
+                        result['validation_warnings'] = [f"Step {current_step} validation had issues"]
+                except Exception as e:
+                    logger.warning(f"🔄 Step validation error: {e}")
+                    result['clarification_needed'] = True
+
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Validation error: {str(e)}")
+            return False
+
+    # NEW: Action mapping for invalid actions
+    def _map_action_to_valid(self, invalid_action: str) -> Optional[str]:
+        """Map invalid actions to valid ones"""
+        action_mapping = {
+            'language': 'language_selection',
+            'category': 'category_selection',
+            'item': 'item_selection',
+            'quantity': 'quantity_selection',
+            'service': 'service_selection',
+            'location': 'location_input',
+            'confirm': 'confirmation',
+            'menu': 'show_menu',
+            'help': 'help_request',
+            'stay': 'stay_current_step'
+        }
+        
+        # Try exact match first
+        if invalid_action in action_mapping:
+            return action_mapping[invalid_action]
+        
+        # Try partial matching
+        for key, value in action_mapping.items():
+            if key in invalid_action.lower():
+                return value
+        
+        return None
 
     def _fix_json_format(self, json_str: str) -> str:
         """Fix common JSON formatting issues"""
@@ -883,37 +1267,6 @@ Response: {{
         except Exception as e:
             logger.warning(f"⚠️ Error fixing JSON format: {e}")
             return json_str
-
-    def _validate_enhanced_result(self, result: Dict, current_step: str, user_message: str) -> bool:
-        """Validate enhanced AI result for current step"""
-        action = result.get('action')
-        extracted_data = result.get('extracted_data', {})
-        
-        # Step-specific validation
-        validators = {
-            'waiting_for_language': self._validate_language_step,
-            'waiting_for_category': self._validate_category_step,
-            'waiting_for_main_category': self._validate_category_step,
-            'waiting_for_sub_category': self._validate_sub_category_step,
-            'waiting_for_item': self._validate_item_step,
-            'waiting_for_quantity': self._validate_quantity_step,
-            'waiting_for_additional': self._validate_additional_step,
-            'waiting_for_service': self._validate_service_step,
-            'waiting_for_location': self._validate_location_step,
-            'waiting_for_confirmation': self._validate_confirmation_step,
-            'waiting_for_fresh_start_choice': self._validate_fresh_start_choice_step
-        }
-        
-        validator = validators.get(current_step)
-        if validator:
-            # Always run step-specific validation, even for intelligent_suggestion
-            return validator(result, extracted_data, user_message)
-        
-        # Accept intelligent suggestions and navigation actions if no step-specific validation
-        if action in ['intelligent_suggestion', 'back_navigation', 'conversational_response']:
-            return True
-        
-        return True
 
     def _validate_language_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
         """Validate language selection step"""
@@ -1328,24 +1681,240 @@ Response: {{
         return processed_message.strip()
 
     def _handle_ai_failure(self, error: Exception) -> None:
-        """Handle AI processing failures"""
-        self.consecutive_failures += 1
+        """Enhanced AI failure handling with recovery strategies"""
+        try:
+            # Log the error with context
+            logger.error(f"❌ AI processing failure: {str(error)}")
+            logger.error(f"❌ Error type: {type(error).__name__}")
+            
+            # Update failure tracking
+            self.consecutive_failures += 1
+            if not self.failure_window_start:
+                self.failure_window_start = time.time()
+            
+            # Log failure pattern
+            error_type = type(error).__name__
+            if error_type not in self.error_patterns:
+                self.error_patterns[error_type] = 0
+            self.error_patterns[error_type] += 1
+            
+            # Determine recovery strategy
+            recovery_strategy = self._determine_recovery_strategy(error)
+            logger.info(f"🔄 Using recovery strategy: {recovery_strategy}")
+            
+            # Execute recovery strategy
+            self._execute_recovery_strategy(recovery_strategy, error)
+            
+        except Exception as recovery_error:
+            logger.error(f"❌ Error in failure recovery: {str(recovery_error)}")
+
+    # NEW: Determine recovery strategy based on error type
+    def _determine_recovery_strategy(self, error: Exception) -> str:
+        """Determine the best recovery strategy for the given error"""
+        error_type = type(error).__name__
         
-        if self.failure_window_start is None:
-            self.failure_window_start = time.time()
-        
-        error_msg = str(error).lower()
-        
-        if "quota" in error_msg or "insufficient_quota" in error_msg or "429" in error_msg:
-            logger.warning("⚠️ OpenAI quota exceeded, using fallback")
-        elif "rate limit" in error_msg:
-            logger.warning("⚠️ OpenAI rate limit hit, using fallback")
-        elif "timeout" in error_msg:
-            logger.warning("⚠️ OpenAI request timeout, using fallback")
+        if 'quota' in str(error).lower() or 'rate' in str(error).lower():
+            return 'quota_exceeded'
+        elif 'timeout' in str(error).lower() or 'timed' in str(error).lower():
+            return 'timeout_retry'
+        elif 'json' in str(error).lower() or 'parse' in str(error).lower():
+            return 'parsing_fallback'
+        elif 'network' in str(error).lower() or 'connection' in str(error).lower():
+            return 'network_retry'
+        elif 'authentication' in str(error).lower() or 'unauthorized' in str(error).lower():
+            return 'auth_error'
         else:
-            logger.error(f"❌ Enhanced AI processing error: {error}")
+            return 'general_fallback'
+
+    # NEW: Execute recovery strategy
+    def _execute_recovery_strategy(self, strategy: str, error: Exception) -> None:
+        """Execute the determined recovery strategy"""
+        try:
+            if strategy == 'quota_exceeded':
+                self._handle_quota_exceeded()
+            elif strategy == 'timeout_retry':
+                self._handle_timeout_retry()
+            elif strategy == 'parsing_fallback':
+                self._handle_parsing_fallback()
+            elif strategy == 'network_retry':
+                self._handle_network_retry()
+            elif strategy == 'auth_error':
+                self._handle_auth_error()
+            elif strategy == 'general_fallback':
+                self._handle_general_fallback()
+            
+        except Exception as recovery_error:
+            logger.error(f"❌ Recovery strategy execution failed: {str(recovery_error)}")
+
+    # NEW: Handle quota exceeded errors
+    def _handle_quota_exceeded(self) -> None:
+        """Handle API quota exceeded errors"""
+        logger.warning("⚠️ API quota exceeded, implementing quota management")
         
-        logger.warning(f"⚠️ Consecutive failures: {self.consecutive_failures}/{self.max_consecutive_failures}")
+        # Extend failure window for quota issues
+        self.failure_window_duration = 600  # 10 minutes for quota issues
+        
+        # Update configuration if possible
+        if hasattr(self, 'disable_on_quota') and self.disable_on_quota:
+            logger.info("🔄 Disabling AI processing due to quota exceeded")
+            # The is_available() method will handle this
+
+    # NEW: Handle timeout errors
+    def _handle_timeout_retry(self) -> None:
+        """Handle timeout errors with retry logic"""
+        logger.warning("⚠️ Timeout error detected, implementing retry logic")
+        
+        # Reduce failure window for timeout issues
+        self.failure_window_duration = 180  # 3 minutes for timeout issues
+        
+        # Log timeout pattern for optimization
+        if 'timeout' not in self.error_patterns:
+            self.error_patterns['timeout'] = 0
+        self.error_patterns['timeout'] += 1
+
+    # NEW: Handle parsing fallback
+    def _handle_parsing_fallback(self) -> None:
+        """Handle parsing errors with fallback strategies"""
+        logger.warning("⚠️ Parsing error detected, enabling fallback strategies")
+        
+        # Enable all fallback strategies
+        self.fallback_enabled = True
+        
+        # Log parsing error pattern
+        if 'parsing' not in self.error_patterns:
+            self.error_patterns['parsing'] = 0
+        self.error_patterns['parsing'] += 1
+
+    # NEW: Handle network retry
+    def _handle_network_retry(self) -> None:
+        """Handle network errors with retry logic"""
+        logger.warning("⚠️ Network error detected, implementing retry logic")
+        
+        # Short failure window for network issues
+        self.failure_window_duration = 120  # 2 minutes for network issues
+        
+        # Log network error pattern
+        if 'network' not in self.error_patterns:
+            self.error_patterns['network'] = 0
+        self.error_patterns['network'] += 1
+
+    # NEW: Handle authentication errors
+    def _handle_auth_error(self) -> None:
+        """Handle authentication errors"""
+        logger.error("❌ Authentication error detected")
+        
+        # Long failure window for auth issues
+        self.failure_window_duration = 1800  # 30 minutes for auth issues
+        
+        # Log auth error pattern
+        if 'authentication' not in self.error_patterns:
+            self.error_patterns['authentication'] = 0
+        self.error_patterns['authentication'] += 1
+
+    # NEW: Handle general fallback
+    def _handle_general_fallback(self) -> None:
+        """Handle general errors with fallback strategies"""
+        logger.warning("⚠️ General error detected, enabling all fallback strategies")
+        
+        # Enable all fallback strategies
+        self.fallback_enabled = True
+        
+        # Standard failure window
+        self.failure_window_duration = 300  # 5 minutes for general issues
+
+    # NEW: Extract basic information from user message
+    def _extract_basic_info(self, user_message: str, current_step: str, language: str) -> Dict:
+        """Extract basic information from user message using fallback strategies"""
+        extracted_data = {}
+        
+        try:
+            # Language detection
+            if self._detect_language_fallback(user_message):
+                extracted_data['language'] = self._detect_language_fallback(user_message)
+            
+            # Number extraction for quantities
+            if 'waiting_for_quantity' in current_step:
+                quantity = self._extract_number_fallback(user_message)
+                if quantity:
+                    extracted_data['quantity'] = quantity
+            
+            # Yes/No detection
+            if 'waiting_for_additional' in current_step or 'waiting_for_confirmation' in current_step:
+                yes_no = self._detect_yes_no_fallback(user_message, language)
+                if yes_no:
+                    extracted_data['yes_no'] = yes_no
+            
+            # Action mapping based on current step
+            action = self._map_step_to_action(current_step)
+            if action:
+                extracted_data['action'] = action
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Error in basic info extraction: {e}")
+        
+        return extracted_data
+
+    # NEW: Map current step to likely action
+    def _map_step_to_action(self, current_step: str) -> Optional[str]:
+        """Map current step to likely user action"""
+        step_action_mapping = {
+            'waiting_for_language': 'language_selection',
+            'waiting_for_main_category': 'category_selection',
+            'waiting_for_sub_category': 'category_selection',
+            'waiting_for_item': 'item_selection',
+            'waiting_for_quantity': 'quantity_selection',
+            'waiting_for_additional': 'yes_no',
+            'waiting_for_service': 'service_selection',
+            'waiting_for_location': 'location_input',
+            'waiting_for_confirmation': 'confirmation'
+        }
+        
+        return step_action_mapping.get(current_step)
+
+    # NEW: Get fallback clarification question
+    def _get_fallback_clarification_question(self, current_step: str, language: str) -> str:
+        """Get appropriate clarification question for fallback responses"""
+        questions = {
+            'waiting_for_language': {
+                'arabic': 'أي لغة تفضل؟ العربية أم الإنجليزية؟',
+                'english': 'Which language do you prefer? Arabic or English?'
+            },
+            'waiting_for_main_category': {
+                'arabic': 'أي فئة تريد؟ المشروبات الباردة، المشروبات الحارة، أم الحلويات؟',
+                'english': 'Which category would you like? Cold Drinks, Hot Drinks, or Food?'
+            },
+            'waiting_for_quantity': {
+                'arabic': 'كم عدد تريد؟',
+                'english': 'How many would you like?'
+            },
+            'waiting_for_additional': {
+                'arabic': 'هل تريد إضافة شيء آخر؟',
+                'english': 'Would you like to add anything else?'
+            }
+        }
+        
+        step_questions = questions.get(current_step, {
+            'arabic': 'هل يمكنك التوضيح أكثر؟',
+            'english': 'Could you please clarify?'
+        })
+        
+        return step_questions.get(language, step_questions['arabic'])
+
+    # NEW: Get basic fallback response
+    def _get_basic_fallback_response(self, current_step: str, language: str) -> Dict:
+        """Get basic fallback response when enhanced fallback fails"""
+        return {
+            "understood_intent": "Basic fallback processing",
+            "confidence": "low",
+            "action": "stay_current_step",
+            "extracted_data": {},
+            "clarification_needed": True,
+            "clarification_question": "Could you please clarify your request?",
+            "response_message": "أفهم طلبك. هل يمكنك التوضيح أكثر؟\nI understand your request. Could you please clarify?",
+            "fallback_used": True,
+            "parsing_method": "basic_fallback",
+            "error_context": "Fallback processing failed, using basic response"
+        }
 
     def _reset_failure_counter(self) -> None:
         """Reset failure counter on successful AI processing"""
@@ -1353,3 +1922,367 @@ Response: {{
             logger.info(f"✅ Enhanced AI processing successful, resetting failure counter from {self.consecutive_failures}")
             self.consecutive_failures = 0
             self.failure_window_start = None 
+
+    # NEW: Fallback parsing method
+    def _try_fallback_parsing(self, ai_response: str, current_step: str, user_message: str, user_context: Dict) -> Optional[Dict]:
+        """Try to parse response using general fallback strategies"""
+        # Try to extract any meaningful information from the response
+        extracted_data = {}
+        
+        # Look for any JSON-like structure
+        if '{' in ai_response and '}' in ai_response:
+            try:
+                # Try to extract JSON content
+                start = ai_response.find('{')
+                end = ai_response.rfind('}') + 1
+                json_content = ai_response[start:end]
+                
+                # Try to parse as JSON
+                parsed = json.loads(json_content)
+                if isinstance(parsed, dict):
+                    # Extract any valid fields
+                    for key in ['action', 'confidence', 'language', 'quantity', 'yes_no']:
+                        if key in parsed:
+                            extracted_data[key] = parsed[key]
+            except:
+                pass
+        
+        # If we found some data, build a result
+        if extracted_data:
+            return self._build_fallback_result(extracted_data, current_step, user_message, user_context)
+        
+        # Last resort: use contextual inference
+        return self._try_contextual_parsing(ai_response, current_step, user_message, user_context)
+
+    # NEW: Enhanced response validation and monitoring system
+    def _validate_and_monitor_response(self, ai_response: Dict, user_message: str, current_step: str, user_context: Dict) -> Dict:
+        """Validate AI response and monitor performance metrics"""
+        try:
+            # Initialize monitoring data
+            monitoring_data = {
+                'timestamp': time.time(),
+                'user_message': user_message,
+                'current_step': current_step,
+                'response_quality': 'unknown',
+                'validation_issues': [],
+                'performance_metrics': {}
+            }
+            
+            # Validate response structure
+            structure_validation = self._validate_response_structure(ai_response)
+            if not structure_validation['valid']:
+                monitoring_data['validation_issues'].extend(structure_validation['issues'])
+                monitoring_data['response_quality'] = 'poor'
+            
+            # Validate response content
+            content_validation = self._validate_response_content(ai_response, current_step, user_context)
+            if not content_validation['valid']:
+                monitoring_data['validation_issues'].extend(content_validation['issues'])
+                monitoring_data['response_quality'] = 'poor'
+            
+            # Validate response logic
+            logic_validation = self._validate_response_logic(ai_response, current_step, user_context)
+            if not logic_validation['valid']:
+                monitoring_data['validation_issues'].extend(logic_validation['issues'])
+                monitoring_data['response_quality'] = 'poor'
+            
+            # Calculate response quality score
+            quality_score = self._calculate_response_quality(ai_response, monitoring_data)
+            monitoring_data['response_quality'] = quality_score['level']
+            monitoring_data['quality_score'] = quality_score['score']
+            
+            # Update performance metrics
+            self._update_performance_metrics(monitoring_data)
+            
+            # Log validation results
+            if monitoring_data['validation_issues']:
+                logger.warning(f"🔄 Response validation issues: {monitoring_data['validation_issues']}")
+            else:
+                logger.info(f"✅ Response validation passed with quality: {quality_score['level']}")
+            
+            # Add monitoring data to response
+            ai_response['monitoring_data'] = monitoring_data
+            
+            return ai_response
+            
+        except Exception as e:
+            logger.error(f"❌ Error in response validation and monitoring: {str(e)}")
+            # Return response with basic monitoring data
+            ai_response['monitoring_data'] = {
+                'timestamp': time.time(),
+                'response_quality': 'unknown',
+                'validation_error': str(e)
+            }
+            return ai_response
+
+    # NEW: Validate response structure
+    def _validate_response_structure(self, ai_response: Dict) -> Dict:
+        """Validate the structure of AI response"""
+        validation_result = {
+            'valid': True,
+            'issues': []
+        }
+        
+        # Check required fields
+        required_fields = ['understood_intent', 'confidence', 'action', 'extracted_data']
+        for field in required_fields:
+            if field not in ai_response:
+                validation_result['valid'] = False
+                validation_result['issues'].append(f"Missing required field: {field}")
+        
+        # Check field types
+        if 'extracted_data' in ai_response and not isinstance(ai_response['extracted_data'], dict):
+            validation_result['valid'] = False
+            validation_result['issues'].append("extracted_data must be a dictionary")
+        
+        if 'confidence' in ai_response and ai_response['confidence'] not in ['high', 'medium', 'low']:
+            validation_result['valid'] = False
+            validation_result['issues'].append("confidence must be 'high', 'medium', or 'low'")
+        
+        return validation_result
+
+    # NEW: Validate response content
+    def _validate_response_content(self, ai_response: Dict, current_step: str, user_context: Dict) -> Dict:
+        """Validate the content of AI response"""
+        validation_result = {
+            'valid': True,
+            'issues': []
+        }
+        
+        # Validate action appropriateness for current step
+        action = ai_response.get('action')
+        if action:
+            step_actions = self._get_valid_actions_for_step(current_step)
+            if action not in step_actions:
+                validation_result['valid'] = False
+                validation_result['issues'].append(f"Action '{action}' not valid for step '{current_step}'")
+        
+        # Validate extracted data consistency
+        extracted_data = ai_response.get('extracted_data', {})
+        if extracted_data:
+            data_validation = self._validate_extracted_data(extracted_data, current_step)
+            if not data_validation['valid']:
+                validation_result['valid'] = False
+                validation_result['issues'].extend(data_validation['issues'])
+        
+        return validation_result
+
+    # NEW: Validate response logic
+    def _validate_response_logic(self, ai_response: Dict, current_step: str, user_context: Dict) -> Dict:
+        """Validate the logic of AI response"""
+        validation_result = {
+            'valid': True,
+            'issues': []
+        }
+        
+        # Check for logical inconsistencies
+        action = ai_response.get('action')
+        extracted_data = ai_response.get('extracted_data', {})
+        
+        # Language selection logic
+        if action == 'language_selection' and current_step != 'waiting_for_language':
+            validation_result['valid'] = False
+            validation_result['issues'].append("Language selection action not appropriate for current step")
+        
+        # Category selection logic
+        if action == 'category_selection':
+            if current_step == 'waiting_for_language':
+                validation_result['valid'] = False
+                validation_result['issues'].append("Category selection before language selection")
+            elif 'category_id' in extracted_data and not extracted_data['category_id']:
+                validation_result['valid'] = False
+                validation_result['issues'].append("Category selection action without category_id")
+        
+        # Item selection logic
+        if action == 'item_selection':
+            if not user_context.get('selected_sub_category'):
+                validation_result['valid'] = False
+                validation_result['issues'].append("Item selection without sub-category selection")
+            elif 'item_id' in extracted_data and not extracted_data['item_id']:
+                validation_result['valid'] = False
+                validation_result['issues'].append("Item selection action without item_id")
+        
+        return validation_result
+
+    # NEW: Get valid actions for current step
+    def _get_valid_actions_for_step(self, current_step: str) -> List[str]:
+        """Get valid actions for the current step"""
+        step_actions = {
+            'waiting_for_language': ['language_selection', 'help_request'],
+            'waiting_for_main_category': ['category_selection', 'show_menu', 'help_request', 'back_navigation'],
+            'waiting_for_sub_category': ['category_selection', 'show_menu', 'help_request', 'back_navigation'],
+            'waiting_for_item': ['item_selection', 'show_menu', 'help_request', 'back_navigation'],
+            'waiting_for_quantity': ['quantity_selection', 'help_request', 'back_navigation'],
+            'waiting_for_additional': ['yes_no', 'item_selection', 'help_request', 'back_navigation'],
+            'waiting_for_service': ['service_selection', 'help_request', 'back_navigation'],
+            'waiting_for_location': ['location_input', 'help_request', 'back_navigation'],
+            'waiting_for_confirmation': ['confirmation', 'help_request', 'back_navigation']
+        }
+        
+        return step_actions.get(current_step, ['help_request'])
+
+    # NEW: Validate extracted data
+    def _validate_extracted_data(self, extracted_data: Dict, current_step: str) -> Dict:
+        """Validate extracted data for current step"""
+        validation_result = {
+            'valid': True,
+            'issues': []
+        }
+        
+        # Step-specific data validation
+        if current_step == 'waiting_for_language':
+            if 'language' in extracted_data and extracted_data['language'] not in ['arabic', 'english', None]:
+                validation_result['valid'] = False
+                validation_result['issues'].append("Invalid language value")
+        
+        elif current_step == 'waiting_for_quantity':
+            if 'quantity' in extracted_data and extracted_data['quantity']:
+                try:
+                    quantity = int(extracted_data['quantity'])
+                    if quantity <= 0 or quantity > 50:
+                        validation_result['valid'] = False
+                        validation_result['issues'].append("Quantity must be between 1 and 50")
+                except (ValueError, TypeError):
+                    validation_result['valid'] = False
+                    validation_result['issues'].append("Quantity must be a valid number")
+        
+        elif current_step == 'waiting_for_additional':
+            if 'yes_no' in extracted_data and extracted_data['yes_no'] not in ['yes', 'no', None]:
+                validation_result['valid'] = False
+                validation_result['issues'].append("yes_no must be 'yes', 'no', or null")
+        
+        return validation_result
+
+    # NEW: Calculate response quality score
+    def _calculate_response_quality(self, ai_response: Dict, monitoring_data: Dict) -> Dict:
+        """Calculate quality score for AI response"""
+        score = 100
+        deductions = []
+        
+        # Deduct points for validation issues
+        validation_issues = len(monitoring_data.get('validation_issues', []))
+        score -= validation_issues * 10
+        
+        # Deduct points for low confidence
+        confidence = ai_response.get('confidence', 'medium')
+        if confidence == 'low':
+            score -= 20
+        elif confidence == 'medium':
+            score -= 10
+        
+        # Deduct points for clarification needed
+        if ai_response.get('clarification_needed', False):
+            score -= 15
+        
+        # Deduct points for fallback usage
+        if ai_response.get('fallback_used', False):
+            score -= 25
+        
+        # Ensure score doesn't go below 0
+        score = max(0, score)
+        
+        # Determine quality level
+        if score >= 80:
+            level = 'excellent'
+        elif score >= 60:
+            level = 'good'
+        elif score >= 40:
+            level = 'fair'
+        elif score >= 20:
+            level = 'poor'
+        else:
+            level = 'very_poor'
+        
+        return {
+            'score': score,
+            'level': level,
+            'deductions': deductions
+        }
+
+    # NEW: Update performance metrics
+    def _update_performance_metrics(self, monitoring_data: Dict) -> None:
+        """Update performance metrics for AI processing"""
+        try:
+            # Initialize metrics if not exists
+            if not hasattr(self, 'performance_metrics'):
+                self.performance_metrics = {
+                    'total_responses': 0,
+                    'quality_scores': [],
+                    'validation_issues': [],
+                    'step_performance': {},
+                    'error_patterns': {}
+                }
+            
+            # Update basic metrics
+            self.performance_metrics['total_responses'] += 1
+            self.performance_metrics['quality_scores'].append(monitoring_data.get('quality_score', 0))
+            
+            # Keep only last 100 scores for rolling average
+            if len(self.performance_metrics['quality_scores']) > 100:
+                self.performance_metrics['quality_scores'] = self.performance_metrics['quality_scores'][-100:]
+            
+            # Update step performance
+            current_step = monitoring_data.get('current_step', 'unknown')
+            if current_step not in self.performance_metrics['step_performance']:
+                self.performance_metrics['step_performance'][current_step] = {
+                    'total_responses': 0,
+                    'quality_scores': [],
+                    'validation_issues': []
+                }
+            
+            step_metrics = self.performance_metrics['step_performance'][current_step]
+            step_metrics['total_responses'] += 1
+            step_metrics['quality_scores'].append(monitoring_data.get('quality_score', 0))
+            
+            # Keep only last 50 scores per step
+            if len(step_metrics['quality_scores']) > 50:
+                step_metrics['quality_scores'] = step_metrics['quality_scores'][-50:]
+            
+            # Update validation issues
+            if monitoring_data.get('validation_issues'):
+                self.performance_metrics['validation_issues'].extend(monitoring_data['validation_issues'])
+                step_metrics['validation_issues'].extend(monitoring_data['validation_issues'])
+                
+                # Keep only last 100 issues
+                if len(self.performance_metrics['validation_issues']) > 100:
+                    self.performance_metrics['validation_issues'] = self.performance_metrics['validation_issues'][-100:]
+                if len(step_metrics['validation_issues']) > 50:
+                    step_metrics['validation_issues'] = step_metrics['validation_issues'][-50:]
+            
+        except Exception as e:
+            logger.error(f"❌ Error updating performance metrics: {str(e)}")
+
+    # NEW: Get performance summary
+    def get_performance_summary(self) -> Dict:
+        """Get summary of AI performance metrics"""
+        try:
+            if not hasattr(self, 'performance_metrics'):
+                return {'error': 'No performance data available'}
+            
+            metrics = self.performance_metrics
+            
+            # Calculate averages
+            avg_quality = sum(metrics['quality_scores']) / len(metrics['quality_scores']) if metrics['quality_scores'] else 0
+            
+            # Step performance summary
+            step_summary = {}
+            for step, step_metrics in metrics['step_performance'].items():
+                step_avg = sum(step_metrics['quality_scores']) / len(step_metrics['quality_scores']) if step_metrics['quality_scores'] else 0
+                step_summary[step] = {
+                    'total_responses': step_metrics['total_responses'],
+                    'average_quality': round(step_avg, 2),
+                    'validation_issues': len(step_metrics['validation_issues'])
+                }
+            
+            return {
+                'total_responses': metrics['total_responses'],
+                'average_quality_score': round(avg_quality, 2),
+                'step_performance': step_summary,
+                'total_validation_issues': len(metrics['validation_issues']),
+                'error_patterns': self.error_patterns,
+                'conversation_memory_size': len(self.conversation_memory)
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting performance summary: {str(e)}")
+            return {'error': str(e)}

@@ -411,10 +411,17 @@ def create_flask_app():
                         <strong>📊 <a href="/health">Health Check</a></strong> - System health with session stats<br>
                         <strong>📈 <a href="/analytics">Analytics</a></strong> - Usage analytics<br>
                         <strong>🧪 <a href="/test-credentials">Test Credentials</a></strong> - API connectivity<br>
-                        <strong>🔄 <a href="/session-stats">Session Statistics</a></strong> - Real-time session info<br>
+                        <strong>🔄 POST /session-stats</a></strong> - Real-time session info<br>
                         <strong>🧹 POST /cleanup</a></strong> - Clean up old sessions<br>
                         <strong>🔓 POST /force-unlock/&lt;phone&gt;</strong> - Force unlock user (admin)<br>
                         <strong>📱 POST /simulate</strong> - Simulate messages for testing
+                    </div>
+
+                    <h2>🤖 AI Enhancement Endpoints:</h2>
+                    <div style="margin: 20px 0;">
+                        <strong>📊 <a href="/ai-performance">AI Performance</a></strong> - AI metrics and monitoring<br>
+                        <strong>💬 <a href="/ai-conversation/&lt;phone&gt;">AI Conversation History</a></strong> - User conversation data<br>
+                        <strong>🔄 POST /ai-reset/&lt;phone&gt;</strong> - Reset user conversation memory<br>
                     </div>
 
                     <h2>💡 Key Improvements:</h2>
@@ -432,6 +439,19 @@ def create_flask_app():
                         <strong>After:</strong> Intelligent fallback mechanisms ensure user experience
                     </div>
 
+                    <h2>🧠 AI Intelligence Enhancements:</h2>
+                    <div class="status success">
+                        ✅ <strong>Conversation Memory:</strong> AI remembers user preferences and conversation history<br>
+                        ✅ <strong>Enhanced Context Awareness:</strong> Better understanding of user intent and current step<br>
+                        ✅ <strong>Multiple Fallback Strategies:</strong> Regex, keyword, and contextual parsing when AI fails<br>
+                        ✅ <strong>Response Validation:</strong> Comprehensive validation of AI responses for quality assurance<br>
+                        ✅ <strong>Performance Monitoring:</strong> Real-time tracking of AI response quality and error patterns<br>
+                        ✅ <strong>Step-Specific Intelligence:</strong> AI understands workflow context and step constraints<br>
+                        ✅ <strong>Menu Awareness:</strong> AI has complete knowledge of menu structure and relationships<br>
+                        ✅ <strong>Error Recovery:</strong> Intelligent error handling with strategy-based recovery<br>
+                        ✅ <strong>User Preference Learning:</strong> AI learns from successful interactions to improve future responses
+                    </div>
+
                     <div class="status info" style="margin-top: 30px;">
                         <strong>System Version:</strong> 3.1.0 (Thread-Safe & Reliable Edition)<br>
                         <strong>Last Updated:</strong> {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}<br>
@@ -440,6 +460,15 @@ def create_flask_app():
                         <strong>Database Race Conditions:</strong> ❌ Prevented<br>
                         <strong>HTTP Reliability:</strong> ✅ Enhanced with retry logic<br>
                         <strong>AI Fallbacks:</strong> ✅ Intelligent degradation
+                    </div>
+
+                    <div class="status info" style="margin-top: 20px;">
+                        <strong>AI Intelligence Version:</strong> 2.0.0 (Enhanced Context & Memory Edition)<br>
+                        <strong>Conversation Memory:</strong> ✅ User preference learning and history tracking<br>
+                        <strong>Step Awareness:</strong> ✅ Contextual understanding of workflow progress<br>
+                        <strong>Fallback Strategies:</strong> ✅ Multiple parsing methods for reliability<br>
+                        <strong>Response Validation:</strong> ✅ Quality assurance and performance monitoring<br>
+                        <strong>Error Recovery:</strong> ✅ Strategy-based error handling and recovery
                     </div>
 
                     <p style="text-align: center; color: #8B4513; font-weight: bold; margin-top: 30px;">
@@ -658,6 +687,113 @@ def create_flask_app():
 
         except Exception as e:
             logger.error(f"❌ Test credentials error: {e}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @app.route('/ai-performance', methods=['GET'])
+    def ai_performance():
+        """Get AI performance metrics and monitoring data"""
+        try:
+            if not workflow.ai:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'AI processor not available'
+                }), 503
+
+            # Get performance summary
+            performance_summary = workflow.ai.get_performance_summary()
+            
+            # Get conversation memory stats
+            conversation_stats = {}
+            if hasattr(workflow.ai, 'conversation_memory'):
+                conversation_stats = {
+                    'total_users': len(workflow.ai.conversation_memory),
+                    'memory_size': sum(len(memory.get('history', [])) for memory in workflow.ai.conversation_memory.values()),
+                    'active_conversations': len([m for m in workflow.ai.conversation_memory.values() if m.get('history')])
+                }
+            
+            # Get error pattern analysis
+            error_analysis = {}
+            if hasattr(workflow.ai, 'error_patterns'):
+                error_analysis = {
+                    'total_errors': sum(workflow.ai.error_patterns.values()),
+                    'error_distribution': workflow.ai.error_patterns,
+                    'most_common_error': max(workflow.ai.error_patterns.items(), key=lambda x: x[1]) if workflow.ai.error_patterns else None
+                }
+            
+            return jsonify({
+                'status': 'success',
+                'performance_summary': performance_summary,
+                'conversation_stats': conversation_stats,
+                'error_analysis': error_analysis,
+                'ai_status': {
+                    'available': workflow.ai.is_available(),
+                    'consecutive_failures': getattr(workflow.ai, 'consecutive_failures', 0),
+                    'max_consecutive_failures': getattr(workflow.ai, 'max_consecutive_failures', 5),
+                    'fallback_enabled': getattr(workflow.ai, 'fallback_enabled', True)
+                },
+                'timestamp': time.time()
+            }), 200
+
+        except Exception as e:
+            logger.error(f"❌ AI performance error: {e}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @app.route('/ai-conversation/<phone_number>', methods=['GET'])
+    def ai_conversation_history(phone_number):
+        """Get conversation history for a specific user"""
+        try:
+            if not workflow.ai:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'AI processor not available'
+                }), 503
+
+            # Get conversation history for the user
+            conversation_data = {}
+            if hasattr(workflow.ai, 'conversation_memory') and phone_number in workflow.ai.conversation_memory:
+                conversation_history = workflow.ai.conversation_memory[phone_number].get('history', [])
+                conversation_data = {
+                    'phone_number': phone_number,
+                    'conversation_history': conversation_history,
+                    'user_preferences': workflow.ai.conversation_memory[phone_number].get('preferences', {}),
+                    'error_patterns': workflow.ai.conversation_memory[phone_number].get('error_patterns', []),
+                    'success_patterns': workflow.ai.conversation_memory[phone_number].get('success_patterns', []),
+                    'timestamp': time.time()
+                }
+            return jsonify(conversation_data), 200
+
+        except Exception as e:
+            logger.error(f"❌ AI conversation history error: {e}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @app.route('/ai-reset/<phone_number>', methods=['POST'])
+    def ai_reset_conversation(phone_number):
+        """Reset conversation memory for a specific user"""
+        try:
+            if not workflow.ai:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'AI processor not available'
+                }), 503
+
+            # Reset conversation memory for the user
+            if hasattr(workflow.ai, 'conversation_memory') and phone_number in workflow.ai.conversation_memory:
+                del workflow.ai.conversation_memory[phone_number]
+                logger.info(f"✅ Reset conversation memory for user {phone_number}")
+                
+                return jsonify({
+                    'status': 'success',
+                    'message': f'Conversation memory reset for {phone_number}',
+                    'timestamp': time.time()
+                }), 200
+            else:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'No conversation memory found for {phone_number}'
+                }), 404
+
+        except Exception as e:
+            logger.error(f"❌ AI reset conversation error: {e}")
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
     return app

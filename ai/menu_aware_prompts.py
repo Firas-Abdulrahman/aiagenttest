@@ -104,94 +104,71 @@ COMBINATION UNDERSTANDING:
 
     @staticmethod
     def get_enhanced_understanding_prompt(user_message: str, current_step: str, context: dict, database_manager) -> str:
-        """Enhanced AI understanding prompt with complete menu awareness"""
+        """Get enhanced understanding prompt with menu awareness and context"""
+        try:
+            # Get comprehensive menu context
+            menu_context = MenuAwarePrompts.get_menu_context(database_manager)
+            
+            # Get user-specific context
+            user_context = MenuAwarePrompts._build_user_context(context)
+            
+            # Get step-specific guidance
+            step_guidance = MenuAwarePrompts._get_step_specific_guidance(current_step)
+            
+            prompt = f"""
+ENHANCED MENU-AWARE AI UNDERSTANDING
+====================================
 
-        # Get comprehensive menu context
-        menu_context = MenuAwarePrompts.get_menu_context(database_manager)
-
-        return f"""You are an intelligent AI assistant for Hef Cafe with COMPLETE MENU KNOWLEDGE. You can understand natural language requests and intelligently suggest menu items.
-
-🚨 CRITICAL INSTRUCTION FOR waiting_for_additional STEP:
-When the user is at the "waiting_for_additional" step and they say "نعم" (Arabic for Yes), you MUST set yes_no="yes" in your response.
-When the user is at the "waiting_for_additional" step and they say "لا" (Arabic for No), you MUST set yes_no="no" in your response.
-This is a CRITICAL requirement - do NOT misinterpret these Arabic words.
-
-EXAMPLE: If user says "نعم" at waiting_for_additional step, your response MUST include "yes_no": "yes"
-
-{menu_context}
-
-CURRENT CONVERSATION STATE:
-==========================
+CURRENT SITUATION:
 - User is at step: {current_step}
 - User said: "{user_message}"
-- Language preference: {context.get('language', 'arabic')}
-- Available main categories: {len(context.get('available_categories', []))}
-- Current category items: {len(context.get('current_category_items', []))}
+- Language preference: {context.get('language_preference', 'arabic')}
 
-INTELLIGENT RESPONSE RULES:
-==========================
-1. NATURAL LANGUAGE UNDERSTANDING:
-   - Analyze the user's natural language request
-   - Map their preferences to menu categories and items
-   - Provide intelligent suggestions based on their needs
+USER CONTEXT:
+{user_context}
 
-2. EXAMPLES OF INTELLIGENT UNDERSTANDING:
-   - "I want something cold and sweet" → Suggest Frappuccino (ID: 2) or Milkshakes (ID: 3)
-   - "اريد شي بارد ومنعش" → Suggest Iced Tea (ID: 4) or Mojito (ID: 6)
-   - "I need energy" → Suggest Coffee & Espresso (ID: 8) or Iced Coffee (ID: 1)
-   - "بدي شي حلو اكله" → Suggest Cake Slices (ID: 15)
-   - "Something to wake me up" → Suggest strong Coffee & Espresso (ID: 8)
-   - "اريد مشروب ساخن" → Suggest Main Category 2 (Hot Drinks)
-   - "I want food" → Suggest Main Category 3 (Pastries & Sweets)
+STEP-SPECIFIC GUIDANCE:
+{step_guidance}
 
-3. RESPONSE STRATEGY:
-   - If you can identify specific preferences, suggest the most suitable sub-category
-   - If request is broad, suggest the appropriate main category
-   - Always explain WHY you're suggesting something
-   - Use the user's preferred language
+COMPLETE MENU KNOWLEDGE:
+{menu_context}
 
-4. WORKFLOW STEPS:
-   - waiting_for_language: Detect language preference
-   - waiting_for_main_category: User selects from 3 main categories
-   - waiting_for_sub_category: User selects specific sub-category (e.g., "موهيتو", "ايس كوفي", "فرابتشينو")
-   - waiting_for_item: User selects specific item (e.g., "موهيتو ازرق", "ايس امريكانو")
-   - waiting_for_quantity: User specifies how many
-   - waiting_for_additional: Ask if they want more items
-   - waiting_for_service: Dine-in or delivery
-   - waiting_for_location: Table number or address
-   - waiting_for_confirmation: Final order confirmation
+NATURAL LANGUAGE UNDERSTANDING RULES:
+====================================
 
-5. STEP-SPECIFIC RULES:
-   - At waiting_for_category: If user says "1" or "١", use action "category_selection" with suggested_main_category=1
-   - At waiting_for_category: If user says "2" or "٢", use action "category_selection" with suggested_main_category=2  
-   - At waiting_for_category: If user says "3" or "٣", use action "category_selection" with suggested_main_category=3
-   - At waiting_for_category: If user says "4" or "٤", use action "category_selection" with suggested_main_category=1 (Cold Drinks)
-   - At waiting_for_category: If user says "5" or "٥", use action "category_selection" with suggested_main_category=1 (Cold Drinks)
-   - At waiting_for_category: If user says "6" or "٦", use action "category_selection" with suggested_main_category=1 (Cold Drinks)
-   - At waiting_for_category: If user says "7" or "٧", use action "category_selection" with suggested_main_category=1 (Cold Drinks)
-   - At waiting_for_sub_category: If user says "موهيتو", use action "sub_category_selection"
-   - At waiting_for_sub_category: If user says "موهيتو ازرق", use action "item_selection"
-   - At waiting_for_item: If user says "موهيتو", navigate to mojito sub-category
-   - At waiting_for_item: If user says "موهيتو ازرق", select that specific item
-   - At waiting_for_additional: If user says "1" or "نعم" or "yes" or "اي", use action "yes_no" with yes_no="yes"
-   - At waiting_for_additional: If user says "2" or "لا" or "no" or "لأ", use action "yes_no" with yes_no="no"
-   - At waiting_for_service: If user says "1" or "١" or "في المقهى" or "داخل" or "dine", use action "service_selection" with service_type="dine-in"
-   - At waiting_for_service: If user says "2" or "٢" or "توصيل" or "delivery", use action "service_selection" with service_type="delivery"
-   - At waiting_for_service: If user says "3" or "4" or "5" or "6" or "7" or "8" or "9" or "10" or "11" or "12" or any number > 2, DO NOT accept it as valid service selection
+1. CONTEXT AWARENESS:
+   - Consider user's current order progress
+   - Use previous selections to guide understanding
+   - Remember user's language preference
+   - Consider time of day and weather context
 
-RESPOND WITH CLEAN JSON (no extra text):
-=======================================
+2. INTENT RECOGNITION:
+   - Look for explicit menu selections (numbers, names)
+   - Detect implicit preferences (mood, weather, time)
+   - Understand natural language requests
+   - Handle multiple requests in one message
+
+3. MENU MAPPING:
+   - Map natural language to specific menu items
+   - Consider category relationships
+   - Handle synonyms and variations
+   - Support both Arabic and English
+
+4. VALIDATION:
+   - Ensure selections are valid for current step
+   - Check item availability
+   - Validate quantities and options
+   - Provide helpful error messages
+
+RESPOND WITH ENHANCED JSON:
 {{
-    "understood_intent": "Clear description of what the user wants",
+    "understood_intent": "clear description of what user wants",
     "confidence": "high/medium/low",
-    "action": "intelligent_suggestion/language_selection/category_selection/sub_category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu",
+    "action": "language_selection/category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu/help_request/stay_current_step",
     "extracted_data": {{
         "language": "arabic/english/null",
-        "suggested_main_category": "number if you can intelligently suggest main category",
-        "suggested_sub_category": "number if you can intelligently suggest specific sub-category",
-        "sub_category_id": "number or null",
-        "sub_category_name": "string or null",
         "category_id": "number or null",
+        "category_name": "string or null",
         "item_id": "number or null",
         "item_name": "string or null",
         "quantity": "number or null",
@@ -199,269 +176,175 @@ RESPOND WITH CLEAN JSON (no extra text):
         "service_type": "dine-in/delivery/null",
         "location": "string or null"
     }},
-    "clarification_needed": false,
-    "response_message": "Helpful response in user's language with intelligent suggestions and explanation"
-
-IMPORTANT VALIDATION RULES:
-==========================
-- For service_selection: ONLY accept "1" or "2" as valid numbers. Numbers 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, etc. are INVALID for service selection.
-- If user enters invalid service number, return error message asking them to choose 1 or 2 only."
+    "clarification_needed": "true/false",
+    "clarification_question": "question to ask if clarification needed",
+    "response_message": "natural response to user in their preferred language",
+    "menu_context_used": "specific menu elements that helped understanding",
+    "suggested_alternatives": "alternative items if requested item unavailable"
 }}
 
-CRITICAL EXAMPLES:
-==================
-User: "1" (at waiting_for_category step)
-Response: {{
-    "understood_intent": "User wants to select main category number 1 (Cold Drinks)",
-    "confidence": "high",
-    "action": "category_selection",
+IMPORTANT: Use the complete menu knowledge to provide accurate and helpful responses.
+"""
+            return prompt
+            
+        except Exception as e:
+            logger.error(f"Error generating enhanced menu-aware prompt: {e}")
+            # Fallback to basic prompt
+            return MenuAwarePrompts._get_basic_prompt(user_message, current_step, context)
+
+    # NEW: Build user context for better understanding
+    @staticmethod
+    def _build_user_context(context: dict) -> str:
+        """Build comprehensive user context for AI understanding"""
+        user_context = []
+        
+        # Basic user info
+        if context.get('customer_name'):
+            user_context.append(f"- Customer: {context['customer_name']}")
+        
+        if context.get('language_preference'):
+            user_context.append(f"- Language: {context['language_preference']}")
+        
+        # Current order progress
+        if context.get('selected_main_category'):
+            user_context.append(f"- Selected main category: {context['selected_main_category']}")
+        
+        if context.get('selected_sub_category'):
+            user_context.append(f"- Selected sub-category: {context['selected_sub_category']}")
+        
+        if context.get('selected_item'):
+            user_context.append(f"- Selected item: {context['selected_item']}")
+        
+        # Order context
+        if context.get('current_order_items'):
+            items = context['current_order_items']
+            if items:
+                user_context.append(f"- Current order has {len(items)} items")
+                for item in items[-3:]:  # Show last 3 items
+                    user_context.append(f"  * {item.get('name', 'Unknown')} x{item.get('quantity', 1)}")
+        
+        # Preferences and patterns
+        if context.get('user_preferences'):
+            prefs = context['user_preferences']
+            for key, value in prefs.items():
+                user_context.append(f"- Preference: {key} = {value}")
+        
+        return "\n".join(user_context) if user_context else "No specific user context available"
+
+    # NEW: Get step-specific guidance with menu awareness
+    @staticmethod
+    def _get_step_specific_guidance(step: str) -> str:
+        """Get step-specific guidance with menu awareness"""
+        guidance = {
+            'waiting_for_language': """
+                LANGUAGE SELECTION WITH MENU AWARENESS:
+                - Detect user's preferred language
+                - Consider cultural context and greetings
+                - Prepare to show menu in detected language
+                - Remember language preference for future interactions
+            """,
+            
+            'waiting_for_main_category': """
+                MAIN CATEGORY SELECTION WITH MENU AWARENESS:
+                - Show all 3 main categories clearly
+                - Explain what each category contains
+                - Consider user's mood and preferences
+                - Suggest popular combinations
+            """,
+            
+            'waiting_for_sub_category': """
+                SUB-CATEGORY SELECTION WITH MENU AWARENESS:
+                - Show relevant sub-categories for selected main category
+                - Highlight popular items in each sub-category
+                - Consider user's previous preferences
+                - Suggest complementary items
+            """,
+            
+            'waiting_for_item': """
+                ITEM SELECTION WITH MENU AWARENESS:
+                - Show all items in selected sub-category
+                - Include prices and descriptions
+                - Highlight popular and recommended items
+                - Consider dietary preferences and restrictions
+            """,
+            
+            'waiting_for_quantity': """
+                QUANTITY SELECTION WITH MENU AWARENESS:
+                - Accept various quantity formats
+                - Suggest appropriate quantities based on item type
+                - Consider sharing vs. personal use
+                - Mention bulk pricing if applicable
+            """,
+            
+            'waiting_for_additional': """
+                ADDITIONAL ITEMS WITH MENU AWARENESS:
+                - Suggest complementary items
+                - Consider popular combinations
+                - Mention special offers or deals
+                - Respect user's budget and preferences
+            """,
+            
+            'waiting_for_service': """
+                SERVICE SELECTION WITH MENU AWARENESS:
+                - Explain service options clearly
+                - Consider time of day and availability
+                - Mention delivery areas and timing
+                - Consider user's previous service choices
+            """,
+            
+            'waiting_for_location': """
+                LOCATION INPUT WITH MENU AWARENESS:
+                - Accept various location formats
+                - Confirm delivery area coverage
+                - Mention delivery time estimates
+                - Consider user's previous delivery locations
+            """,
+            
+            'waiting_for_confirmation': """
+                ORDER CONFIRMATION WITH MENU AWARENESS:
+                - Show complete order summary
+                - Confirm all selections and quantities
+                - Mention total cost and delivery fee if applicable
+                - Provide modification options
+            """
+        }
+        
+        return guidance.get(step, "Use general menu guidance for this step")
+
+    # NEW: Get basic prompt as fallback
+    @staticmethod
+    def _get_basic_prompt(user_message: str, current_step: str, context: dict) -> str:
+        """Get basic prompt as fallback when enhanced prompt fails"""
+        return f"""
+BASIC AI UNDERSTANDING PROMPT
+=============================
+
+CURRENT SITUATION:
+- User is at step: {current_step}
+- User said: "{user_message}"
+- Language preference: {context.get('language_preference', 'arabic')}
+
+RESPOND WITH JSON:
+{{
+    "understood_intent": "clear description of what user wants",
+    "confidence": "high/medium/low",
+    "action": "language_selection/category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu/help_request/stay_current_step",
     "extracted_data": {{
-        "language": "arabic",
-        "suggested_main_category": 1,
-        "suggested_sub_category": null,
-        "category_id": null,
-        "item_id": null,
-        "quantity": null,
-        "yes_no": null,
-        "service_type": null,
-        "location": null
+        "language": "arabic/english/null",
+        "category_id": "number or null",
+        "category_name": "string or null",
+        "item_id": "number or null",
+        "item_name": "string or null",
+        "quantity": "number or null",
+        "yes_no": "yes/no/null",
+        "service_type": "dine-in/delivery/null",
+        "location": "string or null"
     }},
-    "clarification_needed": false,
-    "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!"
+    "clarification_needed": "true/false",
+    "clarification_question": "question to ask if clarification needed",
+    "response_message": "natural response to user in their preferred language"
 }}
-
-User: "4" (at waiting_for_category step)
-Response: {{
-    "understood_intent": "User wants to select main category number 1 (Cold Drinks)",
-    "confidence": "high",
-    "action": "category_selection",
-    "extracted_data": {{
-        "language": "arabic",
-        "suggested_main_category": 1,
-        "suggested_sub_category": null,
-        "category_id": null,
-        "item_id": null,
-        "quantity": null,
-        "yes_no": null,
-        "service_type": null,
-        "location": null
-    }},
-    "clarification_needed": false,
-    "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!"
-}}
-
-User: "6" (at waiting_for_category step)
-Response: {{
-    "understood_intent": "User wants to select main category number 1 (Cold Drinks)",
-    "confidence": "high",
-    "action": "category_selection",
-    "extracted_data": {{
-        "language": "arabic",
-        "suggested_main_category": 1,
-        "suggested_sub_category": null,
-        "category_id": null,
-        "item_id": null,
-        "quantity": null,
-        "yes_no": null,
-        "service_type": null,
-        "location": null
-    }},
-    "clarification_needed": false,
-    "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!"
-}}
-
-User: "I want something cold and sweet"
-Response: {{
-    "understood_intent": "User wants a cold and sweet drink",
-    "confidence": "high",
-    "action": "intelligent_suggestion",
-    "extracted_data": {{
-        "language": "english",
-        "suggested_main_category": 1,
-        "suggested_sub_category": 2,
-        "category_id": null,
-        "item_id": null,
-        "quantity": null,
-        "yes_no": null,
-        "service_type": null,
-        "location": null
-    }},
-    "clarification_needed": false,
-    "response_message": "I understand you want something cold and sweet! Perfect choice for a refreshing treat.\\n\\nI recommend our Frappuccinos - they're cold, creamy, and deliciously sweet:\\n\\n1. Caramel Frappuccino - 5000 IQD\\n2. Vanilla Frappuccino - 5000 IQD\\n3. Hazelnut Frappuccino - 5000 IQD\\n4. Chocolate Frappuccino - 5000 IQD\\n\\nOr try our Milkshakes if you prefer something thicker and creamier!\\n\\nChoose a number or tell me which one sounds good to you!"
-}}
-
-User: "اريد شي بارد ومنعش"
-Response: {{
-    "understood_intent": "User wants something cold and refreshing",
-    "confidence": "high", 
-    "action": "intelligent_suggestion",
-    "extracted_data": {{
-        "language": "arabic",
-        "suggested_main_category": 1,
-        "suggested_sub_category": 4,
-        "category_id": null,
-        "item_id": null,
-        "quantity": null,
-        "yes_no": null,
-        "service_type": null,
-        "location": null
-    }},
-    "clarification_needed": false,
-    "response_message": "فهمت أنك تريد شيء بارد ومنعش! اختيار ممتاز لإنعاش يومك.\\n\\nأنصحك بالشاي المثلج - بارد ومنعش تماماً:\\n\\n1. شاي مثلج بالخوخ - 5000 دينار\\n2. شاي مثلج بفاكهة العاطفة - 5000 دينار\\n\\nأو جرب الموهيتو إذا كنت تحب شيء أكثر انتعاشاً مع النعناع!\\n\\nاختر الرقم أو قلي أيش يعجبك!"
-}}
-
-User: "موهيتو" (at waiting_for_sub_category step)
-Response: {{
-    "understood_intent": "User wants to select mojito sub-category",
-    "confidence": "high",
-    "action": "sub_category_selection",
-    "extracted_data": {{
-        "language": "arabic",
-        "sub_category_name": "موهيتو",
-        "sub_category_id": 6,
-        "category_id": null,
-        "item_id": null,
-        "quantity": null,
-        "yes_no": null,
-        "service_type": null,
-        "location": null
-    }},
-    "clarification_needed": false,
-    "response_message": "ممتاز! سأعرض لك قائمة الموهيتو:\\n\\n1. موهيتو ازرق - 5000 دينار\\n2.  . موهيتو توت ازرق - 5000 دينار\\n3. موهيتو روزبيري - 5000 دينار\\n4. موهيتو فراولة - 5000 دينار\\n5. موهيتو بينا كولادا - 5000 دينار\\n6. موهيتو علكة - 5000 دينار\\n7. موهيتو دراغون - 5000 دينار\\n8. موهيتو هيف - 5000 دينار\\n9. . موهيتو خوخ - 5000 دينار\\n\\nاختر الرقم الذي تفضله!"
-}}
-
-User: "موهيتو" (at waiting_for_item step)
-Response: {{
-    "understood_intent": "User wants to navigate to mojito sub-category",
-    "confidence": "high",
-    "action": "sub_category_selection",
-    "extracted_data": {{
-        "language": "arabic",
-        "sub_category_name": "موهيتو",
-        "sub_category_id": 6,
-        "category_id": null,
-        "item_id": null,
-        "quantity": null,
-        "yes_no": null,
-        "service_type": null,
-        "location": null
-    }},
-    "clarification_needed": false,
-    "response_message": "ممتاز! سأعرض لك قائمة الموهيتو:\\n\\n1. موهيتو ازرق - 5000 دينار\\n2. موهيتو فاكهة العاطفة - 5000 دينار\\n3. موهيتو توت ازرق - 5000 دينار\\n4. موهيتو روزبيري - 5000 دينار\\n5. موهيتو فراولة - 5000 دينار\\n6. موهيتو بينا كولادا - 5000 دينار\\n7. موهيتو علكة - 5000 دينار\\n8. موهيتو دراغون - 5000 دينار\\n9. موهيتو هيف - 5000 دينار\\n10. موهيتو رمان - 5000 دينار\\n11. موهيتو خوخ - 5000 دينار\\n\\nاختر الرقم الذي تفضله!"
-}}
-
-User: "موهيتو ازرق" (at waiting_for_item step)
-Response: {{
-    "understood_intent": "User wants to order Blue Mojito specifically",
-    "confidence": "high",
-    "action": "item_selection",
-    "extracted_data": {{
-        "language": "arabic",
-        "item_name": "موهيتو ازرق",
-        "item_id": null,
-        "category_id": null,
-        "quantity": null,
-        "yes_no": null,
-        "service_type": null,
-        "location": null
-    }},
-    "clarification_needed": false,
-    "response_message": "ممتاز! تم اختيار: موهيتو ازرق\\nالسعر: 5000 دينار\\nكم الكمية المطلوبة؟"
-}}
-
-User: "ايس كوفي" (at waiting_for_sub_category step)
-Response: {{
-    "understood_intent": "User wants to select iced coffee sub-category",
-    "confidence": "high",
-    "action": "sub_category_selection",
-    "extracted_data": {{
-        "language": "arabic",
-        "sub_category_name": "ايس كوفي",
-        "sub_category_id": 1,
-        "category_id": null,
-        "item_id": null,
-        "quantity": null,
-        "yes_no": null,
-        "service_type": null,
-        "location": null
-    }},
-    "clarification_needed": false,
-    "response_message": "ممتاز! سأعرض لك قائمة ايس كوفي:\\n\\n1. ايس كوفي - 3000 دينار\\n2. ايس امريكانو - 4000 دينار\\n3. لاتيه مثلج عادي - 4000 دينار\\n4. لاتيه مثلج كراميل - 5000 دينار\\n5. لاتيه مثلج فانيلا - 5000 دينار\\n6. لاتيه مثلج بندق - 5000 دينار\\n7. ايس موكا - 5000 دينار\\n8. لاتيه اسباني مثلج - 6000 دينار\\n\\nاختر الرقم الذي تفضله!"
-}}
-
-User: "1" (at waiting_for_additional step)
-Response: {{
-    "understood_intent": "User wants to add more items to their order",
-    "confidence": "high",
-    "action": "yes_no",
-    "extracted_data": {{
-        "language": "arabic",
-        "category_id": null,
-        "item_id": null,
-        "quantity": null,
-        "yes_no": "yes",
-        "service_type": null,
-        "location": null
-    }},
-    "clarification_needed": false,
-    "response_message": "ممتاز! سأعرض لك قائمة الأصناف مرة أخرى:\\n\\n1. مشروبات باردة\\n2. مشروبات ساخنة\\n3. معجنات وحلويات\\n\\nاختر رقم الصنف الذي تريده:"
-}}
-
-User: "2" (at waiting_for_additional step)
-Response: {{
-    "understood_intent": "User wants to finish their order and not add more items",
-    "confidence": "high",
-    "action": "yes_no",
-    "extracted_data": {{
-        "language": "arabic",
-        "category_id": null,
-        "item_id": null,
-        "quantity": null,
-        "yes_no": "no",
-        "service_type": null,
-        "location": null
-    }},
-    "clarification_needed": false,
-    "response_message": "ممتاز! لننتقل إلى اختيار نوع الخدمة. هل تفضل تناول الطعام في المقهى أم التوصيل للمنزل؟"
-}}
-
-User: "نعم" (at waiting_for_additional step)
-Response: {{
-    "understood_intent": "User wants to add more items to their order",
-    "confidence": "high",
-    "action": "yes_no",
-    "extracted_data": {{
-        "language": "arabic",
-        "category_id": null,
-        "item_id": null,
-        "quantity": null,
-        "yes_no": "yes",
-        "service_type": null,
-        "location": null
-    }},
-    "clarification_needed": false,
-    "response_message": "ممتاز! سأعرض لك قائمة الأصناف مرة أخرى:\\n\\n1. مشروبات باردة\\n2. مشروبات ساخنة\\n3. معجنات وحلويات\\n\\nاختر رقم الصنف الذي تريده:"
-}}
-
-User: "لا" (at waiting_for_additional step)
-Response: {{
-    "understood_intent": "User wants to finish their order and not add more items",
-    "confidence": "high",
-    "action": "yes_no",
-    "extracted_data": {{
-        "language": "arabic",
-        "category_id": null,
-        "item_id": null,
-        "quantity": null,
-        "yes_no": "no",
-        "service_type": null,
-        "location": null
-    }},
-    "clarification_needed": false,
-    "response_message": "ممتاز! لننتقل إلى اختيار نوع الخدمة. هل تفضل تناول الطعام في المقهى أم التوصيل للمنزل؟"
-}}
-
-Now analyze the user's message and respond with appropriate JSON."""
+"""
 
     @staticmethod
     def detect_natural_language_intent(user_message: str) -> dict:
