@@ -11,7 +11,7 @@ from utils.thread_safe_session import session_manager
 from database.thread_safe_manager import ThreadSafeDatabaseManager
 from workflow.handlers import MessageHandler
 from workflow.enhanced_handlers import EnhancedMessageHandler
-from speech.pipeline import VoicePipeline
+# VoicePipeline import removed - using VoiceMessagePipeline instead
 from speech.providers.openai_asr import OpenAIASR
 from speech.providers.openai_tts import OpenAITTS
 
@@ -80,10 +80,32 @@ class ThreadSafeMessageHandler:
                 # If voice message, route to voice pipeline
                 if message_data.get('audio') and self.voice_pipeline and hasattr(self, 'whatsapp_client'):
                     try:
-                        # Prefer enhanced handler if available for natural language understanding
-                        handler_for_voice = self.enhanced_handler if getattr(self, 'enhanced_handler', None) else self.main_handler
-                        pipeline = VoicePipeline(self.voice_pipeline['asr'], self.voice_pipeline['tts'], self.whatsapp_client, handler_for_voice)
-                        ok = pipeline.process_voice_message(phone_number, message_data)
+                        from ..speech.pipeline import VoiceMessagePipeline
+                        # Create voice pipeline with all required components
+                        pipeline = VoiceMessagePipeline(
+                            asr_service=self.voice_pipeline['asr'],
+                            tts_service=self.voice_pipeline['tts'],
+                            whatsapp_client=self.whatsapp_client,
+                            db_manager=self.db,
+                            message_handler=self,  # Pass self as the message handler
+                            config={
+                                'asr_enabled': True,
+                                'tts_enabled': True,
+                                'tts_mime': 'audio/ogg',
+                                'tts_voice_ar': 'shimmer',
+                                'tts_voice_en': 'alloy',
+                                'voice_reply_text_fallback': True
+                            }
+                        )
+                        # Process voice message asynchronously
+                        import asyncio
+                        try:
+                            loop = asyncio.get_event_loop()
+                        except RuntimeError:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                        
+                        ok = loop.run_until_complete(pipeline.process_voice_message(message_data))
                         if ok:
                             return { 'type': 'handled' }
                     except Exception as e:
