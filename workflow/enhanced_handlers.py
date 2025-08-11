@@ -2040,17 +2040,33 @@ class EnhancedMessageHandler:
         return None
 
     def _match_item_by_name(self, text: str, items: list, language: str) -> Optional[Dict]:
-        """Match item by name with enhanced scoring mechanism for better accuracy"""
+        """Match item by name with enhanced scoring mechanism and Arabic normalization."""
         import re
-        
-        # Clean the input - remove numbers, common non-descriptive words, and extra spaces
+
+        def normalize_ar(s: str) -> str:
+            # Basic Arabic normalization: unify alef forms and strip tatweel
+            return (s.replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا')
+                     .replace('ى', 'ي').replace('ؤ', 'و').replace('ئ', 'ي').replace('ـ', ''))
+
+        def strip_prefixes(word: str) -> str:
+            # Strip common attached prefixes like و + ال and ال
+            for pref in ('وال', 'بال', 'كال', 'فال'):
+                if word.startswith(pref) and len(word) > len(pref) + 1:
+                    return word[len(pref):]
+            for pref in ('ال', 'و'):
+                if word.startswith(pref) and len(word) > len(pref) + 0:
+                    return word[len(pref):]
+            return word
+
+        # Clean the input - remove numbers and extra spaces
         cleaned_text = re.sub(r'\d+', '', text).strip()
-        
-        # Remove common non-descriptive Arabic words
+
+        # Tokenize, remove common stop-words, and strip attached prefixes
         common_words = ['اريد', 'عايز', 'بغيت', 'بدي', 'ممكن', 'لو', 'سمحت', 'من', 'فى', 'في', 'على', 'الى', 'إلى', 'و', 'او', 'أو', 'هذا', 'هذه', 'هذا', 'ال', 'واحد', 'اثنين', 'ثلاثة', 'اربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة', 'عشرة']
-        text_words = [word for word in cleaned_text.split() if word not in common_words]
-        cleaned_text = ' '.join(text_words)
-        text_lower = cleaned_text.lower().strip()
+        raw_words = cleaned_text.split()
+        normalized_words = [strip_prefixes(normalize_ar(w)) for w in raw_words if w not in common_words]
+        cleaned_text = ' '.join(normalized_words)
+        text_lower = normalize_ar(cleaned_text.lower().strip())
         
         logger.info(f"🔍 Matching '{text}' (cleaned: '{cleaned_text}') against {len(items)} items")
         
@@ -2058,10 +2074,23 @@ class EnhancedMessageHandler:
         energy_terms = ['طاقة', 'مشروب طاقة', 'مشروبات طاقة', 'ريد بول', 'red bull', 'monster', 'energy drink', 'energy']
         if any(term in text_lower for term in energy_terms):
             for item in items:
-                item_name_lower = item['item_name_ar'].lower() if language == 'arabic' else item['item_name_en'].lower()
+                item_name_lower = normalize_ar(item['item_name_ar'].lower() if language == 'arabic' else item['item_name_en'].lower())
                 if any(energy_term in item_name_lower for energy_term in ['طاقة', 'energy']):
                     logger.info(f"✅ Energy drink match: '{item_name_lower}'")
                     return item
+
+        # Early direct flavor match for mojito when flavor is spoken
+        if language == 'arabic' and 'موهيتو' in text_lower:
+            flavor_terms = [
+                'رمان', 'خوخ', 'توت ازرق', 'ازرق', 'روزبيري', 'دراغون', 'علكة', 'هيف', 'فانيلا', 'كراميل', 'بينا كولادا', 'فاكهة العاطفة'
+            ]
+            for flavor in flavor_terms:
+                if flavor in text_lower:
+                    for item in items:
+                        name_lower = normalize_ar(item['item_name_ar'].lower())
+                        if flavor in name_lower and 'موهيتو' in name_lower:
+                            logger.info(f"✅ Mojito flavor direct match: '{name_lower}' for flavor '{flavor}'")
+                            return item
         
         # Scoring mechanism for better accuracy
         best_match = None
@@ -2069,9 +2098,9 @@ class EnhancedMessageHandler:
         
         for item in items:
             if language == 'arabic':
-                item_name_lower = item['item_name_ar'].lower()
+                item_name_lower = normalize_ar(item['item_name_ar'].lower())
             else:
-                item_name_lower = item['item_name_en'].lower()
+                item_name_lower = normalize_ar(item['item_name_en'].lower())
             
             score = 0
             
