@@ -11,7 +11,6 @@ from workflow.thread_safe_handlers import ThreadSafeMessageHandler
 from whatsapp.client import WhatsAppClient
 from utils.thread_safe_session import session_manager
 from typing import Dict, Any  # <-- Add this line!
-from datetime import datetime # <-- Add this line!
 
 # Configure logging
 logging.basicConfig(
@@ -660,64 +659,6 @@ def create_flask_app():
         except Exception as e:
             logger.error(f"❌ Test credentials error: {e}")
             return jsonify({'status': 'error', 'message': str(e)}), 500
-
-    @app.route('/performance', methods=['GET'])
-    def performance_metrics():
-        """Get performance metrics and system health"""
-        try:
-            from utils.performance_monitor import get_performance_stats, get_operation_details
-            
-            hours = request.args.get('hours', 24, type=int)
-            operation = request.args.get('operation')
-            
-            if operation:
-                # Get details for specific operation
-                details = get_operation_details(operation, hours)
-                return jsonify({
-                    'status': 'success',
-                    'data': details,
-                    'timestamp': datetime.now().isoformat()
-                })
-            else:
-                # Get overall performance summary
-                summary = get_performance_stats(hours)
-                return jsonify({
-                    'status': 'success',
-                    'data': summary,
-                    'timestamp': datetime.now().isoformat()
-                })
-                
-        except Exception as e:
-            logger.error(f"❌ Error getting performance metrics: {e}")
-            return jsonify({
-                'status': 'error',
-                'message': str(e),
-                'timestamp': datetime.now().isoformat()
-            }), 500
-
-    @app.route('/performance/clear', methods=['POST'])
-    def clear_performance_data():
-        """Clear old performance data"""
-        try:
-            from utils.performance_monitor import clear_performance_data
-            
-            hours = request.json.get('hours', 168) if request.json else 168
-            cleared_count = clear_performance_data(hours)
-            
-            return jsonify({
-                'status': 'success',
-                'message': f'Cleared {cleared_count} old performance metrics',
-                'cleared_count': cleared_count,
-                'timestamp': datetime.now().isoformat()
-            })
-            
-        except Exception as e:
-            logger.error(f"❌ Error clearing performance data: {e}")
-            return jsonify({
-                'status': 'error',
-                'message': str(e),
-                'timestamp': datetime.now().isoformat()
-            }), 500
 
     return app
 

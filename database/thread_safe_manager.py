@@ -23,49 +23,30 @@ class ThreadSafeDatabaseManager:
         self._db_lock = threading.RLock()
         self._connection_pool = {}
         self._pool_lock = threading.Lock()
-        self._max_connections = 10
-        self._connection_timeout = 30.0
-        self._pool_cleanup_interval = 300  # 5 minutes
-        self._last_pool_cleanup = time.time()
 
         # Initialize database
         self.init_database()
 
-        logger.info("✅ Thread-safe database manager initialized with connection pooling")
+        logger.info("✅ Thread-safe database manager initialized")
 
     @contextmanager
-    def get_db_connection(self, timeout: float = None):
-        """Get database connection with improved connection pooling and timeout handling"""
-        if timeout is None:
-            timeout = self._connection_timeout
-            
+    def get_db_connection(self, timeout: float = 30.0):
+        """Get database connection with proper locking"""
         conn = None
-        connection_id = None
-        
         try:
-            # Try to get connection from pool first
-            with self._pool_lock:
-                if self._connection_pool:
-                    connection_id, conn = self._connection_pool.popitem()
-                    logger.debug(f"🔌 Reusing connection {connection_id}")
-                else:
-                    # Create new connection
-                    connection_id = f"conn_{int(time.time() * 1000)}_{threading.get_ident()}"
-                    conn = sqlite3.connect(
-                        self.db_path,
-                        timeout=timeout,
-                        check_same_thread=False
-                    )
-                    logger.debug(f"🔌 Created new connection {connection_id}")
+            conn = sqlite3.connect(
+                self.db_path,
+                timeout=timeout,
+                check_same_thread=False  # Allow cross-thread usage
+            )
 
-            # Configure connection for better performance
+            # Configure for better concurrency
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute("PRAGMA cache_size=10000")
             conn.execute("PRAGMA temp_store=MEMORY")
             conn.execute("PRAGMA foreign_keys = ON")
             conn.execute("PRAGMA busy_timeout=30000")
-            conn.execute("PRAGMA optimize")
 
             yield conn
 
@@ -80,54 +61,11 @@ class ThreadSafeDatabaseManager:
         except Exception as e:
             logger.error(f"❌ Database error: {e}")
             if conn:
-                try:
-                    conn.rollback()
-                except:
-                    pass
+                conn.rollback()
             raise
         finally:
             if conn:
-                try:
-                    # Return connection to pool if it's still valid
-                    if conn and not conn.closed:
-                        with self._pool_lock:
-                            if len(self._connection_pool) < self._max_connections:
-                                self._connection_pool[connection_id] = conn
-                                logger.debug(f"🔌 Returned connection {connection_id} to pool")
-                            else:
-                                conn.close()
-                                logger.debug(f"🔌 Closed connection {connection_id} (pool full)")
-                except Exception as e:
-                    logger.warning(f"⚠️ Error returning connection to pool: {e}")
-                    try:
-                        conn.close()
-                    except:
-                        pass
-
-    def _cleanup_connection_pool(self):
-        """Clean up stale connections from the pool"""
-        current_time = time.time()
-        if current_time - self._last_pool_cleanup > self._pool_cleanup_interval:
-            with self._pool_lock:
-                stale_connections = []
-                for conn_id, conn in self._connection_pool.items():
-                    try:
-                        # Test if connection is still valid
-                        conn.execute("SELECT 1")
-                    except:
-                        stale_connections.append(conn_id)
-                
-                # Remove stale connections
-                for conn_id in stale_connections:
-                    try:
-                        conn = self._connection_pool.pop(conn_id)
-                        conn.close()
-                        logger.debug(f"🧹 Cleaned up stale connection {conn_id}")
-                    except:
-                        pass
-                
-                self._last_pool_cleanup = current_time
-                logger.debug(f"🧹 Connection pool cleanup completed. Active connections: {len(self._connection_pool)}")
+                conn.close()
 
     def init_database(self):
         """Initialize database with thread safety"""
@@ -197,49 +135,67 @@ class ThreadSafeDatabaseManager:
 
     # User Session Operations (Thread-Safe)
     def get_user_session(self, phone_number: str) -> Optional[Dict]:
-        """Get user session with improved performance and caching"""
+        """Get user session with thread safety"""
+        # First check in-memory cache
+        state = session_manager.get_user_state(phone_number)
+        if state:
+            return {
+                'phone_number': state.phone_number,
+                'current_step': state.current_step,
+                'language_preference': state.language_preference,
+                'customer_name': state.customer_name,
+                'selected_main_category': state.selected_main_category,
+                'selected_sub_category': state.selected_sub_category,
+                'selected_item': state.selected_item,
+                'conversation_context': json.dumps(state.conversation_context),
+                'created_at': state.created_at.isoformat(),
+                'updated_at': state.updated_at.isoformat()
+            }
+
+        # Fallback to database (for persistence)
         try:
-            # Clean up connection pool periodically
-            self._cleanup_connection_pool()
-            
             with self.get_db_connection() as conn:
                 cursor = conn.execute("""
-                    SELECT s.*, 
-                           o.id as order_id,
-                           o.total as order_total,
-                           o.status as order_status,
-                           o.created_at as order_created,
-                           o.updated_at as order_updated
-                    FROM user_sessions s
-                    LEFT JOIN orders o ON s.phone_number = o.phone_number AND o.status = 'pending'
-                    WHERE s.phone_number = ?
+                    SELECT phone_number, current_step, language_preference, customer_name,
+                           selected_main_category, selected_sub_category, selected_item,
+                           conversation_context, created_at, updated_at
+                    FROM user_sessions 
+                    WHERE phone_number = ?
                 """, (phone_number,))
-                
+
                 row = cursor.fetchone()
                 if row:
-                    # Convert row to dict with proper column names
-                    columns = [description[0] for description in cursor.description]
-                    session_data = dict(zip(columns, row))
-                    
-                    # Parse JSON fields
-                    for field in ['conversation_context', 'order_items']:
-                        if field in session_data and session_data[field]:
-                            try:
-                                if isinstance(session_data[field], str):
-                                    session_data[field] = json.loads(session_data[field])
-                            except json.JSONDecodeError:
-                                logger.warning(f"⚠️ Failed to parse JSON for {field}: {session_data[field]}")
-                                session_data[field] = {}
-                    
-                    logger.debug(f"✅ Retrieved session for {phone_number}")
+                    session_data = {
+                        'phone_number': row[0],
+                        'current_step': row[1],
+                        'language_preference': row[2],
+                        'customer_name': row[3],
+                        'selected_main_category': row[4],
+                        'selected_sub_category': row[5],
+                        'selected_item': row[6],
+                        'conversation_context': row[7],
+                        'created_at': row[8],
+                        'updated_at': row[9]
+                    }
+
+                    # Update in-memory cache
+                    session_manager.create_or_update_user_state(
+                        phone_number=phone_number,
+                        current_step=row[1],
+                        language_preference=row[2],
+                        customer_name=row[3],
+                        selected_main_category=row[4],
+                        selected_sub_category=row[5],
+                        selected_item=row[6],
+                        conversation_context=json.loads(row[7]) if row[7] else {}
+                    )
+
                     return session_data
-                else:
-                    logger.debug(f"📋 No session found for {phone_number}")
-                    return None
-                    
+
         except Exception as e:
-            logger.error(f"❌ Error getting user session for {phone_number}: {e}")
-            return None
+            logger.error(f"❌ Error getting user session: {e}")
+
+        return None
 
     def create_or_update_session(self, phone_number: str, current_step: str,
                                  language: str = None, customer_name: str = None,

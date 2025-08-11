@@ -8,7 +8,6 @@ import logging
 import time
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
-import re
 
 logger = logging.getLogger(__name__)
 
@@ -95,127 +94,77 @@ class EnhancedMessageHandler:
             return self._create_response("حدث خطأ. الرجاء إعادة المحاولة\nAn error occurred. Please try again")
 
     def _build_user_context(self, phone_number: str, session: Dict, current_step: str, original_message: str = '') -> Dict:
-        """Build comprehensive user context for AI understanding with robust type handling"""
+        """Build comprehensive user context for AI understanding"""
         context = {
             'phone_number': phone_number,
             'current_step': current_step,
-            'original_message': original_message,
-            'session_data': session or {},
-            'timestamp': time.time()
+            'language': session.get('language_preference', 'arabic') if session else 'arabic',
+            'customer_name': session.get('customer_name', 'Customer') if session else 'Customer',
+            'selected_main_category': session.get('selected_main_category'),
+            'selected_sub_category': session.get('selected_sub_category'),
+            'selected_item': session.get('selected_item'),
+            'order_history': [],
+            'current_order_items': [],
+            'available_categories': [],
+            'current_category_items': [],
+            'conversation_history': [],
+            'original_user_message': original_message
         }
 
+        # Get current order items
         if session:
-            # Safely extract and validate main category ID
-            main_cat_id = session.get('selected_main_category')
-            if main_cat_id is not None:
-                main_cat_id = self._safe_convert_to_int(main_cat_id, 'main_category_id')
-                if main_cat_id is not None:
-                    context['main_category_id'] = main_cat_id
-                    context['main_category_name'] = self._get_category_name(main_cat_id)
-                    
-                    # Get sub-categories for this main category
-                    sub_categories = self.db.get_sub_categories(main_cat_id)
-                    context['available_sub_categories'] = sub_categories
-                    
-                    # Safely extract and validate sub category ID
-                    sub_cat_id = session.get('selected_sub_category')
-                    if sub_cat_id is not None:
-                        sub_cat_id = self._safe_convert_to_int(sub_cat_id, 'sub_category_id')
-                        if sub_cat_id is not None:
-                            context['sub_category_id'] = sub_cat_id
-                            context['sub_category_name'] = self._get_sub_category_name(sub_cat_id)
-                            
-                            # Get items for this sub-category
-                            items = self.db.get_sub_category_items(sub_cat_id)
-                            context['available_items'] = items
-                            
-                            # Safely extract and validate selected item ID
-                            selected_item = session.get('selected_item')
-                            if selected_item is not None:
-                                selected_item = self._safe_convert_to_int(selected_item, 'selected_item')
-                                if selected_item is not None:
-                                    context['selected_item_id'] = selected_item
-                                    context['selected_item_name'] = self._get_item_name(selected_item)
-
-            # Extract other session data
-            context['language_preference'] = session.get('language_preference', 'arabic')
-            context['customer_name'] = session.get('customer_name', '')
-            
-            # Get current order if exists
-            current_order = self.db.get_user_order(phone_number)
+            current_order = self.db.get_current_order(phone_number)
             if current_order:
-                context['current_order'] = current_order
-                context['order_items'] = current_order.get('items', [])
-                context['order_total'] = current_order.get('total', 0)
+                context['current_order_items'] = current_order.get('items', [])
+                context['order_history'] = self.db.get_order_history(phone_number)
+
+        # Get available categories based on current step
+        if current_step == 'waiting_for_category':
+            context['available_categories'] = self.db.get_main_categories()
+        elif current_step == 'waiting_for_sub_category' and session and session.get('selected_main_category'):
+            main_cat_id = session.get('selected_main_category')
+            logger.info(f"🔍 Debug _build_user_context: main_cat_id type={type(main_cat_id)}, value={main_cat_id}")
+            
+            # Ensure main_cat_id is an integer
+            if isinstance(main_cat_id, dict):
+                logger.warning(f"⚠️ main_cat_id is a dict in _build_user_context: {main_cat_id}")
+                main_cat_id = main_cat_id.get('id', main_cat_id)
+                logger.info(f"🔧 Converted main_cat_id to: {main_cat_id}")
+            elif not isinstance(main_cat_id, int):
+                logger.warning(f"⚠️ main_cat_id is not int in _build_user_context: {type(main_cat_id)} = {main_cat_id}")
+                try:
+                    main_cat_id = int(main_cat_id)
+                    logger.info(f"🔧 Converted main_cat_id to int: {main_cat_id}")
+                except (ValueError, TypeError):
+                    logger.error(f"❌ Cannot convert main_cat_id to int in _build_user_context: {main_cat_id}")
+                    context['available_categories'] = []
+                else:
+                    context['available_categories'] = self.db.get_sub_categories(main_cat_id)
+            else:
+                context['available_categories'] = self.db.get_sub_categories(main_cat_id)
+        elif current_step == 'waiting_for_item' and session and session.get('selected_sub_category'):
+            sub_cat_id = session.get('selected_sub_category')
+            logger.info(f"🔍 Debug _build_user_context: sub_cat_id type={type(sub_cat_id)}, value={sub_cat_id}")
+            
+            # Ensure sub_cat_id is an integer
+            if isinstance(sub_cat_id, dict):
+                logger.warning(f"⚠️ sub_cat_id is a dict in _build_user_context: {sub_cat_id}")
+                sub_cat_id = sub_cat_id.get('id', sub_cat_id)
+                logger.info(f"🔧 Converted sub_cat_id to: {sub_cat_id}")
+            elif not isinstance(sub_cat_id, int):
+                logger.warning(f"⚠️ sub_cat_id is not int in _build_user_context: {type(sub_cat_id)} = {sub_cat_id}")
+                try:
+                    sub_cat_id = int(sub_cat_id)
+                    logger.info(f"🔧 Converted sub_cat_id to int: {sub_cat_id}")
+                except (ValueError, TypeError):
+                    logger.error(f"❌ Cannot convert sub_cat_id to int in _build_user_context: {sub_cat_id}")
+                    context['current_category_items'] = []
+                else:
+                    context['current_category_items'] = self.db.get_sub_category_items(sub_cat_id)
+            else:
+                context['current_category_items'] = self.db.get_sub_category_items(sub_cat_id)
 
         return context
-
-    def _safe_convert_to_int(self, value: Any, field_name: str) -> Optional[int]:
-        """Safely convert a value to integer with proper error handling"""
-        if value is None:
-            return None
-            
-        try:
-            if isinstance(value, dict):
-                logger.warning(f"⚠️ {field_name} is a dict: {value}")
-                # Try to extract numeric value from dict
-                if 'id' in value:
-                    return int(value['id'])
-                elif 'value' in value:
-                    return int(value['value'])
-                else:
-                    logger.error(f"❌ Cannot extract numeric value from {field_name} dict: {value}")
-                    return None
-            elif isinstance(value, str):
-                # Remove any non-numeric characters
-                cleaned = ''.join(filter(str.isdigit, value))
-                if cleaned:
-                    return int(cleaned)
-                else:
-                    logger.warning(f"⚠️ {field_name} string contains no digits: {value}")
-                    return None
-            elif isinstance(value, (int, float)):
-                return int(value)
-            else:
-                logger.warning(f"⚠️ {field_name} is not a convertible type: {type(value)} = {value}")
-                return None
-                
-        except (ValueError, TypeError) as e:
-            logger.error(f"❌ Cannot convert {field_name} to int: {value} (error: {e})")
-            return None
-
-    def _get_category_name(self, category_id: int) -> str:
-        """Get category name by ID with error handling"""
-        try:
-            categories = self.db.get_main_categories()
-            for cat in categories:
-                if cat.get('id') == category_id:
-                    return cat.get('name_ar', cat.get('name_en', f'Category {category_id}'))
-            return f'Category {category_id}'
-        except Exception as e:
-            logger.error(f"❌ Error getting category name for {category_id}: {e}")
-            return f'Category {category_id}'
-
-    def _get_sub_category_name(self, sub_category_id: int) -> str:
-        """Get sub-category name by ID with error handling"""
-        try:
-            # This would need to be implemented in the database manager
-            # For now, return a generic name
-            return f'Sub-category {sub_category_id}'
-        except Exception as e:
-            logger.error(f"❌ Error getting sub-category name for {sub_category_id}: {e}")
-            return f'Sub-category {sub_category_id}'
-
-    def _get_item_name(self, item_id: int) -> str:
-        """Get item name by ID with error handling"""
-        try:
-            item = self.db.get_item_by_id(item_id)
-            if item:
-                return item.get('name_ar', item.get('name_en', f'Item {item_id}'))
-            return f'Item {item_id}'
-        except Exception as e:
-            logger.error(f"❌ Error getting item name for {item_id}: {e}")
-            return f'Item {item_id}'
 
     def _handle_ai_result(self, phone_number: str, ai_result: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle AI understanding result with appropriate actions"""
@@ -2253,116 +2202,99 @@ class EnhancedMessageHandler:
             return messages.get(f"{step}_en", 'Sorry, an error occurred. Please try again.')
 
     def _should_reset_session(self, session: Dict, user_message: str) -> bool:
-        """Enhanced session reset logic with better intent detection"""
+        """Check if session should be reset due to timeout or greeting"""
         if not session:
-            return True
-            
-        # Check for explicit fresh start intent
-        fresh_start_patterns = [
-            r'^(مرحبا|hello|hi|أهلاً|أهلا|مرحبتين|صباح الخير|مساء الخير)',
-            r'^(start over|ابدأ من جديد|إعادة|reset|restart)',
-            r'^(new order|طلب جديد|طلب آخر|طلب آخر)',
-            r'^(cancel|إلغاء|إلغاء الطلب|إلغاء كل شيء)',
-            r'^(help|مساعدة|help me|ساعدني)',
-            r'^(menu|قائمة|القائمة|show menu|أظهر القائمة)'
-        ]
-        
-        user_message_lower = user_message.lower().strip()
-        for pattern in fresh_start_patterns:
-            if re.search(pattern, user_message_lower, re.IGNORECASE):
-                logger.info(f"🔄 Fresh start intent detected: '{user_message}' matches pattern '{pattern}'")
-                return True
-        
-        # Check for session timeout (30 minutes)
-        if session.get('updated_at'):
+            logger.debug("🔄 No session found, no reset needed")
+            return False
+
+        # Check session timeout (30 minutes)
+        last_update = session.get('updated_at')
+        if last_update:
             try:
-                last_activity = datetime.fromisoformat(session['updated_at'])
-                time_diff = datetime.now() - last_activity
+                from datetime import datetime, timezone
+                # Handle both ISO format and simple format
+                if 'Z' in last_update:
+                    last_update_time = datetime.fromisoformat(last_update.replace('Z', '+00:00'))
+                else:
+                    last_update_time = datetime.fromisoformat(last_update)
+                
+                # Make both datetimes timezone-aware for comparison
+                now = datetime.now(timezone.utc)
+                if last_update_time.tzinfo is None:
+                    last_update_time = last_update_time.replace(tzinfo=timezone.utc)
+                
+                time_diff = now - last_update_time
                 if time_diff.total_seconds() > 1800:  # 30 minutes
-                    logger.info(f"🔄 Session timeout detected: {time_diff.total_seconds()/60:.1f} minutes inactive")
+                    logger.info(f"⏰ Session timeout detected: {time_diff.total_seconds()} seconds")
                     return True
             except Exception as e:
-                logger.warning(f"⚠️ Error checking session timeout: {e}")
-        
-        # Check for conversation context mismatch
-        current_step = session.get('current_step', '')
-        if current_step and user_message:
-            # If user sends a greeting while in middle of order, suggest fresh start
-            if current_step != 'waiting_for_language' and any(word in user_message_lower for word in ['مرحبا', 'hello', 'hi']):
-                logger.info(f"🔄 Greeting detected in middle of order (step: {current_step}), suggesting fresh start")
+                logger.warning(f"⚠️ Error parsing session time: {e}")
                 return True
-        
+
+        # Check for greeting words that might indicate a fresh start
+        greeting_words = ['مرحبا', 'السلام عليكم', 'أهلا', 'hello', 'hi', 'hey']
+        user_lower = user_message.lower().strip()
+        current_step = session.get('current_step')
+
+        logger.debug(f"🔍 Session reset check: message='{user_message}', current_step='{current_step}'")
+
+        # Special case: If we're in confirmation step and user sends a greeting, 
+        # it means they want a fresh start after order completion
+        if (current_step == 'waiting_for_confirmation' and 
+            any(greeting in user_lower for greeting in greeting_words) and
+            len(user_message.strip()) <= 15):
+            logger.info(f"🔄 Post-order fresh start detected for message: '{user_message}'")
+            return True
+
+        # Only reset if it's clearly a greeting and not at language selection step
+        # Also, don't reset if we're in confirmation step and user says yes/no
+        if (any(greeting in user_lower for greeting in greeting_words) and
+                len(user_message.strip()) <= 15 and  # Allow slightly longer greetings
+                current_step not in ['waiting_for_language', 'waiting_for_category', 'waiting_for_confirmation'] and
+                # Make sure it's not just a number or other input
+                not user_message.strip().isdigit() and
+                not any(char.isdigit() for char in user_message)):
+            logger.info(f"🔄 Fresh start intent detected for message: '{user_message}' at step '{current_step}'")
+            return True
+
+        logger.debug(f"❌ No reset needed for message: '{user_message}' at step '{current_step}'")
         return False
 
     def _extract_customer_name(self, message_data: Dict) -> str:
-        """Enhanced customer name extraction with multiple fallback strategies"""
+        """Extract customer name from message data with proper WhatsApp structure"""
         try:
-            # First priority: Extract from profile name if available
-            if 'profile' in message_data and message_data['profile'].get('name'):
-                name = message_data['profile']['name'].strip()
-                if name and len(name) > 1:  # Ensure name is meaningful
+            # Check for contacts array first (WhatsApp Business API structure)
+            if 'contacts' in message_data and message_data['contacts']:
+                contact = message_data['contacts'][0]
+                if 'profile' in contact:
+                    name = contact['profile'].get('name', '').strip()
+                    if name:
+                        logger.info(f"✅ Extracted customer name from contacts: {name}")
+                        return name
+            
+            # Fallback: check for profile directly
+            if 'profile' in message_data:
+                name = message_data['profile'].get('name', '').strip()
+                if name:
                     logger.info(f"✅ Extracted customer name from profile: {name}")
                     return name
             
-            # Second priority: Extract from contacts if available
-            if 'contacts' in message_data and message_data['contacts']:
-                for contact in message_data['contacts']:
-                    if contact.get('profile', {}).get('name'):
-                        name = contact['profile']['name'].strip()
-                        if name and len(name) > 1:
-                            logger.info(f"✅ Extracted customer name from contacts: {name}")
-                            return name
+            # Fallback: check for from field (phone number)
+            if 'from' in message_data:
+                phone = message_data['from']
+                # Extract last 4 digits for a friendly name
+                if len(phone) >= 4:
+                    last_four = phone[-4:]
+                    logger.info(f"⚠️ No name found, using phone suffix: {last_four}")
+                    return f"Customer {last_four}"
             
-            # Third priority: Extract from message text if it looks like a name
-            if 'text' in message_data and message_data['text'].get('body'):
-                text = message_data['text']['body'].strip()
-                # Look for common Arabic/English name patterns
-                name_patterns = [
-                    r'^مرحبا\s+([^\s]+)',  # Hello [Name]
-                    r'^Hello\s+([^\s]+)',   # Hello [Name]
-                    r'^أنا\s+([^\s]+)',     # I am [Name]
-                    r'^اسمي\s+([^\s]+)',    # My name is [Name]
-                    r'^My name is\s+([^\s]+)', # My name is [Name]
-                    r'^I am\s+([^\s]+)',   # I am [Name]
-                ]
-                
-                for pattern in name_patterns:
-                    match = re.search(pattern, text, re.IGNORECASE)
-                    if match:
-                        name = match.group(1).strip()
-                        if name and len(name) > 1:
-                            logger.info(f"✅ Extracted customer name from message text: {name}")
-                            return name
-            
-            # Fourth priority: Check if we have a stored name in session
-            phone_number = message_data.get('from')
-            if phone_number:
-                try:
-                    session = self.db.get_user_session(phone_number)
-                    if session and session.get('customer_name'):
-                        stored_name = session['customer_name'].strip()
-                        if stored_name and len(stored_name) > 1:
-                            logger.info(f"✅ Using stored customer name: {stored_name}")
-                            return stored_name
-                except Exception as e:
-                    logger.warning(f"⚠️ Error retrieving stored customer name: {e}")
-            
-            # Final fallback: Generate a friendly identifier
-            phone_number = message_data.get('from', '')
-            if phone_number:
-                # Use last 4 digits of phone number as identifier
-                suffix = phone_number[-4:] if len(phone_number) >= 4 else phone_number
-                friendly_name = f"Customer_{suffix}"
-                logger.info(f"🔄 Generated friendly identifier: {friendly_name}")
-                return friendly_name
-            
-            # Ultimate fallback
-            logger.info("🔄 No customer name found, using generic identifier")
-            return "Customer"
+            # Final fallback
+            logger.warning("⚠️ No customer name found, using default")
+            return "Valued Customer"
             
         except Exception as e:
             logger.error(f"❌ Error extracting customer name: {e}")
-            return "Customer"
+            return "Valued Customer"
 
     def _create_response(self, content: str) -> Dict[str, Any]:
         """Create response structure"""
