@@ -7,6 +7,7 @@ Provides natural language understanding while maintaining structured flow
 import json
 import logging
 import time
+import re
 from typing import Dict, Optional, Any, List
 from .prompts import AIPrompts
 from .menu_aware_prompts import MenuAwarePrompts
@@ -30,21 +31,25 @@ class EnhancedAIProcessor:
         self.client = None
         self.database_manager = database_manager
         
-        # Enhanced error tracking
+        # Enhanced error tracking with exponential backoff
         self.consecutive_failures = 0
         self.max_consecutive_failures = 5
         self.failure_window_start = None
         self.failure_window_duration = 300  # 5 minutes
+        self.backoff_multiplier = 2
+        self.max_backoff = 60  # Maximum backoff in seconds
 
         # Configuration
         if config:
             self.quota_cache_duration = config.get('ai_quota_cache_duration', 300)
             self.disable_on_quota = config.get('ai_disable_on_quota', True)
             self.fallback_enabled = config.get('ai_fallback_enabled', True)
+            self.max_retries = config.get('max_retries', 3)
         else:
             self.quota_cache_duration = 300
             self.disable_on_quota = True
             self.fallback_enabled = True
+            self.max_retries = 3
 
         if OPENAI_AVAILABLE and api_key:
             try:
@@ -57,75 +62,88 @@ class EnhancedAIProcessor:
             logger.warning("⚠️ Running without OpenAI - Enhanced AI features limited")
 
     def is_available(self) -> bool:
-        """Check if enhanced AI processing is available"""
+        """Check if enhanced AI processing is available with improved backoff logic"""
         if not self.client:
             return False
 
-        # Check consecutive failures
+        # Check consecutive failures with exponential backoff
         if self.consecutive_failures >= self.max_consecutive_failures:
             if self.failure_window_start:
                 time_since_failures = time.time() - self.failure_window_start
-                if time_since_failures < self.failure_window_duration:
-                    logger.warning(f"⚠️ AI temporarily disabled due to {self.consecutive_failures} consecutive failures")
+                backoff_duration = min(self.failure_window_duration * (self.backoff_multiplier ** (self.consecutive_failures - self.max_consecutive_failures)), self.max_backoff)
+                
+                if time_since_failures < backoff_duration:
+                    logger.warning(f"⚠️ AI temporarily disabled due to {self.consecutive_failures} consecutive failures (backoff: {backoff_duration}s)")
                     return False
                 else:
                     self.consecutive_failures = 0
                     self.failure_window_start = None
-                    logger.info("🔄 Failure window expired, re-enabling AI")
+                    logger.info("🔄 Backoff period expired, re-enabling AI")
 
         return True
 
     def understand_natural_language(self, user_message: str, current_step: str, 
                                   user_context: Dict, language: str = 'arabic') -> Dict:
         """
-        Primary method for natural language understanding with deep workflow integration
+        Primary method for natural language understanding with enhanced retry logic
         """
         if not self.is_available():
             logger.warning("Enhanced AI unavailable, using fallback")
             return self._generate_enhanced_fallback(user_message, current_step, user_context, language)
 
-        try:
-            # Pre-process message
-            processed_message = self._preprocess_message(user_message)
-            
-            # Build comprehensive context
-            enhanced_context = self._build_enhanced_context(current_step, user_context, language)
-            
-            # Generate enhanced prompt
-            prompt = self._generate_enhanced_prompt(processed_message, current_step, enhanced_context)
-            
-            logger.info(f"🧠 Enhanced AI analyzing: '{processed_message}' at step '{current_step}'")
+        # Retry logic for AI processing
+        for attempt in range(self.max_retries):
+            try:
+                # Pre-process message
+                processed_message = self._preprocess_message(user_message)
+                
+                # Build comprehensive context
+                enhanced_context = self._build_enhanced_context(current_step, user_context, language)
+                
+                # Generate enhanced prompt
+                prompt = self._generate_enhanced_prompt(processed_message, current_step, enhanced_context)
+                
+                logger.info(f"🧠 Enhanced AI analyzing: '{processed_message}' at step '{current_step}' (attempt {attempt + 1})")
 
-            # Call OpenAI with enhanced parameters
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": self._get_enhanced_system_prompt()},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=1000,
-                temperature=0.3,  # Slightly higher for more creative understanding
-                timeout=30,
-            )
+                # Call OpenAI with enhanced parameters and timeout
+                response = self.client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": self._get_enhanced_system_prompt()},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.3,  # Lower temperature for more consistent responses
+                    max_tokens=1000,
+                    timeout=30,  # Add timeout
+                    request_timeout=30
+                )
 
-            ai_response = response.choices[0].message.content.strip()
-            
-            # Parse and validate response
-            result = self._parse_enhanced_response(ai_response, current_step, processed_message)
-            
-            if result:
-                logger.info(f"✅ Enhanced AI Understanding: {result.get('understood_intent', 'N/A')} "
-                           f"(confidence: {result.get('confidence', 'N/A')}, action: {result.get('action', 'N/A')})")
-                self._reset_failure_counter()
-                return result
-            else:
-                logger.error("❌ Failed to parse enhanced AI response")
-                self._handle_ai_failure(Exception("Invalid enhanced AI response format"))
-                return self._generate_enhanced_fallback(user_message, current_step, user_context, language)
+                ai_response = response.choices[0].message.content.strip()
+                logger.info(f"🔍 Raw AI Response: {ai_response}")
 
-        except Exception as e:
-            self._handle_ai_failure(e)
-            return self._generate_enhanced_fallback(user_message, current_step, user_context, language)
+                # Parse and validate response
+                parsed_result = self._parse_enhanced_response(ai_response, current_step, user_message)
+                if parsed_result and self._validate_enhanced_result(parsed_result, current_step, user_message):
+                    logger.info(f"✅ Enhanced AI Understanding: {parsed_result.get('understood_intent')} (confidence: {parsed_result.get('confidence')}, action: {parsed_result.get('action')})")
+                    self._reset_failure_counter()
+                    return parsed_result
+                else:
+                    logger.warning(f"⚠️ AI response validation failed on attempt {attempt + 1}")
+                    if attempt < self.max_retries - 1:
+                        time.sleep(0.5 * (attempt + 1))  # Progressive delay
+                        continue
+
+            except Exception as e:
+                logger.error(f"❌ AI processing error on attempt {attempt + 1}: {str(e)}")
+                if attempt < self.max_retries - 1:
+                    time.sleep(0.5 * (attempt + 1))
+                    continue
+                else:
+                    self._handle_ai_failure(e)
+
+        # All retries failed, use fallback
+        logger.warning("🔄 All AI retries failed, using enhanced fallback")
+        return self._generate_enhanced_fallback(user_message, current_step, user_context, language)
 
     def _get_enhanced_system_prompt(self) -> str:
         """Get enhanced system prompt for OpenAI"""
@@ -742,107 +760,111 @@ Response: {{
         }
 
     def _parse_enhanced_response(self, ai_response: str, current_step: str, user_message: str) -> Optional[Dict]:
-        """Parse and validate enhanced AI response"""
+        """Enhanced JSON parsing with multiple fallback strategies"""
         try:
-            # Debug: Log the raw AI response
-            logger.info(f"🔍 Raw AI Response: {ai_response}")
+            # First attempt: direct JSON parsing
+            logger.info(f"✨ Parsed result before validation: {ai_response}")
+            result = json.loads(ai_response)
+            logger.info("✅ JSON parsed successfully without fixing")
+            return result
+        except json.JSONDecodeError as e:
+            logger.warning(f"⚠️ Initial JSON parsing failed: {e}")
             
-            # Clean the response
-            if ai_response.startswith('```json'):
-                ai_response = ai_response.replace('```json', '').replace('```', '').strip()
+            # Second attempt: extract JSON from markdown code blocks
+            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', ai_response, re.DOTALL)
+            if json_match:
+                try:
+                    result = json.loads(json_match.group(1))
+                    logger.info("✅ JSON extracted from markdown code block")
+                    return result
+                except json.JSONDecodeError:
+                    logger.warning("⚠️ JSON from markdown block also failed")
             
-            # Remove common prefixes
-            prefixes_to_remove = ['RESPOND WITH JSON:', 'JSON:', 'RESPONSE:']
-            for prefix in prefixes_to_remove:
-                if ai_response.startswith(prefix):
-                    ai_response = ai_response[len(prefix):].strip()
+            # Third attempt: find JSON-like content between curly braces
+            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', ai_response)
+            if json_match:
+                try:
+                    result = json.loads(json_match.group(0))
+                    logger.info("✅ JSON extracted using regex pattern")
+                    return result
+                except json.JSONDecodeError:
+                    logger.warning("⚠️ Regex JSON extraction failed")
             
-            # Extract JSON if not clean
-            if not ai_response.strip().startswith('{'):
-                import re
-                json_pattern = r'\{[\s\S]*\}'
-                json_match = re.search(json_pattern, ai_response)
-                if json_match:
-                    ai_response = json_match.group(0)
-            
-            # Try to parse the JSON first without fixing
+            # Fourth attempt: fix common JSON formatting issues
+            fixed_json = self._fix_json_format(ai_response)
             try:
-                result = json.loads(ai_response)
-                logger.info(f"✅ JSON parsed successfully without fixing")
-                logger.info(f"✨ Parsed result before validation: {result}")
-                
-                # Fix malformed structure where action is inside extracted_data
-                if 'extracted_data' in result and isinstance(result['extracted_data'], dict):
-                    extracted_data = result['extracted_data']
-                    if 'action' in extracted_data and 'action' not in result:
-                        # Move action from extracted_data to top level
-                        result['action'] = extracted_data.pop('action')
-                        logger.info(f"🔧 Fixed malformed structure: moved action to top level")
-                    
-                    if 'confidence' in extracted_data and 'confidence' not in result:
-                        # Move confidence from extracted_data to top level
-                        result['confidence'] = extracted_data.pop('confidence')
-                        logger.info(f"🔧 Fixed malformed structure: moved confidence to top level")
-                    
-                    if 'understood_intent' in extracted_data and 'understood_intent' not in result:
-                        # Move understood_intent from extracted_data to top level
-                        result['understood_intent'] = extracted_data.pop('understood_intent')
-                        logger.info(f"🔧 Fixed malformed structure: moved understood_intent to top level")
-                
-                # Validate required fields
-                required_fields = ['understood_intent', 'confidence', 'action', 'extracted_data']
-                for field in required_fields:
-                    if field not in result:
-                        logger.error(f"Missing required field: {field}")
-                        return None
-                
-                # Validate for current step
-                if not self._validate_enhanced_result(result, current_step, user_message):
-                    logger.error(f"❌ Validation failed for step: {current_step}")
-                    return None
-                
+                result = json.loads(fixed_json)
+                logger.info("✅ JSON fixed and parsed successfully")
                 return result
             except json.JSONDecodeError:
-                # Only fix JSON if it's actually invalid
-                logger.info(f"⚠️ JSON parsing failed, attempting to fix...")
-                ai_response = self._fix_json_format(ai_response)
-                logger.info(f"🔧 Fixed JSON: {ai_response}")
-                
-                result = json.loads(ai_response)
-                logger.info(f"✨ Parsed result after fixing and before validation: {result}")
-                
-                # Apply the same structure fixes after JSON fixing
-                if 'extracted_data' in result and isinstance(result['extracted_data'], dict):
-                    extracted_data = result['extracted_data']
-                    if 'action' in extracted_data and 'action' not in result:
-                        result['action'] = extracted_data.pop('action')
-                        logger.info(f"🔧 Fixed malformed structure: moved action to top level")
-                    
-                    if 'confidence' in extracted_data and 'confidence' not in result:
-                        result['confidence'] = extracted_data.pop('confidence')
-                        logger.info(f"🔧 Fixed malformed structure: moved confidence to top level")
-                    
-                    if 'understood_intent' in extracted_data and 'understood_intent' not in result:
-                        result['understood_intent'] = extracted_data.pop('understood_intent')
-                        logger.info(f"🔧 Fixed malformed structure: moved understood_intent to top level")
+                logger.warning("⚠️ Fixed JSON also failed")
             
-            # Validate required fields
-            required_fields = ['understood_intent', 'confidence', 'action', 'extracted_data']
-            for field in required_fields:
-                if field not in result:
-                    logger.error(f"Missing required field: {field}")
-                    return None
+            # Final attempt: intelligent fallback parsing
+            return self._intelligent_fallback_parsing(ai_response, current_step, user_message)
+        
+        except Exception as e:
+            logger.error(f"❌ Unexpected error in JSON parsing: {e}")
+            return None
+
+    def _intelligent_fallback_parsing(self, ai_response: str, current_step: str, user_message: str) -> Optional[Dict]:
+        """Intelligent fallback parsing when JSON fails completely"""
+        try:
+            # Extract key information using regex patterns
+            result = {
+                'understood_intent': 'User message processed with fallback parsing',
+                'confidence': 'low',
+                'action': 'fallback_processing',
+                'extracted_data': {},
+                'response_message': 'عذراً، حدث خطأ في الفهم. الرجاء المحاولة مرة أخرى.'
+            }
             
-            # Validate for current step
-            if not self._validate_enhanced_result(result, current_step, user_message):
-                logger.error(f"❌ Validation failed for step: {current_step}")
-                return None
+            # Try to extract action from response
+            action_patterns = {
+                'language_selection': r'(?:language|لغة|عربي|إنجليزي)',
+                'category_selection': r'(?:category|فئة|مشروبات|طعام)',
+                'sub_category_selection': r'(?:sub.?category|فئة فرعية)',
+                'item_selection': r'(?:item|عنصر|موهيتو|قهوة)',
+                'quantity_selection': r'(?:quantity|كمية|عدد)',
+                'service_selection': r'(?:service|خدمة|توصيل|تناول)',
+                'location_input': r'(?:location|موقع|طاولة|عنوان)',
+                'confirmation': r'(?:confirm|تأكيد|نعم|لا)'
+            }
             
+            for action, pattern in action_patterns.items():
+                if re.search(pattern, ai_response, re.IGNORECASE):
+                    result['action'] = action
+                    break
+            
+            # Try to extract confidence
+            if any(word in ai_response.lower() for word in ['high', 'عالية', 'مؤكد']):
+                result['confidence'] = 'high'
+            elif any(word in ai_response.lower() for word in ['medium', 'متوسطة', 'محتمل']):
+                result['confidence'] = 'medium'
+            else:
+                result['confidence'] = 'low'
+            
+            # Extract numbers for quantity or location
+            numbers = re.findall(r'\d+', ai_response)
+            if numbers:
+                if result['action'] == 'quantity_selection':
+                    result['extracted_data']['quantity'] = int(numbers[0])
+                elif result['action'] == 'location_input':
+                    result['extracted_data']['location'] = numbers[0]
+            
+            # Extract yes/no responses
+            yes_patterns = r'(?:نعم|yes|أجل|ok|حسناً)'
+            no_patterns = r'(?:لا|no|لأ|عذراً)'
+            
+            if re.search(yes_patterns, ai_response, re.IGNORECASE):
+                result['extracted_data']['yes_no'] = 'yes'
+            elif re.search(no_patterns, ai_response, re.IGNORECASE):
+                result['extracted_data']['yes_no'] = 'no'
+            
+            logger.info(f"🔄 Fallback parsing result: {result}")
             return result
             
-        except json.JSONDecodeError as e:
-            logger.error(f"❌ JSON parsing error: {e}")
-            logger.error(f"AI Response was: {ai_response}")
+        except Exception as e:
+            logger.error(f"❌ Fallback parsing also failed: {e}")
             return None
 
     def _fix_json_format(self, json_str: str) -> str:
