@@ -2167,10 +2167,11 @@ class EnhancedMessageHandler:
                 else:
                     return self._create_response("Please enter a valid table number (1-7):")
         
-                # Update session step
+        # Update session step
         self.db.create_or_update_session(
             phone_number, 'waiting_for_confirmation', language,
-            session.get('customer_name') if session else None
+            session.get('customer_name') if session else None,
+            order_mode=session.get('order_mode')
         )
         
         # Update order details with clean location
@@ -2555,6 +2556,11 @@ class EnhancedMessageHandler:
 
     def _show_order_summary(self, phone_number: str, session: Dict, user_context: Dict, location: str) -> Dict:
         """Show order summary"""
+        # Check if this is a quick order and show interactive confirmation
+        if session.get('order_mode') == 'quick':
+            return self._show_quick_order_confirmation(phone_number, session, user_context)
+        
+        # For regular orders, show text-based confirmation
         current_order = self.db.get_current_order(phone_number)
         language = user_context.get('language')
         
