@@ -1570,19 +1570,40 @@ class EnhancedMessageHandler:
         
         # Get the stored item from session
         quick_order_item = session.get('quick_order_item')
+        logger.info(f"🔍 Debug: quick_order_item from session: {quick_order_item}")
+        
         if not quick_order_item:
+            logger.error(f"❌ No quick_order_item found in session for {phone_number}")
             return self._create_response("حدث خطأ. الرجاء المحاولة مرة أخرى.")
         
         # Extract quantity from button click
         user_message = user_context.get('original_user_message', '')
+        logger.info(f"🔍 Debug: user_message='{user_message}', extracted_data={extracted_data}")
+        
         if user_message.startswith('quantity_'):
-            quantity = int(user_message.split('_')[1])
+            try:
+                quantity = int(user_message.split('_')[1])
+                logger.info(f"✅ Extracted quantity from button: {quantity}")
+            except (ValueError, IndexError) as e:
+                logger.error(f"❌ Error extracting quantity from button: {e}")
+                quantity = 1
         else:
             # Fallback: try to extract quantity from AI
             quantity = extracted_data.get('quantity', 1)
+            logger.info(f"✅ Using quantity from AI: {quantity}")
         
         # Add item to order
-        self.db.add_item_to_order(phone_number, quick_order_item['id'], quantity)
+        item_id = quick_order_item.get('id')
+        if not item_id:
+            logger.error(f"❌ No item_id found in quick_order_item: {quick_order_item}")
+            return self._create_response("حدث خطأ. الرجاء المحاولة مرة أخرى.")
+        
+        logger.info(f"🔧 Adding item to order: item_id={item_id}, quantity={quantity}")
+        success = self.db.add_item_to_order(phone_number, item_id, quantity)
+        
+        if not success:
+            logger.error(f"❌ Failed to add item to order: item_id={item_id}, quantity={quantity}")
+            return self._create_response("حدث خطأ في إضافة المنتج. الرجاء المحاولة مرة أخرى.")
         
         # Update session to service selection step
         self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_service', language, session.get('customer_name'), order_mode='quick')
@@ -1644,6 +1665,9 @@ class EnhancedMessageHandler:
             
             # Update session to quantity selection step
             self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_quantity', language, session.get('customer_name'), order_mode='quick')
+            
+            # Also update the in-memory session to ensure consistency
+            session['current_step'] = 'waiting_for_quick_order_quantity'
             
             # Show quantity buttons
             return self._show_quantity_buttons(phone_number, language, matched_item['item_name_ar'])
