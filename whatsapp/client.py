@@ -220,6 +220,11 @@ class WhatsAppClient:
                                  footer_text: str, buttons: List[Dict]) -> bool:
         """Send an interactive message with buttons with enhanced reliability"""
         try:
+            # Validate button count - WhatsApp only allows 3 buttons
+            if len(buttons) > 3:
+                logger.warning(f"⚠️ Too many buttons ({len(buttons)}), limiting to 3")
+                buttons = buttons[:3]
+            
             url = f"{self.base_url}/{self.phone_number_id}/messages"
 
             # Build interactive payload

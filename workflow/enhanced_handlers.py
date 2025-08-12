@@ -1638,7 +1638,7 @@ class EnhancedMessageHandler:
             service_type = extracted_data.get('service_type', 'dine-in')
         
         # Update order details
-        self.db.update_order_details(phone_number, {'service_type': service_type})
+        self.db.update_order_details(phone_number, service_type=service_type)
         
         # Update session to location step
         if service_type == 'dine-in':
