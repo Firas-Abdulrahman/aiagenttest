@@ -1572,6 +1572,16 @@ class EnhancedMessageHandler:
         quick_order_item = session.get('quick_order_item')
         logger.info(f"🔍 Debug: quick_order_item from session: {quick_order_item}")
         
+        # If not in memory, try to get from database (JSON string)
+        if not quick_order_item and session.get('quick_order_item'):
+            import json
+            try:
+                quick_order_item = json.loads(session['quick_order_item'])
+                logger.info(f"✅ Retrieved quick_order_item from JSON: {quick_order_item}")
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.error(f"❌ Error parsing quick_order_item JSON: {e}")
+                quick_order_item = None
+        
         if not quick_order_item:
             logger.error(f"❌ No quick_order_item found in session for {phone_number}")
             return self._create_response("حدث خطأ. الرجاء المحاولة مرة أخرى.")
@@ -1660,14 +1670,16 @@ class EnhancedMessageHandler:
         matched_item = self._match_item_by_name(item_name, all_items, language)
         
         if matched_item:
-            # Store the matched item in session for quantity selection
-            session['quick_order_item'] = matched_item
+            # Store the matched item in session for quantity selection (as JSON string)
+            import json
+            quick_order_item_json = json.dumps(matched_item, ensure_ascii=False)
             
-            # Update session to quantity selection step
-            self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_quantity', language, session.get('customer_name'), order_mode='quick')
+            # Update session to quantity selection step with item data
+            self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_quantity', language, session.get('customer_name'), order_mode='quick', quick_order_item=quick_order_item_json)
             
             # Also update the in-memory session to ensure consistency
             session['current_step'] = 'waiting_for_quick_order_quantity'
+            session['quick_order_item'] = matched_item
             
             # Show quantity buttons
             return self._show_quantity_buttons(phone_number, language, matched_item['item_name_ar'])

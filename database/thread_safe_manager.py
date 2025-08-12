@@ -148,6 +148,7 @@ class ThreadSafeDatabaseManager:
                 'selected_sub_category': state.selected_sub_category,
                 'selected_item': state.selected_item,
                 'order_mode': state.order_mode,
+                'quick_order_item': state.quick_order_item,
                 'conversation_context': json.dumps(state.conversation_context),
                 'created_at': state.created_at.isoformat(),
                 'updated_at': state.updated_at.isoformat()
@@ -159,7 +160,7 @@ class ThreadSafeDatabaseManager:
                 cursor = conn.execute("""
                     SELECT phone_number, current_step, language_preference, customer_name,
                            selected_main_category, selected_sub_category, selected_item,
-                           order_mode, conversation_context, created_at, updated_at
+                           order_mode, quick_order_item, conversation_context, created_at, updated_at
                     FROM user_sessions 
                     WHERE phone_number = ?
                 """, (phone_number,))
@@ -175,9 +176,10 @@ class ThreadSafeDatabaseManager:
                         'selected_sub_category': row[5],
                         'selected_item': row[6],
                         'order_mode': row[7],
-                        'conversation_context': row[8],
-                        'created_at': row[9],
-                        'updated_at': row[10]
+                        'quick_order_item': row[8],
+                        'conversation_context': row[9],
+                        'created_at': row[10],
+                        'updated_at': row[11]
                     }
 
                     # Update in-memory cache
@@ -190,7 +192,8 @@ class ThreadSafeDatabaseManager:
                         selected_sub_category=row[5],
                         selected_item=row[6],
                         order_mode=row[7],
-                        conversation_context=json.loads(row[8]) if row[8] else {}
+                        quick_order_item=row[8],
+                        conversation_context=json.loads(row[9]) if row[9] else {}
                     )
 
                     return session_data
@@ -205,7 +208,7 @@ class ThreadSafeDatabaseManager:
                                  selected_main_category: int = None,
                                  selected_sub_category: int = None,
                                  selected_item: int = None,
-                                 order_mode: str = None) -> bool:
+                                 order_mode: str = None, quick_order_item: str = None) -> bool:
         """Create or update user session with thread safety"""
 
         # Use the session manager's user lock
@@ -220,7 +223,8 @@ class ThreadSafeDatabaseManager:
                     selected_main_category=selected_main_category,
                     selected_sub_category=selected_sub_category,
                     selected_item=selected_item,
-                    order_mode=order_mode
+                    order_mode=order_mode,
+                    quick_order_item=quick_order_item
                 )
 
                 # Persist to database
@@ -229,10 +233,10 @@ class ThreadSafeDatabaseManager:
                     conn.execute("""
                         INSERT OR REPLACE INTO user_sessions 
                         (phone_number, current_step, language_preference, customer_name, 
-                         selected_main_category, selected_sub_category, selected_item, order_mode, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                         selected_main_category, selected_sub_category, selected_item, order_mode, quick_order_item, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                     """, (phone_number, current_step, language, customer_name,
-                          selected_main_category, selected_sub_category, selected_item, order_mode))
+                          selected_main_category, selected_sub_category, selected_item, order_mode, quick_order_item))
 
                     conn.commit()
 

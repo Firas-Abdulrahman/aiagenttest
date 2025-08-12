@@ -17,6 +17,7 @@ class UserSession:
     selected_sub_category: int = None
     selected_item: int = None
     order_mode: str = None
+    quick_order_item: str = None  # JSON string to store item data
     conversation_context: str = None
     created_at: datetime = None
     updated_at: datetime = None
@@ -134,6 +135,7 @@ class DatabaseSchema:
                     selected_sub_category INTEGER,
                     selected_item INTEGER,
                     order_mode TEXT,
+                    quick_order_item TEXT,
                     conversation_context TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

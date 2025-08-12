@@ -24,6 +24,7 @@ class UserWorkflowState:
     selected_sub_category: Optional[int] = None
     selected_item: Optional[int] = None
     order_mode: Optional[str] = None  # 'quick' or 'explore'
+    quick_order_item: Optional[str] = None  # JSON string to store item data
     conversation_context: Dict = field(default_factory=dict)
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
