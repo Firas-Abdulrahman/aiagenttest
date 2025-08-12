@@ -244,6 +244,7 @@ AVAILABLE ACTIONS:
 - sub_category_selection: User is selecting sub-category (e.g., "موهيتو" for mojito sub-category)
 - intelligent_suggestion: AI suggests category/sub-category based on preferences
 - item_selection: User is selecting specific item (e.g., "موهيتو ازرق" for specific mojito)
+- multi_item_selection: User is selecting multiple items in one message (e.g., "واحد لاتيه فانيلا وواحد لاتيه كراميل")
 - quantity_selection: User is specifying quantity
 - yes_no: User is answering yes/no question
 - service_selection: User is choosing service type
@@ -982,27 +983,120 @@ Response: {{
         return True
 
     def _validate_item_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
-        """Validate item selection step"""
+        """Validate item selection step with multi-item support"""
         action = result.get('action')
-        valid_actions = ['item_selection', 'category_selection', 'intelligent_suggestion', 'conversational_response']
+        valid_actions = ['item_selection', 'multi_item_selection', 'category_selection', 'intelligent_suggestion', 'conversational_response']
         
         if action not in valid_actions:
             return False
         
+        # Check for multi-item indicators in the message
+        if 'و' in user_message and ('واحد' in user_message or 'one' in user_message.lower()):
+            # If AI didn't detect multi-item but message suggests it, fix it
+            if action == 'item_selection':
+                logger.info(f"🔧 Detected multi-item pattern in message, updating action")
+                result['action'] = 'multi_item_selection'
+                # Extract multiple items from the message
+                multi_items = self._extract_multiple_items(user_message)
+                if multi_items:
+                    result['extracted_data']['multi_items'] = multi_items
+                    result['understood_intent'] = f"User wants to order multiple items: {', '.join([item.get('item_name', '') for item in multi_items])}"
+        
         return True
+    
+    def _extract_multiple_items(self, message: str) -> List[Dict]:
+        """Extract multiple items from a message containing 'و' (and)"""
+        items = []
+        
+        # Split by 'و' (and) to get individual item requests
+        parts = message.split('و')
+        
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+                
+            # Extract quantity and item name from each part
+            quantity = 1  # Default quantity
+            item_name = part
+            
+            # Look for quantity indicators
+            quantity_patterns = {
+                'واحد': 1, 'اثنين': 2, 'ثلاثة': 3, 'اربعة': 4, 'خمسة': 5,
+                'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5
+            }
+            
+            for pattern, qty in quantity_patterns.items():
+                if pattern in part:
+                    quantity = qty
+                    # Remove quantity from item name
+                    item_name = part.replace(pattern, '').strip()
+                    break
+            
+            # Clean up item name
+            item_name = item_name.replace('اريد', '').replace('بدي', '').strip()
+            
+            if item_name:
+                items.append({
+                    'item_name': item_name,
+                    'quantity': quantity
+                })
+        
+        return items
 
     def _validate_quantity_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
-        """Validate quantity selection step"""
+        """Validate quantity selection step with enhanced flexibility"""
         action = result.get('action')
         
-        if action != 'quantity_selection':
-            return False
+        # Convert Arabic numerals to English for processing
+        arabic_to_english = {
+            '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+            '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'
+        }
         
-        quantity = extracted_data.get('quantity')
-        if not isinstance(quantity, int) or quantity <= 0 or quantity > 50:
-            return False
+        processed_message = user_message
+        for arabic, english in arabic_to_english.items():
+            processed_message = processed_message.replace(arabic, english)
         
-        return True
+        # Extract number from message if AI didn't
+        import re
+        numbers = re.findall(r'\d+', processed_message)
+        
+        # If AI returned wrong action but we can extract quantity, fix it
+        if action != 'quantity_selection' and numbers:
+            quantity = int(numbers[0])
+            if 1 <= quantity <= 50:
+                logger.info(f"🔧 Fixing AI misinterpretation: {action} -> quantity_selection for quantity {quantity}")
+                result['action'] = 'quantity_selection'
+                result['extracted_data'] = {'quantity': quantity}
+                result['understood_intent'] = f"User wants to specify a quantity of {quantity}"
+                result['confidence'] = 'high'
+                return True
+        
+        # Standard validation for correct action
+        if action == 'quantity_selection':
+            quantity = extracted_data.get('quantity')
+            if isinstance(quantity, int) and 1 <= quantity <= 50:
+                return True
+            elif isinstance(quantity, str) and quantity.isdigit():
+                # Convert string to int
+                quantity_int = int(quantity)
+                if 1 <= quantity_int <= 50:
+                    result['extracted_data']['quantity'] = quantity_int
+                    return True
+        
+        # If we have a clear number in the message, accept it even with wrong action
+        if numbers:
+            quantity = int(numbers[0])
+            if 1 <= quantity <= 50:
+                logger.info(f"🔧 Accepting quantity {quantity} from message despite AI action {action}")
+                result['action'] = 'quantity_selection'
+                result['extracted_data'] = {'quantity': quantity}
+                result['understood_intent'] = f"User wants to specify a quantity of {quantity}"
+                result['confidence'] = 'high'
+                return True
+        
+        return False
 
     def _validate_additional_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
         """Validate additional items step"""

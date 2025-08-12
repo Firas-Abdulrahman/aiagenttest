@@ -61,8 +61,10 @@ class EnhancedMessageHandler:
             else:
                 logger.info(f"📋 Session check for {phone_number}: should_reset={should_reset}, current_step={session.get('current_step') if session else 'None'}")
 
-            # AI-First Processing: Try AI understanding first
+            # Hybrid AI + Structured Processing
             logger.info(f"🔍 AI Status: ai={self.ai is not None}, available={self.ai.is_available() if self.ai else False}")
+            ai_result = None
+            
             if self.ai and self.ai.is_available():
                 logger.info(f"🧠 Using enhanced AI for message: '{text}' at step '{current_step}'")
                 # Determine language safely
@@ -77,21 +79,70 @@ class EnhancedMessageHandler:
                     language=language
                 )
                 
-                # Handle AI result
-                if ai_result and ai_result.get('confidence') != 'low':
-                    logger.info(f"✅ AI result: {ai_result.get('action')} with confidence {ai_result.get('confidence')}")
-                    return self._handle_ai_result(phone_number, ai_result, session, user_context)
+                # Handle AI result with hybrid approach
+                if ai_result:
+                    confidence = ai_result.get('confidence', 'low')
+                    logger.info(f"✅ AI result: {ai_result.get('action')} with confidence {confidence}")
+                    
+                    # Use AI result if confidence is medium or high
+                    if confidence in ['medium', 'high']:
+                        return self._handle_ai_result(phone_number, ai_result, session, user_context)
+                    else:
+                        logger.info(f"🔄 AI confidence low ({confidence}), using hybrid processing")
                 else:
-                    logger.info(f"🔄 AI confidence low ({ai_result.get('confidence') if ai_result else 'None'}), falling back to structured processing")
+                    logger.info(f"⚠️ No AI result, using structured processing")
             else:
-                logger.info(f"⚠️ AI not available (ai: {self.ai is not None}, available: {self.ai.is_available() if self.ai else False}), using structured processing")
+                logger.info(f"⚠️ AI not available, using structured processing")
 
+            # Hybrid processing: Use AI insights even with low confidence
+            if ai_result and ai_result.get('confidence') == 'low':
+                return self._handle_hybrid_processing(phone_number, text, ai_result, current_step, session, user_context)
+            
             # Fallback to structured processing
             return self._handle_structured_message(phone_number, text, current_step, session, user_context)
 
         except Exception as e:
             logger.error(f"❌ Error in enhanced message handling: {str(e)}")
             return self._create_response("حدث خطأ. الرجاء إعادة المحاولة\nAn error occurred. Please try again")
+
+    def _handle_hybrid_processing(self, phone_number: str, text: str, ai_result: Dict, current_step: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle hybrid processing using AI insights with low confidence"""
+        logger.info(f"🔄 Using hybrid processing for step: {current_step}")
+        
+        # Extract useful information from AI result even with low confidence
+        extracted_data = ai_result.get('extracted_data', {})
+        action = ai_result.get('action')
+        
+        # Try to use AI insights for specific steps
+        if current_step == 'waiting_for_quantity':
+            # AI might have extracted quantity even with low confidence
+            quantity = extracted_data.get('quantity')
+            if quantity and isinstance(quantity, (int, str)):
+                try:
+                    quantity_int = int(quantity)
+                    if 1 <= quantity_int <= 50:
+                        logger.info(f"🔧 Using AI-extracted quantity: {quantity_int}")
+                        return self._handle_ai_quantity_selection(phone_number, {'quantity': quantity_int}, session, user_context)
+                except (ValueError, TypeError):
+                    pass
+        
+        elif current_step == 'waiting_for_additional':
+            # AI might have detected yes/no even with low confidence
+            yes_no = extracted_data.get('yes_no')
+            if yes_no in ['yes', 'no']:
+                logger.info(f"🔧 Using AI-extracted yes/no: {yes_no}")
+                return self._handle_ai_yes_no(phone_number, {'yes_no': yes_no}, session, user_context)
+        
+        elif current_step == 'waiting_for_item':
+            # AI might have extracted item information
+            item_name = extracted_data.get('item_name')
+            if item_name:
+                logger.info(f"🔧 Using AI-extracted item: {item_name}")
+                return self._handle_intelligent_item_selection(phone_number, extracted_data, session, user_context)
+        
+        # If AI insights aren't useful, fall back to structured processing
+        logger.info(f"🔄 AI insights not useful for hybrid processing, using structured fallback")
+        return self._handle_structured_message(phone_number, text, current_step, session, user_context)
 
     def _build_user_context(self, phone_number: str, session: Dict, current_step: str, original_message: str = '') -> Dict:
         """Build comprehensive user context for AI understanding"""
@@ -210,6 +261,9 @@ class EnhancedMessageHandler:
             
             # Special handling for item selection - can work across different steps
             return self._handle_intelligent_item_selection(phone_number, extracted_data, session, user_context)
+        elif action == 'multi_item_selection':
+            # Handle multiple items in one message
+            return self._handle_multi_item_selection(phone_number, extracted_data, session, user_context)
         elif action == 'quantity_selection':
             return self._handle_ai_quantity_selection(phone_number, extracted_data, session, user_context)
         elif action == 'yes_no':
@@ -231,6 +285,100 @@ class EnhancedMessageHandler:
         else:
             logger.warning(f"⚠️ Unknown AI action: {action}")
             return self._create_response(self._get_fallback_message(current_step, user_context.get('language', 'arabic')))
+
+    def _handle_multi_item_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
+        """Handle multiple item selection in one message"""
+        multi_items = extracted_data.get('multi_items', [])
+        language = user_context.get('language', 'arabic')
+        
+        if not multi_items:
+            logger.warning("⚠️ No multi-items found in extracted data")
+            return self._create_response("لم أفهم العناصر المطلوبة. الرجاء المحاولة مرة أخرى.")
+        
+        logger.info(f"🛒 Processing multi-item order: {len(multi_items)} items")
+        
+        # Process each item
+        processed_items = []
+        failed_items = []
+        
+        for item_data in multi_items:
+            item_name = item_data.get('item_name', '').strip()
+            quantity = item_data.get('quantity', 1)
+            
+            if not item_name:
+                continue
+                
+            # Try to match the item
+            matched_item = self._match_item_from_context(item_name, user_context)
+            
+            if matched_item:
+                processed_items.append({
+                    'item_id': matched_item['id'],
+                    'item_name': matched_item['item_name_ar'],
+                    'quantity': quantity,
+                    'price': matched_item['price']
+                })
+                logger.info(f"✅ Matched item: {item_name} (ID: {matched_item['id']})")
+            else:
+                failed_items.append(item_name)
+                logger.warning(f"❌ Could not match item: {item_name}")
+        
+        if not processed_items:
+            return self._create_response("لم أتمكن من العثور على أي من العناصر المطلوبة. الرجاء المحاولة مرة أخرى.")
+        
+        # Add items to order
+        for item in processed_items:
+            self.db.add_item_to_order(phone_number, item['item_id'], item['quantity'])
+            logger.info(f"➕ Added item {item['item_id']} × {item['quantity']} to order for {phone_number}")
+        
+        # Build response message
+        if language == 'arabic':
+            response = "تم إضافة العناصر التالية إلى طلبك:\n\n"
+            for item in processed_items:
+                response += f"• {item['item_name']} × {item['quantity']} - {item['price']} دينار\n"
+            
+            if failed_items:
+                response += f"\n⚠️ لم أتمكن من العثور على: {', '.join(failed_items)}"
+            
+            response += "\nهل تريد إضافة المزيد من الأصناف؟\n\n1. نعم\n2. لا"
+        else:
+            response = "Added the following items to your order:\n\n"
+            for item in processed_items:
+                response += f"• {item['item_name']} × {item['quantity']} - {item['price']} IQD\n"
+            
+            if failed_items:
+                response += f"\n⚠️ Could not find: {', '.join(failed_items)}"
+            
+            response += "\nDo you want to add more items?\n\n1. Yes\n2. No"
+        
+        # Update session to waiting for additional items
+        self.db.create_or_update_session(
+            phone_number, 'waiting_for_additional', language,
+            session.get('customer_name'),
+            selected_main_category=session.get('selected_main_category'),
+            selected_sub_category=session.get('selected_sub_category')
+        )
+        
+        return self._create_response(response)
+
+    def _match_item_from_context(self, item_name: str, user_context: Dict) -> Optional[Dict]:
+        """Match item by name using context information"""
+        # Get current sub-category items from context
+        current_category_items = user_context.get('current_category_items', [])
+        
+        if not current_category_items:
+            # Try to get items from database if not in context
+            sub_category_id = user_context.get('selected_sub_category')
+            if sub_category_id:
+                current_category_items = self.db.get_sub_category_items(sub_category_id)
+        
+        if not current_category_items:
+            logger.warning("⚠️ No items available for matching")
+            return None
+        
+        # Use the existing matching logic
+        language = user_context.get('language', 'arabic')
+        return self._match_item_by_name(item_name, current_category_items, language)
 
     def _handle_intelligent_suggestion(self, phone_number: str, ai_result: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle intelligent suggestions from AI"""

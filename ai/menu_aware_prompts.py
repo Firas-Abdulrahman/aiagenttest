@@ -47,6 +47,19 @@ class MenuAwarePrompts:
 INTELLIGENT UNDERSTANDING GUIDE:
 ================================
 
+MULTI-ITEM ORDER PROCESSING:
+- When user says "و" (and) or "واحد ... وواحد ...", extract multiple items
+- Example: "اريد واحد لاتيه مثلج فانيلا وواحد لاتيه مثلج كراميل"
+  → Extract: [{"item_name": "لاتيه مثلج فانيلا", "quantity": 1}, {"item_name": "لاتيه مثلج كراميل", "quantity": 1}]
+- Use "multi_item_selection" action for multiple items
+- For single items, use "item_selection" action
+
+QUANTITY EXPRESSIONS:
+- "واحد" = 1, "اثنين" = 2, "ثلاثة" = 3, etc.
+- "كوب" = 1, "كوبين" = 2, "ثلاثة أكواب" = 3
+- "قطعة" = 1, "قطعتين" = 2, "ثلاث قطع" = 3
+- Arabic numerals: ١ = 1, ٢ = 2, ٣ = 3, etc.
+
 TEMPERATURE PREFERENCES:
 - "cold", "iced", "chilled", "بارد", "مثلج", "منعش" → Main Category 1 (Cold Drinks)
 - "hot", "warm", "heated", "حار", "ساخن", "دافئ" → Main Category 2 (Hot Drinks)
