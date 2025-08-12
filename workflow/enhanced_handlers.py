@@ -2632,21 +2632,21 @@ class EnhancedMessageHandler:
         language = user_context.get('language', 'arabic')
         
         # Get current order details
-        order_items = self.db.get_user_order_items(phone_number)
+        current_order = self.db.get_current_order(phone_number)
         order_details = self.db.get_order_details(phone_number)
         
-        if not order_items:
+        if not current_order or not current_order.get('items'):
             return self._create_response("لا توجد أصناف في الطلب. الرجاء المحاولة مرة أخرى.")
         
         # Calculate total
-        total_amount = sum(item['subtotal'] for item in order_items)
+        total_amount = current_order.get('total', 0)
         
         if language == 'arabic':
             header_text = "تأكيد الطلب السريع"
             body_text = "إليك ملخص طلبك:\n\n"
             body_text += "الأصناف:\n"
             
-            for item in order_items:
+            for item in current_order['items']:
                 body_text += f"• {item['item_name_ar']} × {item['quantity']} - {item['subtotal']} دينار\n"
             
             body_text += f"\nالخدمة: {order_details.get('service_type', 'غير محدد')}"
@@ -2676,7 +2676,7 @@ class EnhancedMessageHandler:
             body_text = "Here's your order summary:\n\n"
             body_text += "Items:\n"
             
-            for item in order_items:
+            for item in current_order['items']:
                 body_text += f"• {item['item_name_en']} × {item['quantity']} - {item['subtotal']} IQD\n"
             
             body_text += f"\nService: {order_details.get('service_type', 'Not specified')}"
