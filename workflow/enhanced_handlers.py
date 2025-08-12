@@ -2044,27 +2044,47 @@ class EnhancedMessageHandler:
         categories = self.db.get_main_categories()
         
         if language == 'arabic':
-            message = "أهلاً وسهلاً! كيف تريد أن تطلب؟\n\n"
-            message += "🚀 الطلب السريع\n"
-            message += "للعملاء المعتادين - طلب سريع ومباشر\n\n"
-            message += "🗺️ استكشاف القائمة\n"
-            message += "للعملاء الجدد - جولة إرشادية شاملة\n\n"
-            message += "اختر نوع التجربة المفضلة لديك:\n\n"
-            message += "1. 🚀 الطلب السريع\n"
-            message += "2. 🗺️ استكشاف القائمة\n\n"
-            message += "🔙 اكتب 'رجوع' للعودة للخطوة السابقة"
+            header_text = "مرحباً!"
+            body_text = "اختر طريقة الطلب"
+            footer_text = ""
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "quick_order",
+                        "title": "الطلب السريع"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "explore_menu",
+                        "title": "استكشاف القائمة"
+                    }
+                }
+            ]
         else:
-            message = "Welcome! How would you like to order?\n\n"
-            message += "🚀 Quick Order\n"
-            message += "For regular customers - fast and direct ordering\n\n"
-            message += "🗺️ Explore Menu\n"
-            message += "For new customers - comprehensive guided tour\n\n"
-            message += "Choose your preferred experience:\n\n"
-            message += "1. 🚀 Quick Order\n"
-            message += "2. 🗺️ Explore Menu\n\n"
-            message += "🔙 Type 'back' to go to previous step"
+            header_text = "Hello!"
+            body_text = "Choose your ordering method"
+            footer_text = ""
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "quick_order",
+                        "title": "Quick Order"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "explore_menu",
+                        "title": "Explore Menu"
+                    }
+                }
+            ]
         
-        return self._create_response(message)
+        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
 
     def _show_quick_order_interface(self, phone_number: str, language: str) -> Dict:
         """Show quick order interface"""
@@ -2073,49 +2093,27 @@ class EnhancedMessageHandler:
         recent_orders = self._get_recent_orders(phone_number)
         
         if language == 'arabic':
-            message = "🚀 الطلب السريع\n\n"
-            message += "🔍 اكتب اسم المنتج أو استخدم الأزرار أدناه:\n\n"
-            
-            if recent_orders:
-                message += "📋 طلباتك الأخيرة:\n"
-                for order in recent_orders[:3]:
-                    message += f"• {order}\n"
-                message += "\n"
+            message = "الطلب السريع\n\n"
+            message += "اكتب اسم المنتج المطلوب:\n\n"
             
             if popular_items:
-                message += "⭐ المنتجات الشائعة:\n"
-                for item in popular_items[:5]:
+                message += "المنتجات الشائعة:\n"
+                for item in popular_items[:3]:
                     message += f"• {item['name_ar']} - {item['price']} دينار\n"
                 message += "\n"
             
-            message += "💡 أمثلة:\n"
-            message += "• '2 موهيتو ازرق'\n"
-            message += "• 'فرابتشينو شوكولاتة'\n"
-            message += "• '3 قهوة للطاولة 5'\n\n"
-            
-            message += "🔙 اكتب 'رجوع' للعودة"
+            message += "مثال: 2 موهيتو ازرق"
         else:
-            message = "🚀 Quick Order\n\n"
-            message += "🔍 Type item name or use buttons below:\n\n"
-            
-            if recent_orders:
-                message += "📋 Your recent orders:\n"
-                for order in recent_orders[:3]:
-                    message += f"• {order}\n"
-                message += "\n"
+            message = "Quick Order\n\n"
+            message += "Type the item name you want:\n\n"
             
             if popular_items:
-                message += "⭐ Popular items:\n"
-                for item in popular_items[:5]:
+                message += "Popular items:\n"
+                for item in popular_items[:3]:
                     message += f"• {item['name_en']} - {item['price']} IQD\n"
                 message += "\n"
             
-            message += "💡 Examples:\n"
-            message += "• '2 blue mojito'\n"
-            message += "• 'chocolate frappuccino'\n"
-            message += "• '3 coffee for table 5'\n\n"
-            
-            message += "🔙 Type 'back' to return"
+            message += "Example: 2 blue mojito"
         
         return self._create_response(message)
 
@@ -2124,19 +2122,15 @@ class EnhancedMessageHandler:
         categories = self.db.get_main_categories()
         
         if language == 'arabic':
-            message = "🗺️ استكشاف القائمة\n\n"
-            message += "دعنا نستكشف قائمتنا معاً! اختر الفئة التي تريد استكشافها:\n\n"
+            message = "استكشاف القائمة\n\n"
+            message += "اختر الفئة المطلوبة:\n\n"
             for i, cat in enumerate(categories, 1):
                 message += f"{i}. {cat['name_ar']}\n"
-            message += "\nسنقدم لك شرحاً مفصلاً لكل فئة ومنتج\n\n"
-            message += "🔙 اكتب 'رجوع' للعودة للخطوة السابقة"
         else:
-            message = "🗺️ Explore Menu\n\n"
-            message += "Let's explore our menu together! Choose the category you want to explore:\n\n"
+            message = "Explore Menu\n\n"
+            message += "Select the category:\n\n"
             for i, cat in enumerate(categories, 1):
                 message += f"{i}. {cat['name_en']}\n"
-            message += "\nWe'll provide detailed explanations for each category and item\n\n"
-            message += "🔙 Type 'back' to go to previous step"
         
         return self._create_response(message)
 
@@ -2696,4 +2690,14 @@ class EnhancedMessageHandler:
         return {
             'type': 'text',
             'content': content
+        }
+    
+    def _create_interactive_response(self, header_text: str, body_text: str, footer_text: str, buttons: List[Dict]) -> Dict[str, Any]:
+        """Create interactive button response structure"""
+        return {
+            'type': 'interactive_buttons',
+            'header_text': header_text,
+            'body_text': body_text,
+            'footer_text': footer_text,
+            'buttons': buttons
         } 

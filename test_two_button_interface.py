@@ -37,14 +37,26 @@ def test_two_button_interface():
     # Test Arabic interface
     response = handler._show_main_categories(phone_number, "arabic")
     print("Arabic Response:")
-    print(response.get('message', ''))
+    print(f"Type: {response.get('type', 'unknown')}")
+    print(f"Header: {response.get('header_text', '')}")
+    print(f"Body: {response.get('body_text', '')}")
+    print(f"Footer: {response.get('footer_text', '')}")
+    print("Buttons:")
+    for button in response.get('buttons', []):
+        print(f"  - {button.get('reply', {}).get('title', '')} (ID: {button.get('reply', {}).get('id', '')})")
     
     print("\n" + "="*50)
     
     # Test English interface
     response = handler._show_main_categories(phone_number, "english")
     print("English Response:")
-    print(response.get('message', ''))
+    print(f"Type: {response.get('type', 'unknown')}")
+    print(f"Header: {response.get('header_text', '')}")
+    print(f"Body: {response.get('body_text', '')}")
+    print(f"Footer: {response.get('footer_text', '')}")
+    print("Buttons:")
+    for button in response.get('buttons', []):
+        print(f"  - {button.get('reply', {}).get('title', '')} (ID: {button.get('reply', {}).get('id', '')})")
     
     print("\n2. Testing Quick Order Interface")
     print("-" * 40)

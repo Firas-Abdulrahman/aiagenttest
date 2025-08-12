@@ -421,11 +421,17 @@ class WhatsAppClient:
     def send_response(self, phone_number: str, response_data: Dict[str, Any]) -> bool:
         """Send response back to WhatsApp user with enhanced reliability"""
         try:
-            content = response_data.get('content', '')
             message_type = response_data.get('type', 'text')
 
             if message_type == 'text':
+                content = response_data.get('content', '')
                 return self.send_text_message(phone_number, content)
+            elif message_type == 'interactive_buttons':
+                header_text = response_data.get('header_text', '')
+                body_text = response_data.get('body_text', '')
+                footer_text = response_data.get('footer_text', '')
+                buttons = response_data.get('buttons', [])
+                return self.send_interactive_message(phone_number, header_text, body_text, footer_text, buttons)
             else:
                 logger.warning(f"Unsupported message type: {message_type}")
                 return False

@@ -957,14 +957,16 @@ Response: {{
         
         # Handle two-button interface selections
         user_message_lower = user_message.lower().strip()
-        if user_message_lower in ['1', '١']:
+        
+        # Handle button clicks
+        if user_message_lower in ['quick_order', 'الطلب السريع', '1', '١']:
             # Quick order selection
             result['action'] = 'quick_order_selection'
             result['understood_intent'] = "User wants to use quick order mode"
             result['extracted_data'] = extracted_data
             logger.info(f"🔧 Quick order selection detected: {user_message}")
             return True
-        elif user_message_lower in ['2', '٢']:
+        elif user_message_lower in ['explore_menu', 'استكشاف القائمة', '2', '٢']:
             # Explore menu selection
             result['action'] = 'explore_menu_selection'
             result['understood_intent'] = "User wants to explore the menu"
