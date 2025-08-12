@@ -111,7 +111,7 @@ class EnhancedAIProcessor:
             ai_response = response.choices[0].message.content.strip()
             
             # Parse and validate response
-            result = self._parse_enhanced_response(ai_response, current_step, processed_message)
+            result = self._parse_enhanced_response(ai_response, current_step, processed_message, user_context)
             
             if result:
                 logger.info(f"✅ Enhanced AI Understanding: {result.get('understood_intent', 'N/A')} "
@@ -742,7 +742,7 @@ Response: {{
             """
         }
 
-    def _parse_enhanced_response(self, ai_response: str, current_step: str, user_message: str) -> Optional[Dict]:
+    def _parse_enhanced_response(self, ai_response: str, current_step: str, user_message: str, user_context: Dict = None) -> Optional[Dict]:
         """Parse and validate enhanced AI response"""
         try:
             # Debug: Log the raw AI response
@@ -798,7 +798,7 @@ Response: {{
                         return None
                 
                 # Validate for current step
-                if not self._validate_enhanced_result(result, current_step, user_message):
+                if not self._validate_enhanced_result(result, current_step, user_message, user_context):
                     logger.error(f"❌ Validation failed for step: {current_step}")
                     return None
                 
@@ -835,7 +835,7 @@ Response: {{
                     return None
             
             # Validate for current step
-            if not self._validate_enhanced_result(result, current_step, user_message):
+            if not self._validate_enhanced_result(result, current_step, user_message, user_context):
                 logger.error(f"❌ Validation failed for step: {current_step}")
                 return None
             
@@ -885,7 +885,7 @@ Response: {{
             logger.warning(f"⚠️ Error fixing JSON format: {e}")
             return json_str
 
-    def _validate_enhanced_result(self, result: Dict, current_step: str, user_message: str) -> bool:
+    def _validate_enhanced_result(self, result: Dict, current_step: str, user_message: str, user_context: Dict = None) -> bool:
         """Validate enhanced AI result for current step"""
         action = result.get('action')
         extracted_data = result.get('extracted_data', {})
@@ -911,7 +911,7 @@ Response: {{
         validator = validators.get(current_step)
         if validator:
             # Always run step-specific validation, even for intelligent_suggestion
-            return validator(result, extracted_data, user_message)
+            return validator(result, extracted_data, user_message, user_context)
         
         # Accept intelligent suggestions and navigation actions if no step-specific validation
         if action in ['intelligent_suggestion', 'back_navigation', 'conversational_response']:
@@ -975,7 +975,7 @@ Response: {{
         logger.debug(f"DEBUG: _validate_language_step - Validation passed")
         return True
 
-    def _validate_category_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+    def _validate_category_step(self, result: Dict, extracted_data: Dict, user_message: str, user_context: Dict = None) -> bool:
         """Validate category selection step with two-button interface support"""
         action = result.get('action')
         valid_actions = ['category_selection', 'quick_order_selection', 'explore_menu_selection', 'intelligent_suggestion', 'show_menu', 'help_request', 'conversational_response']
@@ -986,15 +986,18 @@ Response: {{
         # Handle two-button interface selections
         user_message_lower = user_message.lower().strip()
         
-        # Handle button clicks
-        if user_message_lower in ['quick_order', 'الطلب السريع', '1', '١']:
+        # Get order mode from context
+        order_mode = user_context.get('order_mode') if user_context else None
+        
+        # Handle button clicks (only if not in explore mode)
+        if order_mode != 'explore' and user_message_lower in ['quick_order', 'الطلب السريع', '1', '١']:
             # Quick order selection
             result['action'] = 'quick_order_selection'
             result['understood_intent'] = "User wants to use quick order mode"
             result['extracted_data'] = extracted_data
             logger.info(f"🔧 Quick order selection detected: {user_message}")
             return True
-        elif user_message_lower in ['explore_menu', 'استكشاف القائمة', '2', '٢']:
+        elif order_mode != 'explore' and user_message_lower in ['explore_menu', 'استكشاف القائمة', '2', '٢']:
             # Explore menu selection
             result['action'] = 'explore_menu_selection'
             result['understood_intent'] = "User wants to explore the menu"

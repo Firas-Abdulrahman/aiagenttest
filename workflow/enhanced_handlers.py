@@ -154,6 +154,7 @@ class EnhancedMessageHandler:
             'selected_main_category': session.get('selected_main_category'),
             'selected_sub_category': session.get('selected_sub_category'),
             'selected_item': session.get('selected_item'),
+            'order_mode': session.get('order_mode'),  # Add order mode to context
             'order_history': [],
             'current_order_items': [],
             'available_categories': [],
