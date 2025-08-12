@@ -2633,7 +2633,6 @@ class EnhancedMessageHandler:
         
         # Get current order details
         current_order = self.db.get_current_order(phone_number)
-        order_details = self.db.get_order_details(phone_number)
         
         if not current_order or not current_order.get('items'):
             return self._create_response("لا توجد أصناف في الطلب. الرجاء المحاولة مرة أخرى.")
@@ -2649,9 +2648,9 @@ class EnhancedMessageHandler:
             for item in current_order['items']:
                 body_text += f"• {item['item_name_ar']} × {item['quantity']} - {item['subtotal']} دينار\n"
             
-            body_text += f"\nالخدمة: {order_details.get('service_type', 'غير محدد')}"
-            if order_details.get('location'):
-                body_text += f"\nالمكان: {order_details['location']}"
+            body_text += f"\nالخدمة: {current_order['details'].get('service_type', 'غير محدد')}"
+            if current_order['details'].get('location'):
+                body_text += f"\nالمكان: {current_order['details']['location']}"
             body_text += f"\nالسعر الإجمالي: {total_amount} دينار"
             
             footer_text = "اختر من الأزرار أدناه"
@@ -2679,9 +2678,9 @@ class EnhancedMessageHandler:
             for item in current_order['items']:
                 body_text += f"• {item['item_name_en']} × {item['quantity']} - {item['subtotal']} IQD\n"
             
-            body_text += f"\nService: {order_details.get('service_type', 'Not specified')}"
-            if order_details.get('location'):
-                body_text += f"\nLocation: {order_details['location']}"
+            body_text += f"\nService: {current_order['details'].get('service_type', 'Not specified')}"
+            if current_order['details'].get('location'):
+                body_text += f"\nLocation: {current_order['details']['location']}"
             body_text += f"\nTotal Amount: {total_amount} IQD"
             
             footer_text = "Select from buttons below"
