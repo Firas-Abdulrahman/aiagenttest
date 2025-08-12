@@ -151,10 +151,10 @@ class EnhancedMessageHandler:
             'current_step': current_step,
             'language': session.get('language_preference', 'arabic') if session else 'arabic',
             'customer_name': session.get('customer_name', 'Customer') if session else 'Customer',
-            'selected_main_category': session.get('selected_main_category'),
-            'selected_sub_category': session.get('selected_sub_category'),
-            'selected_item': session.get('selected_item'),
-            'order_mode': session.get('order_mode'),  # Add order mode to context
+            'selected_main_category': session.get('selected_main_category') if session else None,
+            'selected_sub_category': session.get('selected_sub_category') if session else None,
+            'selected_item': session.get('selected_item') if session else None,
+            'order_mode': session.get('order_mode') if session else None,  # Add order mode to context
             'order_history': [],
             'current_order_items': [],
             'available_categories': [],
@@ -970,7 +970,7 @@ class EnhancedMessageHandler:
         if yes_no == 'yes':
             if current_step == 'waiting_for_additional':
                 # Check if user is in explore mode
-                order_mode = session.get('order_mode')
+                order_mode = session.get('order_mode') if session else None
                 
                 if order_mode == 'explore':
                     # Continue with explore menu - show traditional categories
