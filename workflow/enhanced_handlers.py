@@ -1531,6 +1531,23 @@ class EnhancedMessageHandler:
         """Handle structured quick order input"""
         language = user_context.get('language', 'arabic')
         
+        # Check for confirmations first
+        text_lower = text.lower().strip()
+        confirmations = ['نعم', 'اي', 'yes', 'ok', 'حسنا', 'تمام']
+        
+        if any(confirmation in text_lower for confirmation in confirmations):
+            # User is confirming - show quick order interface again
+            if language == 'arabic':
+                response = "ممتاز! ما الذي تود طلبه اليوم؟\n\n"
+                response += "اكتب اسم المنتج المطلوب:\n"
+                response += "مثال: موهيتو ازرق"
+            else:
+                response = "Great! What would you like to order today?\n\n"
+                response += "Type the item name you want:\n"
+                response += "Example: 2 blue mojito"
+            
+            return self._create_response(response)
+        
         # Parse the input for quantity, item name, and optional table number
         # Example: "2 موهيتو ازرق للطاولة 5" or "3 قهوة"
         text = text.strip()
