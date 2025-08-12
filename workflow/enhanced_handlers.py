@@ -2253,32 +2253,58 @@ class EnhancedMessageHandler:
         """Show quantity selection buttons"""
         if language == 'arabic':
             header_text = "اختر الكمية"
-            body_text = f"كم {item_name} تريد؟"
+            body_text = f"كم {item_name} تريد؟\n\nاكتب رقم من 1 إلى 10 أو اختر من الأزرار أدناه"
             footer_text = ""
-            buttons = []
-            
-            for i in range(1, 11):
-                buttons.append({
+            buttons = [
+                {
                     "type": "reply",
                     "reply": {
-                        "id": f"quantity_{i}",
-                        "title": str(i)
+                        "id": "quantity_1",
+                        "title": "1"
                     }
-                })
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "quantity_2",
+                        "title": "2"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "quantity_3",
+                        "title": "3"
+                    }
+                }
+            ]
         else:
             header_text = "Select Quantity"
-            body_text = f"How many {item_name} do you want?"
+            body_text = f"How many {item_name} do you want?\n\nType a number from 1 to 10 or select from buttons below"
             footer_text = ""
-            buttons = []
-            
-            for i in range(1, 11):
-                buttons.append({
+            buttons = [
+                {
                     "type": "reply",
                     "reply": {
-                        "id": f"quantity_{i}",
-                        "title": str(i)
+                        "id": "quantity_1",
+                        "title": "1"
                     }
-                })
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "quantity_2",
+                        "title": "2"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "quantity_3",
+                        "title": "3"
+                    }
+                }
+            ]
         
         return self._create_interactive_response(header_text, body_text, footer_text, buttons)
     
