@@ -935,6 +935,14 @@ Response: {{
         action = result.get('action')
         valid_actions = ['quantity_selection', 'conversational_response']
         
+        # If user is typing an item name instead of quantity, guide them
+        if action == 'item_selection':
+            # Convert to conversational response to guide user
+            result['action'] = 'conversational_response'
+            result['response_message'] = "الرجاء اختيار الكمية من الأزرار المعروضة أعلاه، أو اكتب رقم من 1 إلى 10."
+            result['understood_intent'] = "User typed item name instead of quantity, need to guide them"
+            return True
+        
         if action not in valid_actions:
             return False
         return True

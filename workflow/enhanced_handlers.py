@@ -1378,7 +1378,30 @@ class EnhancedMessageHandler:
         elif current_step == 'waiting_for_quick_order':
             return self._handle_structured_quick_order(phone_number, text, session, user_context)
         elif current_step == 'waiting_for_quick_order_quantity':
-            return self._handle_quick_order_quantity(phone_number, {'quantity': 1}, session, user_context)
+            # Handle quantity selection from buttons or text input
+            user_message = user_context.get('original_user_message', '')
+            if user_message.startswith('quantity_'):
+                # Button click - extract quantity
+                try:
+                    quantity = int(user_message.split('_')[1])
+                    return self._handle_quick_order_quantity(phone_number, {'quantity': quantity}, session, user_context)
+                except (ValueError, IndexError):
+                    pass
+            
+            # Text input - try to extract quantity
+            try:
+                quantity = int(text.strip())
+                if 1 <= quantity <= 10:
+                    return self._handle_quick_order_quantity(phone_number, {'quantity': quantity}, session, user_context)
+            except ValueError:
+                pass
+            
+            # Invalid input - show quantity buttons again
+            quick_order_item = session.get('quick_order_item')
+            if quick_order_item:
+                return self._show_quantity_buttons(phone_number, user_context.get('language', 'arabic'), quick_order_item['item_name_ar'])
+            else:
+                return self._create_response("حدث خطأ. الرجاء المحاولة مرة أخرى.")
         elif current_step == 'waiting_for_quick_order_service':
             return self._handle_quick_order_service(phone_number, {'service_type': 'dine-in'}, session, user_context)
             
@@ -1523,14 +1546,14 @@ class EnhancedMessageHandler:
             self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_quantity', language, session.get('customer_name'), order_mode='quick')
             
             # Show quantity buttons
-            return self._show_quantity_buttons(phone_number, language, matched_item['name_ar'])
+            return self._show_quantity_buttons(phone_number, language, matched_item['item_name_ar'])
         else:
             # Item not found
             if language == 'arabic':
                 response = f"لم أتمكن من العثور على '{item_name}' في قائمتنا.\n\n"
                 response += "المنتجات المتاحة:\n"
                 for item in all_items[:5]:  # Show first 5 items as suggestions
-                    response += f"• {item['name_ar']} - {item['price']} دينار\n"
+                    response += f"• {item['item_name_ar']} - {item['price']} دينار\n"
                 response += "\nأو اختر 'استكشاف القائمة' للتصفح الكامل."
             else:
                 response = f"Could not find '{item_name}' in our menu.\n\n"
@@ -1623,14 +1646,14 @@ class EnhancedMessageHandler:
             self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_quantity', language, session.get('customer_name'), order_mode='quick')
             
             # Show quantity buttons
-            return self._show_quantity_buttons(phone_number, language, matched_item['name_ar'])
+            return self._show_quantity_buttons(phone_number, language, matched_item['item_name_ar'])
         else:
             # Item not found
             if language == 'arabic':
                 response = f"لم أتمكن من العثور على '{item_name}' في قائمتنا.\n\n"
                 response += "المنتجات المتاحة:\n"
                 for item in all_items[:5]:  # Show first 5 items as suggestions
-                    response += f"• {item['name_ar']} - {item['price']} دينار\n"
+                    response += f"• {item['item_name_ar']} - {item['price']} دينار\n"
                 response += "\nأو اختر 'استكشاف القائمة' للتصفح الكامل."
             else:
                 response = f"Could not find '{item_name}' in our menu.\n\n"
