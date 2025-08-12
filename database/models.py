@@ -16,6 +16,7 @@ class UserSession:
     selected_main_category: int = None
     selected_sub_category: int = None
     selected_item: int = None
+    order_mode: str = None
     conversation_context: str = None
     created_at: datetime = None
     updated_at: datetime = None

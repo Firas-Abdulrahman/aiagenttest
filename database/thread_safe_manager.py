@@ -147,6 +147,7 @@ class ThreadSafeDatabaseManager:
                 'selected_main_category': state.selected_main_category,
                 'selected_sub_category': state.selected_sub_category,
                 'selected_item': state.selected_item,
+                'order_mode': state.order_mode,
                 'conversation_context': json.dumps(state.conversation_context),
                 'created_at': state.created_at.isoformat(),
                 'updated_at': state.updated_at.isoformat()
@@ -158,7 +159,7 @@ class ThreadSafeDatabaseManager:
                 cursor = conn.execute("""
                     SELECT phone_number, current_step, language_preference, customer_name,
                            selected_main_category, selected_sub_category, selected_item,
-                           conversation_context, created_at, updated_at
+                           order_mode, conversation_context, created_at, updated_at
                     FROM user_sessions 
                     WHERE phone_number = ?
                 """, (phone_number,))
@@ -173,9 +174,10 @@ class ThreadSafeDatabaseManager:
                         'selected_main_category': row[4],
                         'selected_sub_category': row[5],
                         'selected_item': row[6],
-                        'conversation_context': row[7],
-                        'created_at': row[8],
-                        'updated_at': row[9]
+                        'order_mode': row[7],
+                        'conversation_context': row[8],
+                        'created_at': row[9],
+                        'updated_at': row[10]
                     }
 
                     # Update in-memory cache
@@ -187,7 +189,8 @@ class ThreadSafeDatabaseManager:
                         selected_main_category=row[4],
                         selected_sub_category=row[5],
                         selected_item=row[6],
-                        conversation_context=json.loads(row[7]) if row[7] else {}
+                        order_mode=row[7],
+                        conversation_context=json.loads(row[8]) if row[8] else {}
                     )
 
                     return session_data
