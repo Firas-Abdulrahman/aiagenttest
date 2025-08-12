@@ -297,7 +297,14 @@ class EnhancedMessageHandler:
         elif action == 'location_input':
             return self._handle_ai_location_input(phone_number, extracted_data, session, user_context)
         elif action == 'confirmation':
-            return self._handle_ai_confirmation(phone_number, extracted_data, session, user_context)
+            # Check for button clicks first
+            user_message = user_context.get('original_user_message', '')
+            if user_message == 'confirm_order':
+                return self._confirm_order(phone_number, session, user_context)
+            elif user_message == 'cancel_order':
+                return self._cancel_order(phone_number, session, user_context)
+            else:
+                return self._handle_ai_confirmation(phone_number, extracted_data, session, user_context)
         elif action == 'show_menu':
             return self._handle_ai_show_menu(phone_number, session, user_context)
         elif action == 'help_request':
@@ -1427,7 +1434,11 @@ class EnhancedMessageHandler:
             return self._handle_structured_location_input(phone_number, text, session, user_context)
             
         elif current_step == 'waiting_for_confirmation':
-            return self._handle_structured_confirmation(phone_number, text, session, user_context)
+            # Check if this is a quick order and show interactive confirmation
+            if session.get('order_mode') == 'quick':
+                return self._show_quick_order_confirmation(phone_number, session, user_context)
+            else:
+                return self._handle_structured_confirmation(phone_number, text, session, user_context)
             
         else:
             return self._create_response(self._get_fallback_message(current_step, language))
@@ -1650,7 +1661,7 @@ class EnhancedMessageHandler:
         else:
             # For delivery, go to confirmation
             self.db.create_or_update_session(phone_number, 'waiting_for_confirmation', language, session.get('customer_name'), order_mode='quick')
-            return self._handle_confirmation_step(phone_number, session, user_context)
+            return self._show_quick_order_confirmation(phone_number, session, user_context)
     
     def _handle_quick_order_item_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle quick order item selection with interactive buttons"""
@@ -2099,7 +2110,13 @@ class EnhancedMessageHandler:
         
         text_lower = text.lower().strip()
         
-        # Check for confirmation
+        # Check for button clicks first
+        if text == 'confirm_order':
+            return self._confirm_order(phone_number, session, user_context)
+        elif text == 'cancel_order':
+            return self._cancel_order(phone_number, session, user_context)
+        
+        # Check for text confirmation
         if any(word in text_lower for word in ['نعم', 'yes', '1', 'تأكيد', 'confirm']):
             return self._confirm_order(phone_number, session, user_context)
         # Check for cancellation
@@ -2599,6 +2616,83 @@ class EnhancedMessageHandler:
             response += "Do you want to confirm this order?\n\n1. Yes\n2. No"
         
         return self._create_response(response)
+
+    def _show_quick_order_confirmation(self, phone_number: str, session: Dict, user_context: Dict) -> Dict:
+        """Show quick order confirmation with interactive buttons"""
+        language = user_context.get('language', 'arabic')
+        
+        # Get current order details
+        order_items = self.db.get_user_order_items(phone_number)
+        order_details = self.db.get_order_details(phone_number)
+        
+        if not order_items:
+            return self._create_response("لا توجد أصناف في الطلب. الرجاء المحاولة مرة أخرى.")
+        
+        # Calculate total
+        total_amount = sum(item['subtotal'] for item in order_items)
+        
+        if language == 'arabic':
+            header_text = "تأكيد الطلب السريع"
+            body_text = "إليك ملخص طلبك:\n\n"
+            body_text += "الأصناف:\n"
+            
+            for item in order_items:
+                body_text += f"• {item['item_name_ar']} × {item['quantity']} - {item['subtotal']} دينار\n"
+            
+            body_text += f"\nالخدمة: {order_details.get('service_type', 'غير محدد')}"
+            if order_details.get('location'):
+                body_text += f"\nالمكان: {order_details['location']}"
+            body_text += f"\nالسعر الإجمالي: {total_amount} دينار"
+            
+            footer_text = "اختر من الأزرار أدناه"
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "confirm_order",
+                        "title": "تأكيد الطلب"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "cancel_order",
+                        "title": "إلغاء الطلب"
+                    }
+                }
+            ]
+        else:
+            header_text = "Quick Order Confirmation"
+            body_text = "Here's your order summary:\n\n"
+            body_text += "Items:\n"
+            
+            for item in order_items:
+                body_text += f"• {item['item_name_en']} × {item['quantity']} - {item['subtotal']} IQD\n"
+            
+            body_text += f"\nService: {order_details.get('service_type', 'Not specified')}"
+            if order_details.get('location'):
+                body_text += f"\nLocation: {order_details['location']}"
+            body_text += f"\nTotal Amount: {total_amount} IQD"
+            
+            footer_text = "Select from buttons below"
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "confirm_order",
+                        "title": "Confirm Order"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "cancel_order",
+                        "title": "Cancel Order"
+                    }
+                }
+            ]
+        
+        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
 
     def _confirm_order(self, phone_number: str, session: Dict, user_context: Dict) -> Dict:
         """Confirm order"""
