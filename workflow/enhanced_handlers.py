@@ -1547,14 +1547,18 @@ class EnhancedMessageHandler:
         matched_item = self._match_item_by_name(item_name, all_items, language)
         
         if matched_item:
-            # Store the matched item in session for quantity selection
+            # Store the matched item in session for quantity selection (as JSON string)
+            import json
+            quick_order_item_json = json.dumps(matched_item, ensure_ascii=False)
+            
+            # Update session to quantity selection step with item data
+            self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_quantity', language, session.get('customer_name'), order_mode='quick', quick_order_item=quick_order_item_json)
+            
+            # Also update the in-memory session to ensure consistency
             session['quick_order_item'] = matched_item
             session['quick_order_quantity'] = quantity
             if table_number:
                 session['quick_order_table'] = table_number
-            
-            # Update session to quantity selection step
-            self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_quantity', language, session.get('customer_name'), order_mode='quick')
             
             # Show quantity buttons
             return self._show_quantity_buttons(phone_number, language, matched_item['item_name_ar'])
