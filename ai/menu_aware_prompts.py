@@ -197,7 +197,7 @@ RESPOND WITH CLEAN JSON (no extra text):
 {{
     "understood_intent": "Clear description of what the user wants",
     "confidence": "high/medium/low",
-    "action": "intelligent_suggestion/language_selection/category_selection/sub_category_selection/item_selection/multi_item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu",
+    "action": "intelligent_suggestion/language_selection/category_selection/sub_category_selection/item_selection/multi_item_selection/quick_order_selection/explore_menu_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu",
     "extracted_data": {{
         "language": "arabic/english/null",
         "suggested_main_category": "number if you can intelligently suggest main category",
@@ -282,6 +282,46 @@ Response: {{
     }},
     "clarification_needed": false,
     "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!"
+}}
+
+User: "1" (at waiting_for_category step with two-button interface)
+Response: {{
+    "understood_intent": "User wants to use quick order mode",
+    "confidence": "high",
+    "action": "quick_order_selection",
+    "extracted_data": {{
+        "language": "arabic",
+        "suggested_main_category": null,
+        "suggested_sub_category": null,
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! سنبدأ بالطلب السريع. اكتب اسم المنتج الذي تريده أو اختر من القائمة أدناه."
+}}
+
+User: "2" (at waiting_for_category step with two-button interface)
+Response: {{
+    "understood_intent": "User wants to explore the menu",
+    "confidence": "high",
+    "action": "explore_menu_selection",
+    "extracted_data": {{
+        "language": "arabic",
+        "suggested_main_category": null,
+        "suggested_sub_category": null,
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! سنستكشف القائمة معاً. اختر الفئة التي تريد استكشافها أولاً."
 }}
 
 User: "اريد واحد موهيتو رمان وواحد موهيتو خوخ"

@@ -201,7 +201,8 @@ class ThreadSafeDatabaseManager:
                                  language: str = None, customer_name: str = None,
                                  selected_main_category: int = None,
                                  selected_sub_category: int = None,
-                                 selected_item: int = None) -> bool:
+                                 selected_item: int = None,
+                                 order_mode: str = None) -> bool:
         """Create or update user session with thread safety"""
 
         # Use the session manager's user lock
@@ -215,7 +216,8 @@ class ThreadSafeDatabaseManager:
                     customer_name=customer_name,
                     selected_main_category=selected_main_category,
                     selected_sub_category=selected_sub_category,
-                    selected_item=selected_item
+                    selected_item=selected_item,
+                    order_mode=order_mode
                 )
 
                 # Persist to database
@@ -224,10 +226,10 @@ class ThreadSafeDatabaseManager:
                     conn.execute("""
                         INSERT OR REPLACE INTO user_sessions 
                         (phone_number, current_step, language_preference, customer_name, 
-                         selected_main_category, selected_sub_category, selected_item, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                         selected_main_category, selected_sub_category, selected_item, order_mode, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                     """, (phone_number, current_step, language, customer_name,
-                          selected_main_category, selected_sub_category, selected_item))
+                          selected_main_category, selected_sub_category, selected_item, order_mode))
 
                     conn.commit()
 

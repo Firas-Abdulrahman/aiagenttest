@@ -132,6 +132,7 @@ class DatabaseSchema:
                     selected_main_category INTEGER,
                     selected_sub_category INTEGER,
                     selected_item INTEGER,
+                    order_mode TEXT,
                     conversation_context TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

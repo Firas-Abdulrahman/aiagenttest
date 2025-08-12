@@ -902,7 +902,8 @@ Response: {{
             'waiting_for_service': self._validate_service_step,
             'waiting_for_location': self._validate_location_step,
             'waiting_for_confirmation': self._validate_confirmation_step,
-            'waiting_for_fresh_start_choice': self._validate_fresh_start_choice_step
+            'waiting_for_fresh_start_choice': self._validate_fresh_start_choice_step,
+            'waiting_for_quick_order': self._validate_quick_order_step
         }
         
         validator = validators.get(current_step)
@@ -914,6 +915,17 @@ Response: {{
         if action in ['intelligent_suggestion', 'back_navigation', 'conversational_response']:
             return True
         
+        return True
+
+    def _validate_quick_order_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+        """Validate quick order step"""
+        action = result.get('action')
+        valid_actions = ['item_selection', 'multi_item_selection', 'service_selection', 'location_input', 'intelligent_suggestion', 'conversational_response']
+        
+        if action not in valid_actions:
+            return False
+        
+        # For quick order, we accept any item selection or service-related actions
         return True
 
     def _validate_language_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
@@ -936,20 +948,37 @@ Response: {{
         return True
 
     def _validate_category_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
-        """Validate category selection step"""
+        """Validate category selection step with two-button interface support"""
         action = result.get('action')
-        valid_actions = ['category_selection', 'intelligent_suggestion', 'show_menu', 'help_request', 'conversational_response']
+        valid_actions = ['category_selection', 'quick_order_selection', 'explore_menu_selection', 'intelligent_suggestion', 'show_menu', 'help_request', 'conversational_response']
         
         if action not in valid_actions:
             return False
         
+        # Handle two-button interface selections
+        user_message_lower = user_message.lower().strip()
+        if user_message_lower in ['1', '١']:
+            # Quick order selection
+            result['action'] = 'quick_order_selection'
+            result['understood_intent'] = "User wants to use quick order mode"
+            result['extracted_data'] = extracted_data
+            logger.info(f"🔧 Quick order selection detected: {user_message}")
+            return True
+        elif user_message_lower in ['2', '٢']:
+            # Explore menu selection
+            result['action'] = 'explore_menu_selection'
+            result['understood_intent'] = "User wants to explore the menu"
+            result['extracted_data'] = extracted_data
+            logger.info(f"🔧 Explore menu selection detected: {user_message}")
+            return True
+        
+        # Handle traditional category selection
         if action == 'category_selection':
             category_id = extracted_data.get('category_id')
             if category_id and (category_id < 1 or category_id > 3):
                 return False
         
-        # Extra validation for numeric inputs at category step
-        user_message_lower = user_message.lower().strip()
+        # Extra validation for numeric inputs at category step (for explore mode)
         if user_message_lower in ['1', '2', '3', '4', '5', '6', '7', '١', '٢', '٣', '٤', '٥', '٦', '٧']:
             # Force correct interpretation for category step
             if user_message_lower in ['1', '١']:

@@ -6,7 +6,7 @@ Provides natural language understanding while maintaining structured workflow
 
 import logging
 import time
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -264,6 +264,12 @@ class EnhancedMessageHandler:
         elif action == 'multi_item_selection':
             # Handle multiple items in one message
             return self._handle_multi_item_selection(phone_number, extracted_data, session, user_context)
+        elif action == 'quick_order_selection':
+            # Handle quick order mode selection
+            return self._handle_quick_order_selection(phone_number, extracted_data, session, user_context)
+        elif action == 'explore_menu_selection':
+            # Handle explore menu mode selection
+            return self._handle_explore_menu_selection(phone_number, extracted_data, session, user_context)
         elif action == 'quantity_selection':
             return self._handle_ai_quantity_selection(phone_number, extracted_data, session, user_context)
         elif action == 'yes_no':
@@ -371,6 +377,34 @@ class EnhancedMessageHandler:
         )
         
         return self._create_response(response)
+
+    def _handle_quick_order_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
+        """Handle quick order mode selection"""
+        language = user_context.get('language', 'arabic')
+        
+        # Set quick order mode in session
+        self.db.create_or_update_session(
+            phone_number, 'waiting_for_quick_order', language,
+            session.get('customer_name'),
+            order_mode='quick'
+        )
+        
+        # Show quick order interface
+        return self._show_quick_order_interface(phone_number, language)
+    
+    def _handle_explore_menu_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
+        """Handle explore menu mode selection"""
+        language = user_context.get('language', 'arabic')
+        
+        # Set explore menu mode in session
+        self.db.create_or_update_session(
+            phone_number, 'waiting_for_category', language,
+            session.get('customer_name'),
+            order_mode='explore'
+        )
+        
+        # Show traditional category selection
+        return self._show_traditional_categories(phone_number, language)
 
     def _match_item_from_context(self, item_name: str, user_context: Dict) -> Optional[Dict]:
         """Match item by name using context information"""
@@ -1317,6 +1351,9 @@ class EnhancedMessageHandler:
         elif current_step == 'waiting_for_category':
             return self._handle_structured_category_selection(phone_number, text, session, user_context)
             
+        elif current_step == 'waiting_for_quick_order':
+            return self._handle_structured_quick_order(phone_number, text, session, user_context)
+            
         elif current_step == 'waiting_for_sub_category':
             return self._handle_structured_sub_category_selection(phone_number, text, session, user_context)
             
@@ -1414,6 +1451,99 @@ class EnhancedMessageHandler:
                 return self._show_sub_categories(phone_number, matched_category, language)
             else:
                 return self._create_response("الرجاء اختيار رقم من القائمة أو كتابة اسم الفئة")
+
+    def _handle_structured_quick_order(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle quick order with structured logic"""
+        language = user_context.get('language', 'arabic')
+        
+        # Try to parse the quick order input
+        # Format: "quantity item_name" or "item_name" or "quantity item_name for table X"
+        import re
+        
+        # First, try to extract table/location info
+        table_match = None
+        if language == 'arabic':
+            table_match = re.search(r'للطاولة\s*(\d+)', text)
+        else:
+            table_match = re.search(r'for\s+table\s+(\d+)', text, re.IGNORECASE)
+        
+        # Remove table info from text for item parsing
+        clean_text = text
+        if table_match:
+            clean_text = re.sub(r'للطاولة\s*\d+', '', text).strip()
+            clean_text = re.sub(r'for\s+table\s+\d+', '', clean_text, flags=re.IGNORECASE).strip()
+        
+        # Try to extract quantity and item name
+        quantity = 1
+        item_name = clean_text
+        
+        # Look for numeric quantities at the beginning
+        quantity_match = re.match(r'^(\d+)\s+(.+)', clean_text)
+        if quantity_match:
+            quantity = int(quantity_match.group(1))
+            item_name = quantity_match.group(2).strip()
+        
+        # Look for word quantities
+        word_quantities = {
+            'arabic': {'واحد': 1, 'اثنين': 2, 'ثلاثة': 3, 'اربعة': 4, 'خمسة': 5},
+            'english': {'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5}
+        }
+        
+        for word, num in word_quantities[language].items():
+            if item_name.lower().startswith(word + ' '):
+                quantity = num
+                item_name = item_name[len(word):].strip()
+                break
+        
+        # Search for the item across all categories
+        all_items = self._get_all_items()
+        matched_item = self._match_item_by_name(item_name, all_items, language)
+        
+        if matched_item:
+            # Add item to order
+            self.db.add_item_to_order(phone_number, matched_item['id'], quantity)
+            
+            # Update session to waiting for additional items
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_additional', language,
+                session.get('customer_name'),
+                order_mode='quick'
+            )
+            
+            # Build response
+            if language == 'arabic':
+                response = f"تم إضافة {quantity} × {matched_item['item_name_ar']} إلى طلبك\n"
+                response += f"السعر: {matched_item['price']} دينار\n\n"
+                if table_match:
+                    response += f"للطاولة رقم {table_match.group(1)}\n\n"
+                response += "هل تريد إضافة المزيد من الأصناف؟\n\n1. نعم\n2. لا"
+            else:
+                response = f"Added {quantity} × {matched_item['item_name_en']} to your order\n"
+                response += f"Price: {matched_item['price']} IQD\n\n"
+                if table_match:
+                    response += f"For table {table_match.group(1)}\n\n"
+                response += "Do you want to add more items?\n\n1. Yes\n2. No"
+            
+            return self._create_response(response)
+        else:
+            # Item not found
+            if language == 'arabic':
+                return self._create_response(f"عذراً، لم أجد '{item_name}' في قائمتنا. الرجاء المحاولة مرة أخرى أو اختر من القائمة الشائعة.")
+            else:
+                return self._create_response(f"Sorry, I couldn't find '{item_name}' in our menu. Please try again or choose from the popular items.")
+
+    def _get_all_items(self) -> List[Dict]:
+        """Get all items from all categories for quick order search"""
+        all_items = []
+        main_categories = self.db.get_main_categories()
+        
+        for category in main_categories:
+            sub_categories = self.db.get_sub_categories(category['id'])
+            for sub_category in sub_categories:
+                items = self.db.get_sub_category_items(sub_category['id'])
+                all_items.extend(items)
+        
+        return all_items
 
     def _handle_structured_sub_category_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
         """Handle sub-category selection with enhanced number extraction"""
@@ -1910,21 +2040,127 @@ class EnhancedMessageHandler:
 
     # Helper methods for UI generation
     def _show_main_categories(self, phone_number: str, language: str) -> Dict:
-        """Show main categories"""
+        """Show main categories with two-button interface"""
         categories = self.db.get_main_categories()
         
         if language == 'arabic':
-            message = "ممتاز! اختر من القائمة الرئيسية:\n\n"
-            for i, cat in enumerate(categories, 1):
-                message += f"{i}. {cat['name_ar']}\n"
-            message += "\nالرجاء اختيار الفئة المطلوبة\n\n🔙 اكتب 'رجوع' للعودة للخطوة السابقة"
+            message = "أهلاً وسهلاً! كيف تريد أن تطلب؟\n\n"
+            message += "🚀 الطلب السريع\n"
+            message += "للعملاء المعتادين - طلب سريع ومباشر\n\n"
+            message += "🗺️ استكشاف القائمة\n"
+            message += "للعملاء الجدد - جولة إرشادية شاملة\n\n"
+            message += "اختر نوع التجربة المفضلة لديك:\n\n"
+            message += "1. 🚀 الطلب السريع\n"
+            message += "2. 🗺️ استكشاف القائمة\n\n"
+            message += "🔙 اكتب 'رجوع' للعودة للخطوة السابقة"
         else:
-            message = "Great! Choose from the main menu:\n\n"
-            for i, cat in enumerate(categories, 1):
-                message += f"{i}. {cat['name_en']}\n"
-            message += "\nPlease select the required category\n\n🔙 Type 'back' to go to previous step"
+            message = "Welcome! How would you like to order?\n\n"
+            message += "🚀 Quick Order\n"
+            message += "For regular customers - fast and direct ordering\n\n"
+            message += "🗺️ Explore Menu\n"
+            message += "For new customers - comprehensive guided tour\n\n"
+            message += "Choose your preferred experience:\n\n"
+            message += "1. 🚀 Quick Order\n"
+            message += "2. 🗺️ Explore Menu\n\n"
+            message += "🔙 Type 'back' to go to previous step"
         
         return self._create_response(message)
+
+    def _show_quick_order_interface(self, phone_number: str, language: str) -> Dict:
+        """Show quick order interface"""
+        # Get popular items and recent orders
+        popular_items = self._get_popular_items()
+        recent_orders = self._get_recent_orders(phone_number)
+        
+        if language == 'arabic':
+            message = "🚀 الطلب السريع\n\n"
+            message += "🔍 اكتب اسم المنتج أو استخدم الأزرار أدناه:\n\n"
+            
+            if recent_orders:
+                message += "📋 طلباتك الأخيرة:\n"
+                for order in recent_orders[:3]:
+                    message += f"• {order}\n"
+                message += "\n"
+            
+            if popular_items:
+                message += "⭐ المنتجات الشائعة:\n"
+                for item in popular_items[:5]:
+                    message += f"• {item['name_ar']} - {item['price']} دينار\n"
+                message += "\n"
+            
+            message += "💡 أمثلة:\n"
+            message += "• '2 موهيتو ازرق'\n"
+            message += "• 'فرابتشينو شوكولاتة'\n"
+            message += "• '3 قهوة للطاولة 5'\n\n"
+            
+            message += "🔙 اكتب 'رجوع' للعودة"
+        else:
+            message = "🚀 Quick Order\n\n"
+            message += "🔍 Type item name or use buttons below:\n\n"
+            
+            if recent_orders:
+                message += "📋 Your recent orders:\n"
+                for order in recent_orders[:3]:
+                    message += f"• {order}\n"
+                message += "\n"
+            
+            if popular_items:
+                message += "⭐ Popular items:\n"
+                for item in popular_items[:5]:
+                    message += f"• {item['name_en']} - {item['price']} IQD\n"
+                message += "\n"
+            
+            message += "💡 Examples:\n"
+            message += "• '2 blue mojito'\n"
+            message += "• 'chocolate frappuccino'\n"
+            message += "• '3 coffee for table 5'\n\n"
+            
+            message += "🔙 Type 'back' to return"
+        
+        return self._create_response(message)
+
+    def _show_traditional_categories(self, phone_number: str, language: str) -> Dict:
+        """Show traditional category selection for explore mode"""
+        categories = self.db.get_main_categories()
+        
+        if language == 'arabic':
+            message = "🗺️ استكشاف القائمة\n\n"
+            message += "دعنا نستكشف قائمتنا معاً! اختر الفئة التي تريد استكشافها:\n\n"
+            for i, cat in enumerate(categories, 1):
+                message += f"{i}. {cat['name_ar']}\n"
+            message += "\nسنقدم لك شرحاً مفصلاً لكل فئة ومنتج\n\n"
+            message += "🔙 اكتب 'رجوع' للعودة للخطوة السابقة"
+        else:
+            message = "🗺️ Explore Menu\n\n"
+            message += "Let's explore our menu together! Choose the category you want to explore:\n\n"
+            for i, cat in enumerate(categories, 1):
+                message += f"{i}. {cat['name_en']}\n"
+            message += "\nWe'll provide detailed explanations for each category and item\n\n"
+            message += "🔙 Type 'back' to go to previous step"
+        
+        return self._create_response(message)
+
+    def _get_popular_items(self) -> List[Dict]:
+        """Get popular items for quick order suggestions"""
+        # This would typically come from analytics/order history
+        # For now, return some hardcoded popular items
+        return [
+            {'name_ar': 'موهيتو ازرق', 'name_en': 'Blue Mojito', 'price': 5000},
+            {'name_ar': 'فرابتشينو شوكولاتة', 'name_en': 'Chocolate Frappuccino', 'price': 5000},
+            {'name_ar': 'لاتيه فانيلا', 'name_en': 'Vanilla Latte', 'price': 4000},
+            {'name_ar': 'ايس كوفي', 'name_en': 'Iced Coffee', 'price': 3000},
+            {'name_ar': 'موهيتو خوخ', 'name_en': 'Peach Mojito', 'price': 5000}
+        ]
+
+    def _get_recent_orders(self, phone_number: str) -> List[str]:
+        """Get recent orders for quick reorder suggestions"""
+        # This would typically come from order history
+        # For now, return some example orders
+        return [
+            "2 موهيتو ازرق",
+            "1 فرابتشينو شوكولاتة",
+            "3 ايس كوفي"
+        ]
 
     def _show_sub_categories(self, phone_number: str, main_category, language: str) -> Dict:
         """Show sub-categories for selected main category"""
