@@ -969,12 +969,24 @@ class EnhancedMessageHandler:
 
         if yes_no == 'yes':
             if current_step == 'waiting_for_additional':
-                # Show main categories again
-                self.db.create_or_update_session(
-                    phone_number, 'waiting_for_category', language,
-                    session.get('customer_name') if session else None
-                )
-                return self._show_main_categories(phone_number, language)
+                # Check if user is in explore mode
+                order_mode = session.get('order_mode')
+                
+                if order_mode == 'explore':
+                    # Continue with explore menu - show traditional categories
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_category', language,
+                        session.get('customer_name') if session else None,
+                        order_mode='explore'  # Maintain explore mode
+                    )
+                    return self._show_traditional_categories(phone_number, language)
+                else:
+                    # Show two-button interface for new orders
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_category', language,
+                        session.get('customer_name') if session else None
+                    )
+                    return self._show_main_categories(phone_number, language)
             
             elif current_step == 'waiting_for_confirmation':
                 # Confirm order
