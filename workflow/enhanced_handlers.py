@@ -238,6 +238,10 @@ class EnhancedMessageHandler:
             # Handle sub-category selection (e.g., user asks for "موهيتو" sub-category)
             return self._handle_sub_category_selection(phone_number, extracted_data, session, user_context)
         elif action == 'item_selection':
+            # Check if we're in quick order mode
+            if session.get('order_mode') == 'quick':
+                return self._handle_quick_order_item_selection(phone_number, extracted_data, session, user_context)
+            
             # Check if we're at the right step for item selection
             current_step = user_context.get('current_step')
             if current_step == 'waiting_for_sub_category':
@@ -1579,6 +1583,49 @@ class EnhancedMessageHandler:
             # For delivery, go to confirmation
             self.db.create_or_update_session(phone_number, 'waiting_for_confirmation', language, session.get('customer_name'), order_mode='quick')
             return self._handle_confirmation_step(phone_number, session, user_context)
+    
+    def _handle_quick_order_item_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
+        """Handle quick order item selection with interactive buttons"""
+        language = user_context.get('language', 'arabic')
+        
+        # Get the item name from AI extraction
+        item_name = extracted_data.get('item_name', '')
+        if not item_name:
+            # Fallback: get from original message
+            item_name = user_context.get('original_user_message', '').strip()
+        
+        if not item_name:
+            return self._create_response("لم أفهم المنتج المطلوب. الرجاء المحاولة مرة أخرى.")
+        
+        # Search for the item across all categories
+        all_items = self._get_all_items()
+        matched_item = self._match_item_by_name(item_name, all_items, language)
+        
+        if matched_item:
+            # Store the matched item in session for quantity selection
+            session['quick_order_item'] = matched_item
+            
+            # Update session to quantity selection step
+            self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_quantity', language, session.get('customer_name'), order_mode='quick')
+            
+            # Show quantity buttons
+            return self._show_quantity_buttons(phone_number, language, matched_item['name_ar'])
+        else:
+            # Item not found
+            if language == 'arabic':
+                response = f"لم أتمكن من العثور على '{item_name}' في قائمتنا.\n\n"
+                response += "المنتجات المتاحة:\n"
+                for item in all_items[:5]:  # Show first 5 items as suggestions
+                    response += f"• {item['name_ar']} - {item['price']} دينار\n"
+                response += "\nأو اختر 'استكشاف القائمة' للتصفح الكامل."
+            else:
+                response = f"Could not find '{item_name}' in our menu.\n\n"
+                response += "Available items:\n"
+                for item in all_items[:5]:  # Show first 5 items as suggestions
+                    response += f"• {item['name_en']} - {item['price']} IQD\n"
+                response += "\nOr choose 'Explore Menu' for full browsing."
+            
+            return self._create_response(response)
 
     def _get_all_items(self) -> List[Dict]:
         """Get all items from all categories for quick order search"""
