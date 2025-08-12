@@ -919,7 +919,7 @@ Response: {{
         
         return True
 
-    def _validate_quick_order_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+    def _validate_quick_order_step(self, result: Dict, extracted_data: Dict, user_message: str, user_context: Dict = None) -> bool:
         """Validate quick order step"""
         action = result.get('action')
         valid_actions = ['item_selection', 'multi_item_selection', 'service_selection', 'location_input', 'intelligent_suggestion', 'conversational_response']
@@ -930,7 +930,7 @@ Response: {{
         # For quick order, we accept any item selection or service-related actions
         return True
     
-    def _validate_quick_order_quantity_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+    def _validate_quick_order_quantity_step(self, result: Dict, extracted_data: Dict, user_message: str, user_context: Dict = None) -> bool:
         """Validate quick order quantity step"""
         action = result.get('action')
         valid_actions = ['quantity_selection', 'conversational_response']
@@ -947,7 +947,7 @@ Response: {{
             return False
         return True
     
-    def _validate_quick_order_service_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+    def _validate_quick_order_service_step(self, result: Dict, extracted_data: Dict, user_message: str, user_context: Dict = None) -> bool:
         """Validate quick order service step"""
         action = result.get('action')
         valid_actions = ['service_selection', 'conversational_response']
@@ -956,7 +956,7 @@ Response: {{
             return False
         return True
 
-    def _validate_language_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+    def _validate_language_step(self, result: Dict, extracted_data: Dict, user_message: str, user_context: Dict = None) -> bool:
         """Validate language selection step"""
         action = result.get('action')
         logger.debug(f"DEBUG: _validate_language_step - action: {action}, extracted_data: {extracted_data}")
@@ -1033,7 +1033,7 @@ Response: {{
         
         return True
 
-    def _validate_sub_category_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+    def _validate_sub_category_step(self, result: Dict, extracted_data: Dict, user_message: str, user_context: Dict = None) -> bool:
         """Validate sub-category selection step"""
         action = result.get('action')
         # Accept explicit sub_category_selection in addition to others
@@ -1044,7 +1044,7 @@ Response: {{
 
         return True
 
-    def _validate_item_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+    def _validate_item_step(self, result: Dict, extracted_data: Dict, user_message: str, user_context: Dict = None) -> bool:
         """Validate item selection step with multi-item support"""
         action = result.get('action')
         valid_actions = ['item_selection', 'multi_item_selection', 'category_selection', 'intelligent_suggestion', 'conversational_response']
@@ -1129,7 +1129,7 @@ Response: {{
         
         return items
 
-    def _validate_quantity_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+    def _validate_quantity_step(self, result: Dict, extracted_data: Dict, user_message: str, user_context: Dict = None) -> bool:
         """Validate quantity selection step with enhanced flexibility"""
         action = result.get('action')
         
@@ -1183,7 +1183,7 @@ Response: {{
         
         return False
 
-    def _validate_additional_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+    def _validate_additional_step(self, result: Dict, extracted_data: Dict, user_message: str, user_context: Dict = None) -> bool:
         """Validate additional items step"""
         action = result.get('action')
         
@@ -1214,7 +1214,7 @@ Response: {{
         
         return True
 
-    def _validate_service_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+    def _validate_service_step(self, result: Dict, extracted_data: Dict, user_message: str, user_context: Dict = None) -> bool:
         """Validate service selection step"""
         action = result.get('action')
         
@@ -1250,7 +1250,7 @@ Response: {{
         
         return True
 
-    def _validate_location_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+    def _validate_location_step(self, result: Dict, extracted_data: Dict, user_message: str, user_context: Dict = None) -> bool:
         """Validate location input step with enhanced table number validation"""
         action = result.get('action')
         
@@ -1299,7 +1299,7 @@ Response: {{
         
         return True
 
-    def _validate_confirmation_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+    def _validate_confirmation_step(self, result: Dict, extracted_data: Dict, user_message: str, user_context: Dict = None) -> bool:
         """Validate confirmation step"""
         action = result.get('action')
         
@@ -1313,7 +1313,7 @@ Response: {{
         
         return True
 
-    def _validate_fresh_start_choice_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+    def _validate_fresh_start_choice_step(self, result: Dict, extracted_data: Dict, user_message: str, user_context: Dict = None) -> bool:
         """Validate fresh start choice step"""
         action = result.get('action')
         
