@@ -1572,12 +1572,12 @@ class EnhancedMessageHandler:
         quick_order_item = session.get('quick_order_item')
         logger.info(f"🔍 Debug: quick_order_item from session: {quick_order_item}")
         
-        # If not in memory, try to get from database (JSON string)
-        if not quick_order_item and session.get('quick_order_item'):
+        # Parse JSON string to dictionary if needed
+        if isinstance(quick_order_item, str):
             import json
             try:
-                quick_order_item = json.loads(session['quick_order_item'])
-                logger.info(f"✅ Retrieved quick_order_item from JSON: {quick_order_item}")
+                quick_order_item = json.loads(quick_order_item)
+                logger.info(f"✅ Parsed quick_order_item from JSON string: {quick_order_item}")
             except (json.JSONDecodeError, TypeError) as e:
                 logger.error(f"❌ Error parsing quick_order_item JSON: {e}")
                 quick_order_item = None
