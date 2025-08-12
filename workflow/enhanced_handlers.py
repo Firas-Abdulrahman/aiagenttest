@@ -968,7 +968,20 @@ class EnhancedMessageHandler:
         current_step = user_context.get('current_step')
 
         if yes_no == 'yes':
-            if current_step == 'waiting_for_additional':
+            if current_step == 'waiting_for_quick_order':
+                # User is confirming in quick order mode - show quick order interface again
+                if language == 'arabic':
+                    response = "ممتاز! ما الذي تود طلبه اليوم؟\n\n"
+                    response += "اكتب اسم المنتج المطلوب:\n"
+                    response += "مثال: موهيتو ازرق"
+                else:
+                    response = "Great! What would you like to order today?\n\n"
+                    response += "Type the item name you want:\n"
+                    response += "Example: blue mojito"
+                
+                return self._create_response(response)
+            
+            elif current_step == 'waiting_for_additional':
                 # Check if user is in explore mode
                 order_mode = session.get('order_mode') if session else None
                 
