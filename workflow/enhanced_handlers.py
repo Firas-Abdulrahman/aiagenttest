@@ -224,6 +224,10 @@ class EnhancedMessageHandler:
         current_step = user_context.get('current_step')
 
         logger.info(f"🎯 AI Action: {action} at step {current_step}")
+        
+        # Refresh session from database to get latest state
+        session = self.db.get_user_session(phone_number)
+        logger.info(f"🔍 Refreshed session: order_mode={session.get('order_mode') if session else 'None'}")
 
         # Handle intelligent suggestions (items/categories) that can work across steps
         if action == 'intelligent_suggestion':
@@ -239,8 +243,12 @@ class EnhancedMessageHandler:
             return self._handle_sub_category_selection(phone_number, extracted_data, session, user_context)
         elif action == 'item_selection':
             # Check if we're in quick order mode
+            logger.info(f"🔍 Debug: order_mode={session.get('order_mode')}, current_step={user_context.get('current_step')}")
             if session.get('order_mode') == 'quick':
+                logger.info(f"✅ Quick order mode detected, using interactive button flow")
                 return self._handle_quick_order_item_selection(phone_number, extracted_data, session, user_context)
+            else:
+                logger.info(f"⚠️ Not in quick order mode, using traditional flow")
             
             # Check if we're at the right step for item selection
             current_step = user_context.get('current_step')
@@ -398,6 +406,12 @@ class EnhancedMessageHandler:
             session.get('customer_name'),
             order_mode='quick'
         )
+        
+        # Update the session object in memory
+        session['order_mode'] = 'quick'
+        session['current_step'] = 'waiting_for_quick_order'
+        
+        logger.info(f"✅ Quick order mode set: order_mode={session.get('order_mode')}, current_step={session.get('current_step')}")
         
         # Show quick order interface
         return self._show_quick_order_interface(phone_number, language)
