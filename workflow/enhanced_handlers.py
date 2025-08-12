@@ -291,8 +291,19 @@ class EnhancedMessageHandler:
         multi_items = extracted_data.get('multi_items', [])
         language = user_context.get('language', 'arabic')
         
+        # If AI didn't extract multi_items but we have the action, try to extract from the original message
         if not multi_items:
-            logger.warning("⚠️ No multi-items found in extracted data")
+            logger.info("🔧 AI didn't extract multi_items, attempting to extract from original message")
+            original_message = user_context.get('original_user_message', '')
+            if original_message:
+                # Use the enhanced processor's extraction method
+                from ai.enhanced_processor import EnhancedAIProcessor
+                temp_processor = EnhancedAIProcessor()
+                multi_items = temp_processor._extract_multiple_items(original_message)
+                logger.info(f"🔧 Extracted {len(multi_items)} items from original message: {multi_items}")
+        
+        if not multi_items:
+            logger.warning("⚠️ No multi-items found in extracted data or original message")
             return self._create_response("لم أفهم العناصر المطلوبة. الرجاء المحاولة مرة أخرى.")
         
         logger.info(f"🛒 Processing multi-item order: {len(multi_items)} items")

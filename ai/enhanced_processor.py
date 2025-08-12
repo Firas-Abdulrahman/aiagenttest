@@ -1008,8 +1008,18 @@ Response: {{
         """Extract multiple items from a message containing 'و' (and)"""
         items = []
         
+        # Convert Arabic numerals to English for processing
+        arabic_to_english = {
+            '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+            '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'
+        }
+        
+        processed_message = message
+        for arabic, english in arabic_to_english.items():
+            processed_message = processed_message.replace(arabic, english)
+        
         # Split by 'و' (and) to get individual item requests
-        parts = message.split('و')
+        parts = processed_message.split('و')
         
         for part in parts:
             part = part.strip()
@@ -1020,12 +1030,13 @@ Response: {{
             quantity = 1  # Default quantity
             item_name = part
             
-            # Look for quantity indicators
+            # Look for quantity indicators (both Arabic words and numbers)
             quantity_patterns = {
                 'واحد': 1, 'اثنين': 2, 'ثلاثة': 3, 'اربعة': 4, 'خمسة': 5,
                 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5
             }
             
+            # First check for Arabic word quantities
             for pattern, qty in quantity_patterns.items():
                 if pattern in part:
                     quantity = qty
@@ -1033,8 +1044,20 @@ Response: {{
                     item_name = part.replace(pattern, '').strip()
                     break
             
+            # If no word quantity found, look for numeric quantities
+            if quantity == 1:
+                import re
+                numbers = re.findall(r'\d+', part)
+                if numbers:
+                    quantity = int(numbers[0])
+                    # Remove the number from item name
+                    item_name = re.sub(r'\d+', '', part).strip()
+            
             # Clean up item name
             item_name = item_name.replace('اريد', '').replace('بدي', '').strip()
+            
+            # Handle common typos in mojito
+            item_name = item_name.replace('موهيطة', 'موهيتو').replace('موهيطو', 'موهيتو')
             
             if item_name:
                 items.append({

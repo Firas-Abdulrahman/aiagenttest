@@ -197,7 +197,7 @@ RESPOND WITH CLEAN JSON (no extra text):
 {{
     "understood_intent": "Clear description of what the user wants",
     "confidence": "high/medium/low",
-    "action": "intelligent_suggestion/language_selection/category_selection/sub_category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu",
+    "action": "intelligent_suggestion/language_selection/category_selection/sub_category_selection/item_selection/multi_item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu",
     "extracted_data": {{
         "language": "arabic/english/null",
         "suggested_main_category": "number if you can intelligently suggest main category",
@@ -210,7 +210,8 @@ RESPOND WITH CLEAN JSON (no extra text):
         "quantity": "number or null",
         "yes_no": "yes/no/null",
         "service_type": "dine-in/delivery/null",
-        "location": "string or null"
+        "location": "string or null",
+        "multi_items": "array of objects with item_name and quantity for multi-item orders"
     }},
     "clarification_needed": false,
     "response_message": "Helpful response in user's language with intelligent suggestions and explanation"
@@ -281,6 +282,30 @@ Response: {{
     }},
     "clarification_needed": false,
     "response_message": "ممتاز! لقد اخترت المشروبات الباردة. الآن، إليك الخيارات المتاحة:\\n\\n1. ايس كوفي\\n2. فرابتشينو\\n3. ميلك شيك\\n4. شاي مثلج\\n5. عصائر طازجة\\n6. موهيتو\\n7. مشروبات الطاقة\\n\\nاختر رقم الفئة التي تفضلها!"
+}}
+
+User: "اريد واحد موهيتو رمان وواحد موهيتو خوخ"
+Response: {{
+    "understood_intent": "User wants to order 1 Pomegranate Mojito and 1 Peach Mojito",
+    "confidence": "high",
+    "action": "multi_item_selection",
+    "extracted_data": {{
+        "language": "arabic",
+        "suggested_main_category": null,
+        "suggested_sub_category": null,
+        "category_id": null,
+        "item_id": null,
+        "quantity": null,
+        "yes_no": null,
+        "service_type": null,
+        "location": null,
+        "multi_items": [
+            {{"item_name": "موهيتو رمان", "quantity": 1}},
+            {{"item_name": "موهيتو خوخ", "quantity": 1}}
+        ]
+    }},
+    "clarification_needed": false,
+    "response_message": "ممتاز! تم اختيار 1 موهيتو رمان و1 موهيتو خوخ. كم الكمية المطلوبة لكل منهما؟"
 }}
 
 User: "I want something cold and sweet"
