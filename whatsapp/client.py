@@ -491,6 +491,16 @@ class WhatsAppClient:
 
                         # Extract messages
                         for message in value.get('messages', []):
+                            # Handle interactive button responses
+                            if message.get('type') == 'interactive':
+                                interactive = message.get('interactive', {})
+                                if interactive.get('type') == 'button_reply':
+                                    button_reply = interactive.get('button_reply', {})
+                                    # Convert button click to text message format
+                                    message['text'] = {
+                                        'body': button_reply.get('id', '')
+                                    }
+                                    message['type'] = 'text'
                             messages.append(message)
 
             return messages

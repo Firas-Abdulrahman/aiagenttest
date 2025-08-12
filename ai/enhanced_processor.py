@@ -903,7 +903,9 @@ Response: {{
             'waiting_for_location': self._validate_location_step,
             'waiting_for_confirmation': self._validate_confirmation_step,
             'waiting_for_fresh_start_choice': self._validate_fresh_start_choice_step,
-            'waiting_for_quick_order': self._validate_quick_order_step
+            'waiting_for_quick_order': self._validate_quick_order_step,
+            'waiting_for_quick_order_quantity': self._validate_quick_order_quantity_step,
+            'waiting_for_quick_order_service': self._validate_quick_order_service_step
         }
         
         validator = validators.get(current_step)
@@ -926,6 +928,24 @@ Response: {{
             return False
         
         # For quick order, we accept any item selection or service-related actions
+        return True
+    
+    def _validate_quick_order_quantity_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+        """Validate quick order quantity step"""
+        action = result.get('action')
+        valid_actions = ['quantity_selection', 'conversational_response']
+        
+        if action not in valid_actions:
+            return False
+        return True
+    
+    def _validate_quick_order_service_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:
+        """Validate quick order service step"""
+        action = result.get('action')
+        valid_actions = ['service_selection', 'conversational_response']
+        
+        if action not in valid_actions:
+            return False
         return True
 
     def _validate_language_step(self, result: Dict, extracted_data: Dict, user_message: str) -> bool:

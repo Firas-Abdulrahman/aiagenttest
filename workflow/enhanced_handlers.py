@@ -270,6 +270,12 @@ class EnhancedMessageHandler:
         elif action == 'explore_menu_selection':
             # Handle explore menu mode selection
             return self._handle_explore_menu_selection(phone_number, extracted_data, session, user_context)
+        elif action == 'quantity_selection' and session.get('order_mode') == 'quick':
+            # Handle quick order quantity selection
+            return self._handle_quick_order_quantity(phone_number, extracted_data, session, user_context)
+        elif action == 'service_selection' and session.get('order_mode') == 'quick':
+            # Handle quick order service selection
+            return self._handle_quick_order_service(phone_number, extracted_data, session, user_context)
         elif action == 'quantity_selection':
             return self._handle_ai_quantity_selection(phone_number, extracted_data, session, user_context)
         elif action == 'yes_no':
@@ -1353,6 +1359,10 @@ class EnhancedMessageHandler:
             
         elif current_step == 'waiting_for_quick_order':
             return self._handle_structured_quick_order(phone_number, text, session, user_context)
+        elif current_step == 'waiting_for_quick_order_quantity':
+            return self._handle_quick_order_quantity(phone_number, {'quantity': 1}, session, user_context)
+        elif current_step == 'waiting_for_quick_order_service':
+            return self._handle_quick_order_service(phone_number, {'service_type': 'dine-in'}, session, user_context)
             
         elif current_step == 'waiting_for_sub_category':
             return self._handle_structured_sub_category_selection(phone_number, text, session, user_context)
@@ -1453,84 +1463,122 @@ class EnhancedMessageHandler:
                 return self._create_response("الرجاء اختيار رقم من القائمة أو كتابة اسم الفئة")
 
     def _handle_structured_quick_order(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
-        """Handle quick order with structured logic"""
+        """Handle structured quick order input"""
         language = user_context.get('language', 'arabic')
         
-        # Try to parse the quick order input
-        # Format: "quantity item_name" or "item_name" or "quantity item_name for table X"
-        import re
+        # Parse the input for quantity, item name, and optional table number
+        # Example: "2 موهيتو ازرق للطاولة 5" or "3 قهوة"
+        text = text.strip()
         
-        # First, try to extract table/location info
-        table_match = None
-        if language == 'arabic':
-            table_match = re.search(r'للطاولة\s*(\d+)', text)
-        else:
-            table_match = re.search(r'for\s+table\s+(\d+)', text, re.IGNORECASE)
-        
-        # Remove table info from text for item parsing
-        clean_text = text
-        if table_match:
-            clean_text = re.sub(r'للطاولة\s*\d+', '', text).strip()
-            clean_text = re.sub(r'for\s+table\s+\d+', '', clean_text, flags=re.IGNORECASE).strip()
-        
-        # Try to extract quantity and item name
+        # Extract quantity (default to 1 if not specified)
         quantity = 1
-        item_name = clean_text
+        item_name = text
+        table_number = None
         
-        # Look for numeric quantities at the beginning
-        quantity_match = re.match(r'^(\d+)\s+(.+)', clean_text)
+        # Look for quantity patterns
+        import re
+        quantity_pattern = r'^(\d+)\s+'
+        quantity_match = re.match(quantity_pattern, text)
         if quantity_match:
             quantity = int(quantity_match.group(1))
-            item_name = quantity_match.group(2).strip()
+            item_name = text[quantity_match.group(0).__len__():].strip()
         
-        # Look for word quantities
-        word_quantities = {
-            'arabic': {'واحد': 1, 'اثنين': 2, 'ثلاثة': 3, 'اربعة': 4, 'خمسة': 5},
-            'english': {'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5}
-        }
-        
-        for word, num in word_quantities[language].items():
-            if item_name.lower().startswith(word + ' '):
-                quantity = num
-                item_name = item_name[len(word):].strip()
-                break
+        # Look for table number patterns
+        table_pattern = r'للطاولة\s+(\d+)'
+        table_match = re.search(table_pattern, item_name)
+        if table_match:
+            table_number = table_match.group(1)
+            item_name = re.sub(table_pattern, '', item_name).strip()
         
         # Search for the item across all categories
         all_items = self._get_all_items()
         matched_item = self._match_item_by_name(item_name, all_items, language)
         
         if matched_item:
-            # Add item to order
-            self.db.add_item_to_order(phone_number, matched_item['id'], quantity)
+            # Store the matched item in session for quantity selection
+            session['quick_order_item'] = matched_item
+            session['quick_order_quantity'] = quantity
+            if table_number:
+                session['quick_order_table'] = table_number
             
-            # Update session to waiting for additional items
-            self.db.create_or_update_session(
-                phone_number, 'waiting_for_additional', language,
-                session.get('customer_name'),
-                order_mode='quick'
-            )
+            # Update session to quantity selection step
+            self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_quantity', language, session.get('customer_name'), order_mode='quick')
             
-            # Build response
-            if language == 'arabic':
-                response = f"تم إضافة {quantity} × {matched_item['item_name_ar']} إلى طلبك\n"
-                response += f"السعر: {matched_item['price']} دينار\n\n"
-                if table_match:
-                    response += f"للطاولة رقم {table_match.group(1)}\n\n"
-                response += "هل تريد إضافة المزيد من الأصناف؟\n\n1. نعم\n2. لا"
-            else:
-                response = f"Added {quantity} × {matched_item['item_name_en']} to your order\n"
-                response += f"Price: {matched_item['price']} IQD\n\n"
-                if table_match:
-                    response += f"For table {table_match.group(1)}\n\n"
-                response += "Do you want to add more items?\n\n1. Yes\n2. No"
-            
-            return self._create_response(response)
+            # Show quantity buttons
+            return self._show_quantity_buttons(phone_number, language, matched_item['name_ar'])
         else:
             # Item not found
             if language == 'arabic':
-                return self._create_response(f"عذراً، لم أجد '{item_name}' في قائمتنا. الرجاء المحاولة مرة أخرى أو اختر من القائمة الشائعة.")
+                response = f"لم أتمكن من العثور على '{item_name}' في قائمتنا.\n\n"
+                response += "المنتجات المتاحة:\n"
+                for item in all_items[:5]:  # Show first 5 items as suggestions
+                    response += f"• {item['name_ar']} - {item['price']} دينار\n"
+                response += "\nأو اختر 'استكشاف القائمة' للتصفح الكامل."
             else:
-                return self._create_response(f"Sorry, I couldn't find '{item_name}' in our menu. Please try again or choose from the popular items.")
+                response = f"Could not find '{item_name}' in our menu.\n\n"
+                response += "Available items:\n"
+                for item in all_items[:5]:  # Show first 5 items as suggestions
+                    response += f"• {item['name_en']} - {item['price']} IQD\n"
+                response += "\nOr choose 'Explore Menu' for full browsing."
+            
+            return self._create_response(response)
+    
+    def _handle_quick_order_quantity(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
+        """Handle quick order quantity selection"""
+        language = user_context.get('language', 'arabic')
+        
+        # Get the stored item from session
+        quick_order_item = session.get('quick_order_item')
+        if not quick_order_item:
+            return self._create_response("حدث خطأ. الرجاء المحاولة مرة أخرى.")
+        
+        # Extract quantity from button click
+        user_message = user_context.get('original_user_message', '')
+        if user_message.startswith('quantity_'):
+            quantity = int(user_message.split('_')[1])
+        else:
+            # Fallback: try to extract quantity from AI
+            quantity = extracted_data.get('quantity', 1)
+        
+        # Add item to order
+        self.db.add_item_to_order(phone_number, quick_order_item['id'], quantity)
+        
+        # Update session to service selection step
+        self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_service', language, session.get('customer_name'), order_mode='quick')
+        
+        # Show service type buttons
+        return self._show_service_type_buttons(phone_number, language)
+    
+    def _handle_quick_order_service(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
+        """Handle quick order service type selection"""
+        language = user_context.get('language', 'arabic')
+        
+        # Extract service type from button click
+        user_message = user_context.get('original_user_message', '')
+        service_type = None
+        
+        if user_message == 'dine_in':
+            service_type = 'dine-in'
+        elif user_message == 'delivery':
+            service_type = 'delivery'
+        else:
+            # Fallback: try to extract from AI
+            service_type = extracted_data.get('service_type', 'dine-in')
+        
+        # Update order details
+        self.db.update_order_details(phone_number, {'service_type': service_type})
+        
+        # Update session to location step
+        if service_type == 'dine-in':
+            self.db.create_or_update_session(phone_number, 'waiting_for_location', language, session.get('customer_name'), order_mode='quick')
+            if language == 'arabic':
+                return self._create_response("اختر رقم الطاولة (1-7):")
+            else:
+                return self._create_response("Select table number (1-7):")
+        else:
+            # For delivery, go to confirmation
+            self.db.create_or_update_session(phone_number, 'waiting_for_confirmation', language, session.get('customer_name'), order_mode='quick')
+            return self._handle_confirmation_step(phone_number, session, user_context)
 
     def _get_all_items(self) -> List[Dict]:
         """Get all items from all categories for quick order search"""
@@ -2116,6 +2164,84 @@ class EnhancedMessageHandler:
             message += "Example: 2 blue mojito"
         
         return self._create_response(message)
+    
+    def _show_quantity_buttons(self, phone_number: str, language: str, item_name: str) -> Dict:
+        """Show quantity selection buttons"""
+        if language == 'arabic':
+            header_text = "اختر الكمية"
+            body_text = f"كم {item_name} تريد؟"
+            footer_text = ""
+            buttons = []
+            
+            for i in range(1, 11):
+                buttons.append({
+                    "type": "reply",
+                    "reply": {
+                        "id": f"quantity_{i}",
+                        "title": str(i)
+                    }
+                })
+        else:
+            header_text = "Select Quantity"
+            body_text = f"How many {item_name} do you want?"
+            footer_text = ""
+            buttons = []
+            
+            for i in range(1, 11):
+                buttons.append({
+                    "type": "reply",
+                    "reply": {
+                        "id": f"quantity_{i}",
+                        "title": str(i)
+                    }
+                })
+        
+        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
+    
+    def _show_service_type_buttons(self, phone_number: str, language: str) -> Dict:
+        """Show service type selection buttons"""
+        if language == 'arabic':
+            header_text = "اختر نوع الخدمة"
+            body_text = "كيف تريد استلام طلبك؟"
+            footer_text = ""
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "dine_in",
+                        "title": "تناول في المقهى"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "delivery",
+                        "title": "توصيل للمنزل"
+                    }
+                }
+            ]
+        else:
+            header_text = "Select Service Type"
+            body_text = "How would you like to receive your order?"
+            footer_text = ""
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "dine_in",
+                        "title": "Dine In"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "delivery",
+                        "title": "Delivery"
+                    }
+                }
+            ]
+        
+        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
 
     def _show_traditional_categories(self, phone_number: str, language: str) -> Dict:
         """Show traditional category selection for explore mode"""
