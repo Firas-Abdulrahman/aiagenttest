@@ -265,6 +265,7 @@ IMPORTANT RULES:
 - BACK NAVIGATION: Detect back requests ("رجوع", "back", "السابق", "previous") and use "back_navigation" action
 - SERVICE TYPE: When user says "بالكهوة" or similar, interpret as dine-in service, not coffee selection
 - CONFIRMATION: When user says "هاهية" or "اوك", interpret as yes/confirm
+- GREETING DETECTION: When user says greetings like "Hello", "Hi", "مرحبا", "أهلا", always detect the language and set it in extracted_data.language
 
 EXAMPLES:
 User: "اريد موهيتو" (at any step)
@@ -323,6 +324,28 @@ Response: {
         "yes_no": "yes"
     },
     "response_message": "ممتاز! المتابعة..."
+}
+
+User: "Hello" (at language step)
+Response: {
+    "understood_intent": "User is greeting and initiating conversation",
+    "confidence": "high",
+    "action": "language_selection",
+    "extracted_data": {
+        "language": "english"
+    },
+    "response_message": "Hello! Please select your language preference:\n1. Arabic\n2. English"
+}
+
+User: "مرحبا" (at language step)
+Response: {
+    "understood_intent": "User is greeting and initiating conversation",
+    "confidence": "high",
+    "action": "language_selection",
+    "extracted_data": {
+        "language": "arabic"
+    },
+    "response_message": "مرحبا! الرجاء اختيار لغتك المفضلة:\n1. العربية\n2. English"
 }"""
 
     def _build_enhanced_context(self, current_step: str, user_context: Dict, language: str) -> Dict:
@@ -968,9 +991,19 @@ Response: {{
         if action == 'language_selection':
             language = extracted_data.get('language')
             logger.debug(f"DEBUG: _validate_language_step - language: {language}")
+            
+            # If language is null or invalid, try to detect it from the user message
             if language not in ['arabic', 'english']:
-                logger.debug(f"DEBUG: _validate_language_step - Invalid language: {language}")
-                return False
+                logger.info(f"🔧 Language not detected properly, attempting to detect from message: '{user_message}'")
+                detected_language = self._detect_language_fallback(user_message)
+                if detected_language:
+                    logger.info(f"🔧 Auto-detected language: {detected_language} from message: '{user_message}'")
+                    extracted_data['language'] = detected_language
+                    result['extracted_data'] = extracted_data
+                    return True
+                else:
+                    logger.debug(f"DEBUG: _validate_language_step - Could not detect language from: {user_message}")
+                    return False
         
         logger.debug(f"DEBUG: _validate_language_step - Validation passed")
         return True
@@ -1375,21 +1408,28 @@ Response: {{
         """Detect language preference in fallback mode"""
         message_lower = user_message.lower().strip()
         
-        arabic_indicators = ['عربي', 'العربية', 'مرحبا', 'أهلا', 'اريد', 'بدي']
-        english_indicators = ['english', 'hello', 'hi', 'hey', 'want', 'need']
+        # Arabic indicators (including greetings)
+        arabic_indicators = ['عربي', 'العربية', 'مرحبا', 'أهلا', 'السلام', 'هلا', 'اريد', 'بدي', 'ممكن', 'شكرا']
         
+        # English indicators (including greetings)
+        english_indicators = ['english', 'hello', 'hi', 'hey', 'good morning', 'good afternoon', 'want', 'need', 'please', 'thanks']
+        
+        # Check for Arabic indicators first
         if any(indicator in message_lower for indicator in arabic_indicators):
             return 'arabic'
         
+        # Check for English indicators
         if any(indicator in message_lower for indicator in english_indicators):
             return 'english'
         
+        # Check for numeric selection
         if message_lower.strip() == '1':
             return 'arabic'
         elif message_lower.strip() == '2':
             return 'english'
         
-        return None
+        # Default to English for unknown input (since most voice input is in English)
+        return 'english'
 
     def _extract_number_fallback(self, text: str) -> Optional[int]:
         """Extract number in fallback mode"""
