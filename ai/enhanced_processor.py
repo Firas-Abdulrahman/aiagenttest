@@ -411,7 +411,7 @@ Response: {
 }"""
 
     def _build_enhanced_context(self, current_step: str, user_context: Dict, language: str) -> Dict:
-        """Build comprehensive context for AI understanding"""
+        """Build comprehensive context for AI understanding with enhanced menu awareness"""
         context = {
             'current_step': current_step,
             'language': language,
@@ -426,15 +426,91 @@ Response: {
             'conversation_history': user_context.get('conversation_history', [])
         }
 
-        # Add menu context if database manager is available
+        # ENHANCED FIX: Add comprehensive menu context for better AI understanding
         if self.database_manager:
             try:
+                # Get basic menu context
                 context['menu_context'] = MenuAwarePrompts.get_menu_context(self.database_manager)
+                
+                # Add comprehensive item list for AI-driven matching
+                if current_step in ['waiting_for_quick_order', 'waiting_for_item']:
+                    all_items = self._get_all_menu_items()
+                    context['all_available_items'] = all_items
+                    context['item_matching_context'] = self._format_items_for_ai(all_items, language)
+                    
+                # Add category-specific items if available
+                if user_context.get('current_category_items'):
+                    context['current_category_items'] = user_context.get('current_category_items')
+                    context['category_item_matching'] = self._format_items_for_ai(user_context.get('current_category_items'), language)
+                    
             except Exception as e:
-                logger.warning(f"Could not get menu context: {e}")
+                logger.warning(f"Could not get enhanced menu context: {e}")
                 context['menu_context'] = "Menu context unavailable"
 
         return context
+    
+    def _get_all_menu_items(self) -> List[Dict]:
+        """Get all menu items for AI context"""
+        try:
+            all_items = []
+            main_categories = self.database_manager.get_main_categories()
+            
+            for category in main_categories:
+                sub_categories = self.database_manager.get_sub_categories(category['id'])
+                for sub_category in sub_categories:
+                    items = self.database_manager.get_sub_category_items(sub_category['id'])
+                    all_items.extend(items)
+            
+            return all_items
+        except Exception as e:
+            logger.warning(f"Could not get all menu items: {e}")
+            return []
+    
+    def _format_items_for_ai(self, items: List[Dict], language: str) -> str:
+        """Format items for AI understanding with variations and synonyms"""
+        if not items:
+            return "No items available"
+        
+        formatted_items = []
+        for item in items:
+            item_name = item.get('item_name_ar' if language == 'arabic' else 'item_name_en', '')
+            item_id = item.get('id', '')
+            price = item.get('price', '')
+            
+            # Add common variations and synonyms
+            variations = self._get_item_variations(item_name, language)
+            
+            formatted_items.append(f"ID: {item_id} | Name: {item_name} | Price: {price} | Variations: {', '.join(variations)}")
+        
+        return "\n".join(formatted_items)
+    
+    def _get_item_variations(self, item_name: str, language: str) -> List[str]:
+        """Get common variations and synonyms for an item"""
+        variations = [item_name.lower()]
+        
+        # Common misspellings and variations
+        if language == 'arabic':
+            # Arabic variations
+            if 'عصير' in item_name:
+                variations.extend(['عصير', 'عصير', 'عصير'])
+            if 'فراولة' in item_name:
+                variations.extend(['فراوله', 'فراول', 'فراوله'])
+            if 'توست' in item_name:
+                variations.extend(['تست', 'توس', 'تست'])
+            if 'قهوة' in item_name:
+                variations.extend(['قهوه', 'قهو', 'قهو'])
+        else:
+            # English variations
+            if 'juice' in item_name.lower():
+                variations.extend(['juice', 'juice', 'juice'])
+            if 'strawberry' in item_name.lower():
+                variations.extend(['strawbery', 'strawberi', 'strawber'])
+            if 'toast' in item_name.lower():
+                variations.extend(['toas', 'tost', 'toas'])
+            if 'coffee' in item_name.lower():
+                variations.extend(['coffe', 'cofee', 'cofe'])
+        
+        return list(set(variations))  # Remove duplicates
 
     def _get_step_description(self, step: str) -> str:
         """Get human-readable description of current step"""
@@ -990,6 +1066,11 @@ Response: {{
         action = result.get('action')
         extracted_data = result.get('extracted_data', {})
         
+        # CRITICAL FIX: Always accept these actions regardless of step
+        always_valid_actions = ['intelligent_suggestion', 'back_navigation', 'conversational_response', 'help_request']
+        if action in always_valid_actions:
+            return True
+        
         # Step-specific validation
         validators = {
             'waiting_for_language': self._validate_language_step,
@@ -1010,13 +1091,10 @@ Response: {{
         
         validator = validators.get(current_step)
         if validator:
-            # Always run step-specific validation, even for intelligent_suggestion
+            # Run step-specific validation
             return validator(result, extracted_data, user_message, user_context)
         
-        # Accept intelligent suggestions and navigation actions if no step-specific validation
-        if action in ['intelligent_suggestion', 'back_navigation', 'conversational_response']:
-            return True
-        
+        # If no step-specific validator, accept the result
         return True
 
     def _validate_quick_order_step(self, result: Dict, extracted_data: Dict, user_message: str, user_context: Dict = None) -> bool:
@@ -1390,48 +1468,51 @@ Response: {{
         """Validate location input step with enhanced table number validation"""
         action = result.get('action')
         
-        if action != 'location_input':
+        # CRITICAL FIX: Allow more flexible actions for location step
+        valid_actions = ['location_input', 'conversational_response', 'intelligent_suggestion']
+        if action not in valid_actions:
             return False
         
-        location = extracted_data.get('location')
-        if not location or len(location.strip()) < 1:
-            return False
-        
-        # Enhanced validation for dine-in table numbers
-        # Check if this is a numeric input that could be a table number
-        import re
-        
-        # Convert Arabic numerals to English
-        arabic_to_english = {
-            '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
-            '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'
-        }
-        
-        processed_location = location
-        for arabic, english in arabic_to_english.items():
-            processed_location = processed_location.replace(arabic, english)
-        
-        # Check if it's a pure number (could be table number)
-        if re.match(r'^\d+$', processed_location.strip()):
-            table_num = int(processed_location.strip())
-            
-            # For dine-in service, table numbers must be 1-7
-            # We need to check the current order's service type
-            # Since we don't have direct access to the database here,
-            # we'll add a note in the extracted_data for the handler to validate
-            if table_num < 1 or table_num > 7:
-                logger.warning(f"⚠️ Invalid table number detected: {table_num} (must be 1-7)")
-                # Add validation flag for the handler
-                extracted_data['table_number_validation'] = 'invalid'
-                extracted_data['invalid_table_number'] = table_num
-                result['extracted_data'] = extracted_data
+        if action == 'location_input':
+            location = extracted_data.get('location')
+            if not location or len(location.strip()) < 1:
                 return False
-            else:
-                # Valid table number
-                extracted_data['table_number_validation'] = 'valid'
-                extracted_data['table_number'] = table_num
-                result['extracted_data'] = extracted_data
-                logger.info(f"✅ Valid table number detected: {table_num}")
+            
+            # Enhanced validation for dine-in table numbers
+            # Check if this is a numeric input that could be a table number
+            import re
+            
+            # Convert Arabic numerals to English
+            arabic_to_english = {
+                '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+                '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'
+            }
+            
+            processed_location = location
+            for arabic, english in arabic_to_english.items():
+                processed_location = processed_location.replace(arabic, english)
+            
+            # Check if it's a pure number (could be table number)
+            if re.match(r'^\d+$', processed_location.strip()):
+                table_num = int(processed_location.strip())
+                
+                # For dine-in service, table numbers must be 1-7
+                # We need to check the current order's service type
+                # Since we don't have direct access to the database here,
+                # we'll add a note in the extracted_data for the handler to validate
+                if table_num < 1 or table_num > 7:
+                    logger.warning(f"⚠️ Invalid table number detected: {table_num} (must be 1-7)")
+                    # Add validation flag for the handler
+                    extracted_data['table_number_validation'] = 'invalid'
+                    extracted_data['invalid_table_number'] = table_num
+                    result['extracted_data'] = extracted_data
+                    return False
+                else:
+                    # Valid table number
+                    extracted_data['table_number_validation'] = 'valid'
+                    extracted_data['table_number'] = table_num
+                    result['extracted_data'] = extracted_data
+                    logger.info(f"✅ Valid table number detected: {table_num}")
         
         return True
 
@@ -1439,7 +1520,9 @@ Response: {{
         """Validate confirmation step"""
         action = result.get('action')
         
-        if action not in ['yes_no', 'confirmation']:
+        # CRITICAL FIX: Allow more flexible actions for confirmation step
+        valid_actions = ['yes_no', 'confirmation', 'conversational_response', 'intelligent_suggestion', 'back_navigation']
+        if action not in valid_actions:
             return False
         
         if action == 'yes_no':

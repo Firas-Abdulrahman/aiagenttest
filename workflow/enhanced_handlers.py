@@ -30,6 +30,13 @@ class EnhancedMessageHandler:
             # Get current session
             session = self.db.get_user_session(phone_number)
             
+            # Defensive programming: ensure session is a dictionary
+            if session is not None and not isinstance(session, dict):
+                logger.error(f"❌ Session is not a dictionary: {type(session)} = {session}")
+                # Clear corrupted session and start fresh
+                self.db.delete_session(phone_number)
+                session = None
+            
             # Build initial user context (may be updated after session reset)
             current_step = session.get('current_step') if session else 'waiting_for_language'
             user_context = self._build_user_context(phone_number, session, current_step, text)
@@ -988,6 +995,11 @@ class EnhancedMessageHandler:
         quantity = extracted_data.get('quantity')
         language = user_context.get('language')
 
+        # Defensive programming: ensure session is a dictionary
+        if not isinstance(session, dict):
+            logger.error(f"❌ Session is not a dictionary: {type(session)} = {session}")
+            return self._create_response("خطأ في النظام. الرجاء البدء من جديد\nSystem error. Please restart")
+
         if quantity and isinstance(quantity, int) and 1 <= quantity <= 50:
             item_id = session.get('selected_item') if session else None
             logger.info(f"🔧 Processing quantity: item_id={item_id}, quantity={quantity} for {phone_number}")
@@ -1054,6 +1066,11 @@ class EnhancedMessageHandler:
         yes_no = extracted_data.get('yes_no')
         language = user_context.get('language')
         current_step = user_context.get('current_step')
+
+        # Defensive programming: ensure session is a dictionary
+        if not isinstance(session, dict):
+            logger.error(f"❌ Session is not a dictionary in _handle_ai_yes_no: {type(session)} = {session}")
+            return self._create_response("خطأ في النظام. الرجاء البدء من جديد\nSystem error. Please restart")
 
         if yes_no == 'yes':
             if current_step == 'waiting_for_quick_order':
@@ -2870,8 +2887,13 @@ class EnhancedMessageHandler:
         return self._create_response(message)
 
     def _cancel_order(self, phone_number: str, session: Dict, user_context: Dict) -> Dict:
-        """Cancel order"""
+        """Cancel order and properly clean up session"""
         self.db.cancel_order(phone_number)
+        
+        # CRITICAL FIX: Clear the session completely after cancellation
+        # This prevents the session from remaining in 'waiting_for_confirmation' state
+        self.db.delete_session(phone_number)
+        
         language = user_context.get('language')
         # Use customer name from user_context first, then fallback to session
         customer_name = user_context.get('customer_name') or session.get('customer_name') or 'Customer'
@@ -2947,7 +2969,7 @@ class EnhancedMessageHandler:
         return None
 
     def _match_item_by_name(self, text: str, items: list, language: str) -> Optional[Dict]:
-        """Match item by name with enhanced scoring mechanism and Arabic normalization."""
+        """AI-driven item matching with flexible scoring mechanism."""
         import re
 
         def normalize_ar(s: str) -> str:
@@ -2975,31 +2997,9 @@ class EnhancedMessageHandler:
         cleaned_text = ' '.join(normalized_words)
         text_lower = normalize_ar(cleaned_text.lower().strip())
         
-        logger.info(f"🔍 Matching '{text}' (cleaned: '{cleaned_text}') against {len(items)} items")
+        logger.info(f"🔍 AI-driven matching '{text}' (cleaned: '{cleaned_text}') against {len(items)} items")
         
-        # Special handling for energy drinks
-        energy_terms = ['طاقة', 'مشروب طاقة', 'مشروبات طاقة', 'ريد بول', 'red bull', 'monster', 'energy drink', 'energy']
-        if any(term in text_lower for term in energy_terms):
-            for item in items:
-                item_name_lower = normalize_ar(item['item_name_ar'].lower() if language == 'arabic' else item['item_name_en'].lower())
-                if any(energy_term in item_name_lower for energy_term in ['طاقة', 'energy']):
-                    logger.info(f"✅ Energy drink match: '{item_name_lower}'")
-                    return item
-
-        # Early direct flavor match for mojito when flavor is spoken
-        if language == 'arabic' and 'موهيتو' in text_lower:
-            flavor_terms = [
-                'رمان', 'خوخ', 'توت ازرق', 'ازرق', 'روزبيري', 'دراغون', 'علكة', 'هيف', 'فانيلا', 'كراميل', 'بينا كولادا', 'فاكهة العاطفة'
-            ]
-            for flavor in flavor_terms:
-                if flavor in text_lower:
-                    for item in items:
-                        name_lower = normalize_ar(item['item_name_ar'].lower())
-                        if flavor in name_lower and 'موهيتو' in name_lower:
-                            logger.info(f"✅ Mojito flavor direct match: '{name_lower}' for flavor '{flavor}'")
-                            return item
-        
-        # Scoring mechanism for better accuracy
+        # AI-driven scoring mechanism - let the AI handle the complex understanding
         best_match = None
         best_score = 0
         
@@ -3033,27 +3033,12 @@ class EnhancedMessageHandler:
             if len(item_name_lower) > len(text_lower):
                 score += 5
             
-            # 5. Special handling for specific terms
-            if language == 'arabic':
-                # Handle "موهيتو" (mojito) specifically - highest priority
-                if 'موهيتو' in text_lower and 'موهيتو' in item_name_lower:
-                    score += 200  # Very high score to ensure mojito items are prioritized
-                    logger.info(f"  🍹 Mojito match bonus: '{item_name_lower}' (score: {score})")
-                
-                # Handle "دجاج" (chicken) specifically
-                if 'دجاج' in text_lower and 'دجاج' in item_name_lower:
-                    score += 15
-                    logger.info(f"  🍗 Chicken match bonus: '{item_name_lower}' (score: {score})")
-                
-                # Handle "جبن" (cheese) specifically
-                if 'جبن' in text_lower and 'جبن' in item_name_lower:
-                    score += 10
-                    logger.info(f"  🧀 Cheese match bonus: '{item_name_lower}' (score: {score})")
-                
-                # Handle "لحم" (meat) specifically
-                if 'لحم' in text_lower and 'لحم' in item_name_lower:
-                    score += 15
-                    logger.info(f"  🥩 Meat match bonus: '{item_name_lower}' (score: {score})")
+            # 5. Character-level similarity for misspellings (lower priority)
+            if len(text_lower) > 2:  # Only for meaningful words
+                char_similarity = len(set(text_lower) & set(item_name_lower)) / len(set(text_lower) | set(item_name_lower))
+                if char_similarity > 0.7:  # 70% character similarity
+                    score += char_similarity * 10
+                    logger.info(f"  🔤 Character similarity: {char_similarity:.2f} for '{item_name_lower}' (score: {score})")
             
             # Update best match if this score is higher
             if score > best_score:
@@ -3061,18 +3046,11 @@ class EnhancedMessageHandler:
                 best_match = item
                 logger.info(f"  🏆 New best match: '{item_name_lower}' with score {score}")
         
-        if best_match and best_score > 0:
-            # Special validation for mojito requests
-            if language == 'arabic' and 'موهيتو' in text_lower:
-                # If user asked for mojito but best match doesn't contain mojito, reject it
-                if 'موهيتو' not in best_match['item_name_ar'].lower():
-                    logger.warning(f"❌ Rejecting non-mojito match '{best_match['item_name_ar']}' for mojito request")
-                    return None
-            
-            logger.info(f"✅ Final match: '{best_match['item_name_ar' if language == 'arabic' else 'item_name_en']}' with score {best_score}")
+        if best_match and best_score > 10:  # Minimum threshold to avoid false matches
+            logger.info(f"✅ AI-driven final match: '{best_match['item_name_ar' if language == 'arabic' else 'item_name_en']}' with score {best_score}")
             return best_match
         
-        logger.info(f"❌ No match found for '{text}' (cleaned: '{cleaned_text}')")
+        logger.info(f"❌ No confident match found for '{text}' (cleaned: '{cleaned_text}')")
         return None
 
     def _get_fallback_message(self, step: str, language: str) -> str:
