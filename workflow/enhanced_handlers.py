@@ -248,14 +248,10 @@ class EnhancedMessageHandler:
             return self._handle_ai_category_selection(phone_number, extracted_data, session, user_context)
         elif action == 'sub_category_selection':
             # Handle sub-category selection (e.g., user asks for "موهيتو" sub-category)
-            # If name provided looks like an item (e.g., croissant), try intelligent item matching first.
-            sub_cat_name = (extracted_data or {}).get('sub_category_name')
-            if sub_cat_name:
-                probe = {'item_name': sub_cat_name}
-                matched_probe = self._handle_intelligent_item_selection(phone_number, probe, session, user_context, allow_cross_step=True)
-                logger.info("🔀 Sub-category name probed as item; using intelligent item selection flow result")
-                return matched_probe
-            return self._handle_sub_category_selection(phone_number, extracted_data, session, user_context)
+            # PRIORITY: try sub-category selection within current main category first.
+            response = self._handle_sub_category_selection(phone_number, extracted_data, session, user_context)
+            # If sub-category wasn't found, our handler will fallback to item search limited to current main category.
+            return response
         elif action == 'item_selection':
             # Check if we're in quick order mode
             logger.info(f"🔍 Debug: order_mode={session.get('order_mode')}, current_step={user_context.get('current_step')}")
@@ -853,7 +849,7 @@ class EnhancedMessageHandler:
             else:
                 return self._create_response(f"Sorry, we couldn't find the sub-category '{sub_category_name}'. Please select from the available options.")
 
-    def _handle_intelligent_item_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict, allow_cross_step: bool = False) -> Dict:
+    def _handle_intelligent_item_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict, allow_cross_step: bool = False, limit_main_category_id: Optional[int] = None) -> Dict:
         """Handle intelligent item selection that can work across different steps"""
         item_name = extracted_data.get('item_name')
         item_id = extracted_data.get('item_id')
@@ -907,10 +903,19 @@ class EnhancedMessageHandler:
                     }, session, user_context)
             
             # If not found in current context, search across all sub-categories
-            logger.info(f"🔍 Searching for item '{item_name}' across all sub-categories")
+            logger.info(f"🔍 Searching for item '{item_name}' across sub-categories" + (f" in main_category={limit_main_category_id}" if limit_main_category_id else " across all"))
             
-            # Get all main categories and search through their sub-categories
+            # Get main categories and search through their sub-categories
+            if limit_main_category_id is not None:
+                try:
+                    limit_id = int(limit_main_category_id)
+                except (ValueError, TypeError):
+                    limit_id = None
+            else:
+                limit_id = None
             main_categories = self.db.get_main_categories()
+            if limit_id is not None:
+                main_categories = [mc for mc in main_categories if mc['id'] == limit_id]
             logger.info(f"🔍 Searching across {len(main_categories)} main categories")
             
             for main_cat in main_categories:
