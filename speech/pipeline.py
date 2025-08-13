@@ -45,7 +45,9 @@ class VoicePipeline:
                 if hasattr(self.handler, 'db') and self.handler.db:
                     session = self.handler.db.get_user_session(phone_number)
                     if session:
-                        session_lang = (session.get('language') or '').lower() or None
+                        # Prefer 'language_preference' for consistency with handlers; fallback to 'language'
+                        pref = session.get('language_preference') or session.get('language') or ''
+                        session_lang = pref.lower() or None
             except Exception as e:
                 logger.warning(f"Could not fetch session for language preference: {e}")
 
