@@ -39,11 +39,32 @@ class VoicePipeline:
 
             mime_type = media_info.get('mime_type', 'audio/ogg')
 
-            # ASR
-            transcript: Transcript = self.asr.transcribe(media_bytes, mime_type)
+            # Determine session language to guide ASR and TTS
+            session_lang = None
+            try:
+                if hasattr(self.handler, 'db') and self.handler.db:
+                    session = self.handler.db.get_user_session(phone_number)
+                    if session:
+                        session_lang = (session.get('language') or '').lower() or None
+            except Exception as e:
+                logger.warning(f"Could not fetch session for language preference: {e}")
+
+            # Map session language to ASR hint code
+            lang_hint = None
+            if session_lang in ('english', 'en'):
+                lang_hint = 'en'
+            elif session_lang in ('arabic', 'ar'):
+                lang_hint = 'ar'
+
+            # ASR with language hint (if available)
+            transcript: Transcript = self.asr.transcribe(media_bytes, mime_type, language_hint=lang_hint)
             if not transcript or not transcript.text:
                 # Handle as "processed" to avoid normal text flow sending another message
-                self.whatsapp.send_text_message(phone_number, "لم أتمكن من فهم الرسالة الصوتية. الرجاء إعادة إرسال ملاحظة صوتية أقصر أو أوضح.")
+                if session_lang in ('english', 'en'):
+                    fallback_text = "Sorry, I couldn't understand the voice note. Please send a shorter or clearer voice message."
+                else:
+                    fallback_text = "لم أتمكن من فهم الرسالة الصوتية. الرجاء إعادة إرسال ملاحظة صوتية أقصر أو أوضح."
+                self.whatsapp.send_text_message(phone_number, fallback_text)
                 return True
 
             # Build a synthetic text message for downstream handler (use transcript)
@@ -64,9 +85,11 @@ class VoicePipeline:
             # TTS
             # Decide output format: prefer OGG voice notes; fallback to MP3 if configured
             preferred_mime = "audio/ogg"
+            # Choose TTS language: prefer session language; fallback to transcript language
+            tts_lang = session_lang or getattr(transcript, 'language', None) or 'arabic'
             audio_blob: AudioBlob = self.tts.synthesize(
                 reply_text,
-                language=transcript.language,
+                language=tts_lang,
                 mime_type=preferred_mime
             )
             if not audio_blob or not audio_blob.data:

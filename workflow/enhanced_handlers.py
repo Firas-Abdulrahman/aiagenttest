@@ -843,7 +843,14 @@ class EnhancedMessageHandler:
             if sub_category_name:
                 logger.info("🔁 Falling back to intelligent item search for provided sub-category name")
                 probe = {'item_name': sub_category_name}
-                return self._handle_intelligent_item_selection(phone_number, probe, session, user_context)
+                return self._handle_intelligent_item_selection(
+                    phone_number,
+                    probe,
+                    session,
+                    user_context,
+                    allow_cross_step=True,
+                    limit_main_category_id=main_category_id
+                )
             if language == 'arabic':
                 return self._create_response(f"عذراً، لم نجد الفئة الفرعية '{sub_category_name}'. الرجاء اختيار من القائمة المتاحة.")
             else:
