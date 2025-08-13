@@ -121,6 +121,25 @@ class ThreadSafeMessageHandler:
 
             logger.info(f"👤 Processing for {phone_number}: '{text}' at step '{current_step}'")
 
+            # If text body is empty (e.g., blank message), avoid invoking AI/handlers
+            if not text:
+                logger.info("⚠️ Empty text body received; skipping AI and returning prompt")
+                if language in ('english', 'en'):
+                    if current_step == 'waiting_for_language':
+                        content = "Please choose your language: Send 1 for Arabic or 2 for English."
+                    elif current_step == 'waiting_for_category':
+                        content = "Please type a category name, or send 'menu' to explore categories."
+                    else:
+                        content = "I didn't receive any text. Please type your request."
+                else:
+                    if current_step == 'waiting_for_language':
+                        content = "الرجاء اختيار اللغة: أرسل 1 للعربية أو 2 للإنجليزية."
+                    elif current_step == 'waiting_for_category':
+                        content = "الرجاء كتابة اسم الفئة، أو أرسل 'menu' لاستعراض الفئات."
+                    else:
+                        content = "لم أتلق أي نص. الرجاء كتابة طلبك."
+                return self._create_response(content)
+
             # Log conversation
             self.db.log_conversation(phone_number, 'user_message', text, current_step=current_step)
 
