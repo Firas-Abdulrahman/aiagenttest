@@ -291,14 +291,14 @@ class EnhancedMessageHandler:
             return self._handle_quick_order_service(phone_number, extracted_data, session, user_context)
         elif action == 'quantity_selection':
             return self._handle_ai_quantity_selection(phone_number, extracted_data, session, user_context)
-        elif action == 'yes_no':
-            return self._handle_ai_yes_no(phone_number, extracted_data, session, user_context)
-        elif action == 'service_selection':
-            return self._handle_ai_service_selection(phone_number, extracted_data, session, user_context)
-        elif action == 'location_input':
-            return self._handle_ai_location_input(phone_number, extracted_data, session, user_context)
         elif action == 'confirmation':
-            # Check for button clicks first
+            # Check for yes_no in extracted_data first
+            yes_no = extracted_data.get('yes_no')
+            if yes_no in ['yes', 'no']:
+                # Route to yes_no handler for proper confirmation/cancellation
+                return self._handle_ai_yes_no(phone_number, extracted_data, session, user_context)
+            
+            # Check for button clicks
             user_message = user_context.get('original_user_message', '')
             if user_message == 'confirm_order':
                 return self._confirm_order(phone_number, session, user_context)
@@ -306,6 +306,12 @@ class EnhancedMessageHandler:
                 return self._cancel_order(phone_number, session, user_context)
             else:
                 return self._handle_ai_confirmation(phone_number, extracted_data, session, user_context)
+        elif action == 'yes_no':
+            return self._handle_ai_yes_no(phone_number, extracted_data, session, user_context)
+        elif action == 'service_selection':
+            return self._handle_ai_service_selection(phone_number, extracted_data, session, user_context)
+        elif action == 'location_input':
+            return self._handle_ai_location_input(phone_number, extracted_data, session, user_context)
         elif action == 'show_menu':
             return self._handle_ai_show_menu(phone_number, session, user_context)
         elif action == 'help_request':
