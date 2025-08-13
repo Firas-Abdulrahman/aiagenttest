@@ -745,8 +745,14 @@ Response: {{
     def _parse_enhanced_response(self, ai_response: str, current_step: str, user_message: str, user_context: Dict = None) -> Optional[Dict]:
         """Parse and validate enhanced AI response"""
         try:
-            # Debug: Log the raw AI response
-            logger.info(f"🔍 Raw AI Response: {ai_response}")
+            # Debug: Log the raw AI response (safely truncated and single-line)
+            try:
+                _raw_preview = ai_response.replace("\n", " ")
+                if len(_raw_preview) > 600:
+                    _raw_preview = _raw_preview[:600] + "... [truncated]"
+                logger.debug(f"🔍 Raw AI Response (preview): {_raw_preview}")
+            except Exception:
+                logger.debug("🔍 Raw AI Response (preview): <unprintable>")
             
             # Clean the response
             if ai_response.startswith('```json'):
@@ -769,8 +775,14 @@ Response: {{
             # Try to parse the JSON first without fixing
             try:
                 result = json.loads(ai_response)
-                logger.info(f"✅ JSON parsed successfully without fixing")
-                logger.info(f"✨ Parsed result before validation: {result}")
+                logger.info("✅ JSON parsed successfully without fixing")
+                try:
+                    _parsed_preview = json.dumps(result, ensure_ascii=False)
+                    if len(_parsed_preview) > 800:
+                        _parsed_preview = _parsed_preview[:800] + "... [truncated]"
+                    logger.debug(f"✨ Parsed result before validation (preview): {_parsed_preview}")
+                except Exception:
+                    logger.debug("✨ Parsed result before validation (preview): <unprintable>")
                 
                 # Fix malformed structure where action is inside extracted_data
                 if 'extracted_data' in result and isinstance(result['extracted_data'], dict):
@@ -790,12 +802,31 @@ Response: {{
                         result['understood_intent'] = extracted_data.pop('understood_intent')
                         logger.info(f"🔧 Fixed malformed structure: moved understood_intent to top level")
                 
-                # Validate required fields
+                # Validate required fields presence
                 required_fields = ['understood_intent', 'confidence', 'action', 'extracted_data']
                 for field in required_fields:
                     if field not in result:
-                        logger.error(f"Missing required field: {field}")
+                        logger.error(f"❌ Schema validation error: missing required field '{field}'")
                         return None
+
+                # Type and value validation
+                if not isinstance(result.get('extracted_data'), dict):
+                    logger.error(f"❌ Schema validation error: 'extracted_data' must be an object, got {type(result.get('extracted_data'))}")
+                    return None
+                if not isinstance(result.get('action'), str):
+                    logger.error(f"❌ Schema validation error: 'action' must be a string, got {type(result.get('action'))}")
+                    return None
+                if not isinstance(result.get('understood_intent'), str):
+                    logger.error(f"❌ Schema validation error: 'understood_intent' must be a string, got {type(result.get('understood_intent'))}")
+                    return None
+                conf = result.get('confidence')
+                if isinstance(conf, str):
+                    if conf.lower() not in ['low', 'medium', 'high']:
+                        logger.warning(f"⚠️ Non-standard confidence value: {conf}. Normalizing to 'low'.")
+                        result['confidence'] = 'low'
+                else:
+                    logger.warning(f"⚠️ Non-string confidence value: {conf}. Forcing to 'low'.")
+                    result['confidence'] = 'low'
                 
                 # Validate for current step
                 if not self._validate_enhanced_result(result, current_step, user_message, user_context):
@@ -805,12 +836,24 @@ Response: {{
                 return result
             except json.JSONDecodeError:
                 # Only fix JSON if it's actually invalid
-                logger.info(f"⚠️ JSON parsing failed, attempting to fix...")
+                logger.info("⚠️ JSON parsing failed, attempting to fix...")
                 ai_response = self._fix_json_format(ai_response)
-                logger.info(f"🔧 Fixed JSON: {ai_response}")
+                try:
+                    _fixed_preview = ai_response.replace("\n", " ")
+                    if len(_fixed_preview) > 600:
+                        _fixed_preview = _fixed_preview[:600] + "... [truncated]"
+                    logger.debug(f"🔧 Fixed JSON (preview): {_fixed_preview}")
+                except Exception:
+                    logger.debug("🔧 Fixed JSON (preview): <unprintable>")
                 
                 result = json.loads(ai_response)
-                logger.info(f"✨ Parsed result after fixing and before validation: {result}")
+                try:
+                    _parsed_after_fix = json.dumps(result, ensure_ascii=False)
+                    if len(_parsed_after_fix) > 800:
+                        _parsed_after_fix = _parsed_after_fix[:800] + "... [truncated]"
+                    logger.debug(f"✨ Parsed result after fixing and before validation (preview): {_parsed_after_fix}")
+                except Exception:
+                    logger.debug("✨ Parsed result after fixing and before validation (preview): <unprintable>")
                 
                 # Apply the same structure fixes after JSON fixing
                 if 'extracted_data' in result and isinstance(result['extracted_data'], dict):
@@ -827,12 +870,31 @@ Response: {{
                         result['understood_intent'] = extracted_data.pop('understood_intent')
                         logger.info(f"🔧 Fixed malformed structure: moved understood_intent to top level")
             
-            # Validate required fields
+            # Validate required fields presence (post-fix)
             required_fields = ['understood_intent', 'confidence', 'action', 'extracted_data']
             for field in required_fields:
                 if field not in result:
-                    logger.error(f"Missing required field: {field}")
+                    logger.error(f"❌ Schema validation error: missing required field '{field}'")
                     return None
+
+            # Type and value validation (post-fix)
+            if not isinstance(result.get('extracted_data'), dict):
+                logger.error(f"❌ Schema validation error: 'extracted_data' must be an object, got {type(result.get('extracted_data'))}")
+                return None
+            if not isinstance(result.get('action'), str):
+                logger.error(f"❌ Schema validation error: 'action' must be a string, got {type(result.get('action'))}")
+                return None
+            if not isinstance(result.get('understood_intent'), str):
+                logger.error(f"❌ Schema validation error: 'understood_intent' must be a string, got {type(result.get('understood_intent'))}")
+                return None
+            conf = result.get('confidence')
+            if isinstance(conf, str):
+                if conf.lower() not in ['low', 'medium', 'high']:
+                    logger.warning(f"⚠️ Non-standard confidence value: {conf}. Normalizing to 'low'.")
+                    result['confidence'] = 'low'
+            else:
+                logger.warning(f"⚠️ Non-string confidence value: {conf}. Forcing to 'low'.")
+                result['confidence'] = 'low'
             
             # Validate for current step
             if not self._validate_enhanced_result(result, current_step, user_message, user_context):
@@ -842,8 +904,14 @@ Response: {{
             return result
             
         except json.JSONDecodeError as e:
-            logger.error(f"❌ JSON parsing error: {e}")
-            logger.error(f"AI Response was: {ai_response}")
+            # Explicit JSON parsing error
+            try:
+                _bad_preview = ai_response.replace("\n", " ")
+                if len(_bad_preview) > 600:
+                    _bad_preview = _bad_preview[:600] + "... [truncated]"
+                logger.error(f"❌ JSON parsing error: {e}. AI response (preview): {_bad_preview}")
+            except Exception:
+                logger.error(f"❌ JSON parsing error: {e}. AI response (preview): <unprintable>")
             return None
 
     def _fix_json_format(self, json_str: str) -> str:

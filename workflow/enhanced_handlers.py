@@ -318,6 +318,79 @@ class EnhancedMessageHandler:
             logger.warning(f"⚠️ Unknown AI action: {action}")
             return self._create_response(self._get_fallback_message(current_step, user_context.get('language', 'arabic')))
 
+    def _handle_conversational_response(self, phone_number: str, ai_result: Dict, session: Dict, user_context: Dict) -> Dict:
+        """Acknowledge small talk but keep the conversation on track for current step"""
+        language = user_context.get('language', 'arabic')
+        current_step = user_context.get('current_step')
+        response_message = ai_result.get('response_message')
+
+        logger.info(f"💬 Conversational response at step '{current_step}'")
+
+        if not response_message:
+            if language == 'arabic':
+                response_message = "شكراً لك! دعنا نكمل معاً."
+            else:
+                response_message = "Thanks! Let's continue."
+
+        # Append step-specific guidance
+        guidance = self._get_fallback_message(current_step, language)
+        final = f"{response_message}\n\n{guidance}" if guidance else response_message
+        return self._create_response(final)
+
+    def _extract_multiple_items_from_text(self, message: str) -> List[Dict]:
+        """Local helper to extract multiple items from a free-form message safely"""
+        items: List[Dict] = []
+        if not isinstance(message, str) or not message.strip():
+            return items
+
+        # Normalize Arabic digits to English
+        arabic_to_english = {
+            '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+            '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'
+        }
+        processed_message = message
+        for a, e in arabic_to_english.items():
+            processed_message = processed_message.replace(a, e)
+
+        # Split by Arabic 'و' (and)
+        parts = [p.strip() for p in processed_message.split('و') if p.strip()]
+
+        import re
+        quantity_words = {
+            'واحد': 1, 'اثنين': 2, 'ثلاثة': 3, 'اربعة': 4, 'خمسة': 5,
+            'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5
+        }
+
+        for part in parts:
+            qty = 1
+            name = part
+
+            # Quantity by words
+            for w, q in quantity_words.items():
+                if w in part:
+                    qty = q
+                    name = part.replace(w, '').strip()
+                    break
+
+            # Quantity by digits if still 1
+            if qty == 1:
+                nums = re.findall(r'\d+', part)
+                if nums:
+                    try:
+                        qty = int(nums[0])
+                    except ValueError:
+                        qty = 1
+                    name = re.sub(r'\d+', '', part).strip()
+
+            # Cleanup
+            name = name.replace('اريد', '').replace('بدي', '').strip()
+            name = name.replace('موهيطة', 'موهيتو').replace('موهيطو', 'موهيتو')
+
+            if name:
+                items.append({'item_name': name, 'quantity': qty})
+
+        return items
+
     def _handle_multi_item_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle multiple item selection in one message"""
         multi_items = extracted_data.get('multi_items', [])
@@ -328,10 +401,8 @@ class EnhancedMessageHandler:
             logger.info("🔧 AI didn't extract multi_items, attempting to extract from original message")
             original_message = user_context.get('original_user_message', '')
             if original_message:
-                # Use the enhanced processor's extraction method
-                from ai.enhanced_processor import EnhancedAIProcessor
-                temp_processor = EnhancedAIProcessor()
-                multi_items = temp_processor._extract_multiple_items(original_message)
+                # Use local safe extractor to avoid constructing AI processor
+                multi_items = self._extract_multiple_items_from_text(original_message)
                 logger.info(f"🔧 Extracted {len(multi_items)} items from original message: {multi_items}")
         
         if not multi_items:
