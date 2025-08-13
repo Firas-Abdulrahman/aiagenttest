@@ -230,13 +230,6 @@ class EnhancedMessageHandler:
         session = self.db.get_user_session(phone_number)
         logger.info(f"🔍 Refreshed session: order_mode={session.get('order_mode') if session else 'None'}")
 
-        # Safety guard: if the original message is small talk but AI misclassified the action,
-        # handle it as conversational to keep UX smooth.
-        original_user_message = user_context.get('original_user_message', '')
-        if action != 'conversational_response' and self._is_small_talk(original_user_message):
-            logger.info("🛡️ Overriding misclassification: treating message as conversational small talk")
-            return self._handle_conversational_response(phone_number, ai_result, session, user_context)
-
         # Handle intelligent suggestions (items/categories) that can work across steps
         if action == 'intelligent_suggestion':
             return self._handle_intelligent_suggestion(phone_number, ai_result, session, user_context)
@@ -248,10 +241,7 @@ class EnhancedMessageHandler:
             return self._handle_ai_category_selection(phone_number, extracted_data, session, user_context)
         elif action == 'sub_category_selection':
             # Handle sub-category selection (e.g., user asks for "موهيتو" sub-category)
-            # PRIORITY: try sub-category selection within current main category first.
-            response = self._handle_sub_category_selection(phone_number, extracted_data, session, user_context)
-            # If sub-category wasn't found, our handler will fallback to item search limited to current main category.
-            return response
+            return self._handle_sub_category_selection(phone_number, extracted_data, session, user_context)
         elif action == 'item_selection':
             # Check if we're in quick order mode
             logger.info(f"🔍 Debug: order_mode={session.get('order_mode')}, current_step={user_context.get('current_step')}")
@@ -328,100 +318,6 @@ class EnhancedMessageHandler:
             logger.warning(f"⚠️ Unknown AI action: {action}")
             return self._create_response(self._get_fallback_message(current_step, user_context.get('language', 'arabic')))
 
-    def _handle_conversational_response(self, phone_number: str, ai_result: Dict, session: Dict, user_context: Dict) -> Dict:
-        """Acknowledge small talk but keep the conversation on track for current step"""
-        language = user_context.get('language', 'arabic')
-        current_step = user_context.get('current_step')
-        response_message = ai_result.get('response_message')
-
-        logger.info(f"💬 Conversational response at step '{current_step}'")
-
-        if not response_message:
-            if language == 'arabic':
-                # Dialect-friendly acknowledgement and guidance
-                response_message = (
-                    "اي نعم احچي عراقي بكل سرور! شنو تحب تطلب؟\n"
-                    "تگدر تختار من الفئات أو تكتب اسم المنتج مباشرة."
-                )
-            else:
-                response_message = (
-                    "Yes, I can chat casually! What would you like to order?\n"
-                    "You can pick a category or type an item name directly."
-                )
-
-        # Append step-specific guidance
-        guidance = self._get_fallback_message(current_step, language)
-        final = f"{response_message}\n\n{guidance}" if guidance else response_message
-        return self._create_response(final)
-
-    def _is_small_talk(self, message: str) -> bool:
-        """Lightweight small-talk detector to catch greetings/dialect questions."""
-        if not isinstance(message, str):
-            return False
-        msg = message.strip().lower()
-        if not msg:
-            return False
-        arabic_triggers = [
-            'شلونك', 'شنو اخبارك', 'السلام عليكم', 'مرحبا', 'هلو', 'صباح الخير', 'مساء الخير',
-            'تحجي عراقي', 'تحكي عراقي', 'تحجي أراقي', 'تحكي أراقي', 'تحجي عراقي؟', 'تحكي عراقي؟'
-        ]
-        english_triggers = ['hello', 'hi', 'hey', 'how are you', 'are you there', 'do you speak iraqi']
-        return any(t in msg for t in arabic_triggers + english_triggers)
-
-    def _extract_multiple_items_from_text(self, message: str) -> List[Dict]:
-        """Local helper to extract multiple items from a free-form message safely"""
-        items: List[Dict] = []
-        if not isinstance(message, str) or not message.strip():
-            return items
-
-        # Normalize Arabic digits to English
-        arabic_to_english = {
-            '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
-            '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'
-        }
-        processed_message = message
-        for a, e in arabic_to_english.items():
-            processed_message = processed_message.replace(a, e)
-
-        # Split by Arabic 'و' (and)
-        parts = [p.strip() for p in processed_message.split('و') if p.strip()]
-
-        import re
-        quantity_words = {
-            'واحد': 1, 'اثنين': 2, 'ثلاثة': 3, 'اربعة': 4, 'خمسة': 5,
-            'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5
-        }
-
-        for part in parts:
-            qty = 1
-            name = part
-
-            # Quantity by words
-            for w, q in quantity_words.items():
-                if w in part:
-                    qty = q
-                    name = part.replace(w, '').strip()
-                    break
-
-            # Quantity by digits if still 1
-            if qty == 1:
-                nums = re.findall(r'\d+', part)
-                if nums:
-                    try:
-                        qty = int(nums[0])
-                    except ValueError:
-                        qty = 1
-                    name = re.sub(r'\d+', '', part).strip()
-
-            # Cleanup
-            name = name.replace('اريد', '').replace('بدي', '').strip()
-            name = name.replace('موهيطة', 'موهيتو').replace('موهيطو', 'موهيتو')
-
-            if name:
-                items.append({'item_name': name, 'quantity': qty})
-
-        return items
-
     def _handle_multi_item_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle multiple item selection in one message"""
         multi_items = extracted_data.get('multi_items', [])
@@ -432,8 +328,10 @@ class EnhancedMessageHandler:
             logger.info("🔧 AI didn't extract multi_items, attempting to extract from original message")
             original_message = user_context.get('original_user_message', '')
             if original_message:
-                # Use local safe extractor to avoid constructing AI processor
-                multi_items = self._extract_multiple_items_from_text(original_message)
+                # Use the enhanced processor's extraction method
+                from ai.enhanced_processor import EnhancedAIProcessor
+                temp_processor = EnhancedAIProcessor()
+                multi_items = temp_processor._extract_multiple_items(original_message)
                 logger.info(f"🔧 Extracted {len(multi_items)} items from original message: {multi_items}")
         
         if not multi_items:
@@ -839,24 +737,12 @@ class EnhancedMessageHandler:
             return self._show_sub_category_items(phone_number, selected_sub_category, language)
         else:
             logger.warning(f"❌ Sub-category not found: name='{sub_category_name}', id={sub_category_id}")
-            # Fallback: treat the provided name as a possible item and try intelligent matching across catalog
-            if sub_category_name:
-                logger.info("🔁 Falling back to intelligent item search for provided sub-category name")
-                probe = {'item_name': sub_category_name}
-                return self._handle_intelligent_item_selection(
-                    phone_number,
-                    probe,
-                    session,
-                    user_context,
-                    allow_cross_step=True,
-                    limit_main_category_id=main_category_id
-                )
             if language == 'arabic':
                 return self._create_response(f"عذراً، لم نجد الفئة الفرعية '{sub_category_name}'. الرجاء اختيار من القائمة المتاحة.")
             else:
                 return self._create_response(f"Sorry, we couldn't find the sub-category '{sub_category_name}'. Please select from the available options.")
 
-    def _handle_intelligent_item_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict, allow_cross_step: bool = False, limit_main_category_id: Optional[int] = None) -> Dict:
+    def _handle_intelligent_item_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle intelligent item selection that can work across different steps"""
         item_name = extracted_data.get('item_name')
         item_id = extracted_data.get('item_id')
@@ -865,8 +751,8 @@ class EnhancedMessageHandler:
         
         logger.info(f"🧠 Intelligent item selection: '{item_name}' at step '{current_step}'")
         
-        # Validate that we're at the correct step for item selection unless cross-step matching is allowed
-        if current_step == 'waiting_for_sub_category' and not allow_cross_step:
+        # Validate that we're at the correct step for item selection
+        if current_step == 'waiting_for_sub_category':
             logger.warning(f"❌ Invalid: Attempting item selection at sub-category step")
             if language == 'arabic':
                 return self._create_response("الرجاء اختيار الفئة الفرعية أولاً قبل اختيار المنتج المحدد.")
@@ -910,19 +796,10 @@ class EnhancedMessageHandler:
                     }, session, user_context)
             
             # If not found in current context, search across all sub-categories
-            logger.info(f"🔍 Searching for item '{item_name}' across sub-categories" + (f" in main_category={limit_main_category_id}" if limit_main_category_id else " across all"))
+            logger.info(f"🔍 Searching for item '{item_name}' across all sub-categories")
             
-            # Get main categories and search through their sub-categories
-            if limit_main_category_id is not None:
-                try:
-                    limit_id = int(limit_main_category_id)
-                except (ValueError, TypeError):
-                    limit_id = None
-            else:
-                limit_id = None
+            # Get all main categories and search through their sub-categories
             main_categories = self.db.get_main_categories()
-            if limit_id is not None:
-                main_categories = [mc for mc in main_categories if mc['id'] == limit_id]
             logger.info(f"🔍 Searching across {len(main_categories)} main categories")
             
             for main_cat in main_categories:

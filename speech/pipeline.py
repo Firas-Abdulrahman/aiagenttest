@@ -39,34 +39,11 @@ class VoicePipeline:
 
             mime_type = media_info.get('mime_type', 'audio/ogg')
 
-            # Determine session language to guide ASR and TTS
-            session_lang = None
-            try:
-                if hasattr(self.handler, 'db') and self.handler.db:
-                    session = self.handler.db.get_user_session(phone_number)
-                    if session:
-                        # Prefer 'language_preference' for consistency with handlers; fallback to 'language'
-                        pref = session.get('language_preference') or session.get('language') or ''
-                        session_lang = pref.lower() or None
-            except Exception as e:
-                logger.warning(f"Could not fetch session for language preference: {e}")
-
-            # Map session language to ASR hint code
-            lang_hint = None
-            if session_lang in ('english', 'en'):
-                lang_hint = 'en'
-            elif session_lang in ('arabic', 'ar'):
-                lang_hint = 'ar'
-
-            # ASR with language hint (if available)
-            transcript: Transcript = self.asr.transcribe(media_bytes, mime_type, language_hint=lang_hint)
+            # ASR
+            transcript: Transcript = self.asr.transcribe(media_bytes, mime_type)
             if not transcript or not transcript.text:
                 # Handle as "processed" to avoid normal text flow sending another message
-                if session_lang in ('english', 'en'):
-                    fallback_text = "Sorry, I couldn't understand the voice note. Please send a shorter or clearer voice message."
-                else:
-                    fallback_text = "لم أتمكن من فهم الرسالة الصوتية. الرجاء إعادة إرسال ملاحظة صوتية أقصر أو أوضح."
-                self.whatsapp.send_text_message(phone_number, fallback_text)
+                self.whatsapp.send_text_message(phone_number, "لم أتمكن من فهم الرسالة الصوتية. الرجاء إعادة إرسال ملاحظة صوتية أقصر أو أوضح.")
                 return True
 
             # Build a synthetic text message for downstream handler (use transcript)
@@ -80,31 +57,16 @@ class VoicePipeline:
 
             response = self.handler.handle_message(synthetic_message)
 
-            # Check response type - interactive messages should be sent directly, not as voice
-            response_type = response.get('type', 'text')
-            if response_type == 'interactive':
-                # Send interactive message directly (can't convert buttons to voice)
-                success = self.whatsapp.send_interactive_message(
-                    phone_number,
-                    response.get('header', ''),
-                    response.get('body', ''),
-                    response.get('footer', ''),
-                    response.get('buttons', [])
-                )
-                return success
-
             reply_text = response.get('content', '')
             if not reply_text:
                 return False
 
-            # TTS for text responses
+            # TTS
             # Decide output format: prefer OGG voice notes; fallback to MP3 if configured
             preferred_mime = "audio/ogg"
-            # Choose TTS language: prefer session language; fallback to transcript language
-            tts_lang = session_lang or getattr(transcript, 'language', None) or 'arabic'
             audio_blob: AudioBlob = self.tts.synthesize(
                 reply_text,
-                language=tts_lang,
+                language=transcript.language,
                 mime_type=preferred_mime
             )
             if not audio_blob or not audio_blob.data:

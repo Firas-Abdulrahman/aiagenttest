@@ -121,11 +121,6 @@ class ThreadSafeMessageHandler:
 
             logger.info(f"👤 Processing for {phone_number}: '{text}' at step '{current_step}'")
 
-            # If text body is empty (e.g., blank/system webhook), avoid invoking AI/handlers and do not reply
-            if not text:
-                logger.info("⚠️ Empty text body received; skipping AI and responding silently")
-                return { 'type': 'handled' }
-
             # Log conversation
             self.db.log_conversation(phone_number, 'user_message', text, current_step=current_step)
 
