@@ -24,6 +24,12 @@ class OpenAIASR(ASRService):
             buf = io.BytesIO(media_bytes)
             buf.name = "audio.ogg"  # some SDKs expect a filename
 
+            # Log the transcription request with language hint
+            if language_hint:
+                logger.info(f"🎤 Transcribing with language hint: {language_hint}")
+            else:
+                logger.info(f"🎤 Transcribing with auto-language detection")
+
             result = self.client.audio.transcriptions.create(
                 model=self.model,
                 file=buf,
@@ -36,14 +42,14 @@ class OpenAIASR(ASRService):
                 text = result.get('text')
 
             if text:
-                logger.info("ASR completed (OpenAI whisper-1)")
+                logger.info(f"✅ ASR completed (OpenAI whisper-1) - Language hint: {language_hint}, Text: '{text[:50]}{'...' if len(text) > 50 else ''}'")
                 return Transcript(text=text, language=language_hint, confidence=None, duration_s=None)
 
             logger.warning("ASR returned no text")
             return Transcript(text="", language=language_hint, confidence=None, duration_s=None)
 
         except Exception as e:
-            logger.error(f"ASR error: {e}")
+            logger.error(f"❌ ASR error: {e}")
             return Transcript(text="", language=language_hint, confidence=None, duration_s=None)
 
 

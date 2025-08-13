@@ -1,6 +1,5 @@
 import logging
 from typing import Dict, Any, Optional
-
 from .types import Transcript, AudioBlob
 from .asr_service import ASRService
 from .tts_service import TTSService
@@ -39,8 +38,12 @@ class VoicePipeline:
 
             mime_type = media_info.get('mime_type', 'audio/ogg')
 
-            # ASR
-            transcript: Transcript = self.asr.transcribe(media_bytes, mime_type)
+            # Get user's language preference for better ASR accuracy
+            language_hint = self._get_user_language_hint(phone_number)
+            logger.info(f"🎤 ASR with language hint: {language_hint} for user {phone_number}")
+
+            # ASR with language hint
+            transcript: Transcript = self.asr.transcribe(media_bytes, mime_type, language_hint)
             if not transcript or not transcript.text:
                 # Handle as "processed" to avoid normal text flow sending another message
                 self.whatsapp.send_text_message(phone_number, "لم أتمكن من فهم الرسالة الصوتية. الرجاء إعادة إرسال ملاحظة صوتية أقصر أو أوضح.")
@@ -93,5 +96,32 @@ class VoicePipeline:
         except Exception as e:
             logger.error(f"Voice pipeline error: {e}")
             return False
+
+    def _get_user_language_hint(self, phone_number: str) -> Optional[str]:
+        """Get user's language preference for ASR language hint"""
+        try:
+            # Try to get user state from session manager
+            from utils.thread_safe_session import session_manager
+            user_state = session_manager.get_user_state(phone_number)
+            
+            if user_state and user_state.language_preference:
+                # Map our language preferences to Whisper language codes
+                language_mapping = {
+                    'arabic': 'ar',
+                    'english': 'en'
+                }
+                whisper_language = language_mapping.get(user_state.language_preference.lower())
+                if whisper_language:
+                    logger.info(f"🎯 Using language hint '{whisper_language}' for user {phone_number}")
+                    return whisper_language
+            
+            # If no language preference found, don't provide a hint
+            # This allows Whisper to auto-detect the language
+            logger.info(f"🤔 No language preference found for user {phone_number}, using auto-detection")
+            return None
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Could not get language hint for user {phone_number}: {e}")
+            return None
 
 
