@@ -864,7 +864,9 @@ Response: {{
             
             'waiting_for_item': """
                 - Accept: numbers (which are item IDs), item names, descriptions.
-                - IMPORTANT: If user provides a number, it is ALWAYS an item ID for selection.
+                - CRITICAL: If user provides a number (including Arabic numerals ١,٢,٣,٤,٥,٦,٧,٨,٩,٠), it is ALWAYS an item ID for selection.
+                - CRITICAL: NEVER interpret numbers as yes/no responses at this step.
+                - CRITICAL: Numbers like "٢" (Arabic 2) should be converted to "2" and treated as item selection.
                 - Support partial matching and synonyms for item names.
                 - Response: Confirm selection and ask for quantity.
             """,
@@ -1241,7 +1243,7 @@ Response: {{
         if action not in valid_actions:
             return False
         
-        # Convert Arabic numerals to English for processing
+        # ENHANCED FIX: Convert Arabic numerals to English for processing
         arabic_to_english = {
             '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
             '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'
@@ -1253,17 +1255,19 @@ Response: {{
         for arabic, english in arabic_to_english.items():
             processed_message = processed_message.replace(arabic, english)
         
-        # Extra validation for numeric inputs at item step (for explore mode)
+        # CRITICAL FIX: Enhanced validation for numeric inputs at item step
         if processed_message in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']:
-            # Force correct interpretation for item step
+            # Force correct interpretation for item step - NEVER interpret as yes/no
             forced_item_id = int(processed_message)
             
+            # Override AI's incorrect interpretation
             extracted_data['item_id'] = forced_item_id  # Set item_id directly
             extracted_data['item_name'] = None  # Clear item_name if it was set by AI
+            extracted_data['yes_no'] = None  # Clear any yes_no interpretation
             result['extracted_data'] = extracted_data
             result['action'] = 'item_selection'
             result['understood_intent'] = f"User wants to select item number {forced_item_id}"
-            logger.info(f"🔧 Fixed item selection: {user_message} -> item_id={forced_item_id}")
+            logger.info(f"🔧 CRITICAL FIX: Corrected item selection: '{user_message}' -> item_id={forced_item_id} (was incorrectly interpreted as yes_no)")
             return True
         
         # Check for multi-item indicators in the message

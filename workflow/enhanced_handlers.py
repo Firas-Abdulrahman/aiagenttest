@@ -580,6 +580,54 @@ class EnhancedMessageHandler:
                 logger.info(f"🔄 Falling back to structured processing for invalid AI suggestion with original message: '{original_user_message}'")
                 return self._handle_structured_message(phone_number, original_user_message, current_step, session, user_context)
 
+        # ENHANCED FIX: Context-aware intelligent suggestions for item selection
+        if current_step == 'waiting_for_item':
+            # User is in item selection step - provide context-aware suggestions
+            sub_category_id = session.get('selected_sub_category')
+            if sub_category_id:
+                # Ensure sub_category_id is an integer
+                if isinstance(sub_category_id, dict):
+                    sub_category_id = sub_category_id.get('id', sub_category_id)
+                elif not isinstance(sub_category_id, int):
+                    try:
+                        sub_category_id = int(sub_category_id)
+                    except (ValueError, TypeError):
+                        logger.error(f"❌ Cannot convert sub_category_id to int: {sub_category_id}")
+                        return self._create_response("خطأ في النظام. الرجاء المحاولة مرة أخرى")
+                
+                # Get items from current sub-category only
+                items = self.db.get_sub_category_items(sub_category_id)
+                if items:
+                    # Build context-aware suggestions based on user's request
+                    user_message = original_user_message.lower()
+                    suggestions = []
+                    
+                    # Filter items based on user's request
+                    for item in items:
+                        item_name = item['item_name_ar'].lower() if language == 'arabic' else item['item_name_en'].lower()
+                        
+                        # Check if item matches user's request
+                        if any(keyword in item_name for keyword in user_message.split()):
+                            suggestions.append(item)
+                    
+                    # If no specific matches, show all items in current category
+                    if not suggestions:
+                        suggestions = items[:3]  # Show first 3 items
+                    
+                    # Build response with current category items only
+                    if language == 'arabic':
+                        response = f"إليك خياراتنا من {items[0]['sub_category_name_ar'] if 'sub_category_name_ar' in items[0] else 'هذه الفئة'}:\n\n"
+                        for i, item in enumerate(suggestions, 1):
+                            response += f"{i}. {item['item_name_ar']} - {item['price']} دينار\n"
+                        response += f"\nاختر الرقم من 1 إلى {len(items)} أو اكتب اسم المنتج المطلوب"
+                    else:
+                        response = f"Here are our {items[0]['sub_category_name_en'] if 'sub_category_name_en' in items[0] else 'category'} options:\n\n"
+                        for i, item in enumerate(suggestions, 1):
+                            response += f"{i}. {item['item_name_en']} - {item['price']} IQD\n"
+                        response += f"\nChoose a number from 1 to {len(items)} or type the item name"
+                    
+                    return self._create_response(response)
+        
         # If no specific suggestions, use the AI's response message
         if response_message:
             return self._create_response(response_message)
