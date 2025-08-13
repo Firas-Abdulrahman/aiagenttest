@@ -230,6 +230,13 @@ class EnhancedMessageHandler:
         session = self.db.get_user_session(phone_number)
         logger.info(f"🔍 Refreshed session: order_mode={session.get('order_mode') if session else 'None'}")
 
+        # Safety guard: if the original message is small talk but AI misclassified the action,
+        # handle it as conversational to keep UX smooth.
+        original_user_message = user_context.get('original_user_message', '')
+        if action != 'conversational_response' and self._is_small_talk(original_user_message):
+            logger.info("🛡️ Overriding misclassification: treating message as conversational small talk")
+            return self._handle_conversational_response(phone_number, ai_result, session, user_context)
+
         # Handle intelligent suggestions (items/categories) that can work across steps
         if action == 'intelligent_suggestion':
             return self._handle_intelligent_suggestion(phone_number, ai_result, session, user_context)
@@ -241,6 +248,15 @@ class EnhancedMessageHandler:
             return self._handle_ai_category_selection(phone_number, extracted_data, session, user_context)
         elif action == 'sub_category_selection':
             # Handle sub-category selection (e.g., user asks for "موهيتو" sub-category)
+            # If name provided looks like an item (e.g., croissant), try intelligent item matching first.
+            sub_cat_name = (extracted_data or {}).get('sub_category_name')
+            if sub_cat_name:
+                probe = {'item_name': sub_cat_name}
+                matched_probe = self._handle_intelligent_item_selection(phone_number, probe, session, user_context)
+                # If intelligent item flow produced a response that is not a generic fallback, use it.
+                if matched_probe and matched_probe.get('type') != 'text' or (matched_probe.get('type') == 'text' and 'لم نجد' not in matched_probe.get('body', '') and 'couldn\'t find' not in matched_probe.get('body', '')):
+                    logger.info("🔀 Sub-category name matched an item; using intelligent item selection flow")
+                    return matched_probe
             return self._handle_sub_category_selection(phone_number, extracted_data, session, user_context)
         elif action == 'item_selection':
             # Check if we're in quick order mode
@@ -328,14 +344,35 @@ class EnhancedMessageHandler:
 
         if not response_message:
             if language == 'arabic':
-                response_message = "شكراً لك! دعنا نكمل معاً."
+                # Dialect-friendly acknowledgement and guidance
+                response_message = (
+                    "اي نعم احچي عراقي بكل سرور! شنو تحب تطلب؟\n"
+                    "تگدر تختار من الفئات أو تكتب اسم المنتج مباشرة."
+                )
             else:
-                response_message = "Thanks! Let's continue."
+                response_message = (
+                    "Yes, I can chat casually! What would you like to order?\n"
+                    "You can pick a category or type an item name directly."
+                )
 
         # Append step-specific guidance
         guidance = self._get_fallback_message(current_step, language)
         final = f"{response_message}\n\n{guidance}" if guidance else response_message
         return self._create_response(final)
+
+    def _is_small_talk(self, message: str) -> bool:
+        """Lightweight small-talk detector to catch greetings/dialect questions."""
+        if not isinstance(message, str):
+            return False
+        msg = message.strip().lower()
+        if not msg:
+            return False
+        arabic_triggers = [
+            'شلونك', 'شنو اخبارك', 'السلام عليكم', 'مرحبا', 'هلو', 'صباح الخير', 'مساء الخير',
+            'تحجي عراقي', 'تحكي عراقي', 'تحجي أراقي', 'تحكي أراقي', 'تحجي عراقي؟', 'تحكي عراقي؟'
+        ]
+        english_triggers = ['hello', 'hi', 'hey', 'how are you', 'are you there', 'do you speak iraqi']
+        return any(t in msg for t in arabic_triggers + english_triggers)
 
     def _extract_multiple_items_from_text(self, message: str) -> List[Dict]:
         """Local helper to extract multiple items from a free-form message safely"""
@@ -808,6 +845,11 @@ class EnhancedMessageHandler:
             return self._show_sub_category_items(phone_number, selected_sub_category, language)
         else:
             logger.warning(f"❌ Sub-category not found: name='{sub_category_name}', id={sub_category_id}")
+            # Fallback: treat the provided name as a possible item and try intelligent matching across catalog
+            if sub_category_name:
+                logger.info("🔁 Falling back to intelligent item search for provided sub-category name")
+                probe = {'item_name': sub_category_name}
+                return self._handle_intelligent_item_selection(phone_number, probe, session, user_context)
             if language == 'arabic':
                 return self._create_response(f"عذراً، لم نجد الفئة الفرعية '{sub_category_name}'. الرجاء اختيار من القائمة المتاحة.")
             else:
