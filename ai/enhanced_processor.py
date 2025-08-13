@@ -165,7 +165,7 @@ ENHANCED ARABIC TERM MAPPING (CRITICAL):
 - "طاقة" or "مشروب طاقة" or "مشروبات الطاقة" = Energy Drinks (Sub-category 7 of Cold Drinks)
 - "كوفي" or "قهوة" or "كوفي بارد" or "قهوة باردة" = Coffee-related items (Multiple sub-categories)
 - "بارد" or "مشروب بارد" or "مشروبات باردة" = Cold drinks (Main category 1)
-- "ساخن" or "حار" or "مشروب ساخن" or "مشروبات ساخنة" = Hot drinks (Main category 2)
+- "ساخن" or "حار" or "مشروب ساخن" or "مشروبات ساخنة" or "هوت درينكز" or "هوت درينك" = Hot drinks (Main category 2)
 - "حلو" or "حلويات" or "حلو" or "معجنات" = Pastries & Sweets (Main category 3)
 - "حلاوة" or "حلاوة طيبة" or "حلويات" = Pastries & Sweets (Main category 3)
 - "فطائر" or "فطاير" or "فطيرة" = Pastries (Sub-category 4 of Pastries & Sweets)
@@ -180,7 +180,7 @@ ENHANCED ARABIC TERM MAPPING (CRITICAL):
 - "شاي" or "شاي مثلج" = Iced Tea (Sub-category 4 of Cold Drinks)
 - "عصير برتقال" or "عصير تفاح" = Fresh Juices (Sub-category 5 of Cold Drinks)
 - "لاتيه" or "كابتشينو" = Latte & Special Drinks (Sub-category 2 of Hot Drinks)
-- "اسبرسو" or "تركي" = Coffee & Espresso (Sub-category 1 of Hot Drinks)
+- "اسبرسو" or "تركي" or "قهوة واسبرسو" or "coffee and espresso" or "coffee & espresso" = Coffee & Espresso (Sub-category 1 of Hot Drinks)
 
 SERVICE TYPE MAPPING (CRITICAL):
 - "بالكهوة" or "في الكهوة" or "في المقهى" or "تناول" = Dine-in service
@@ -997,8 +997,8 @@ Response: {{
             result['extracted_data'] = extracted_data
             logger.info(f"🔧 Quick order selection detected: {user_message}")
             return True
-        elif order_mode != 'explore' and user_message_lower in ['explore_menu', 'استكشاف القائمة', '2', '٢']:
-            # Explore menu selection
+        elif user_message_lower in ['explore_menu', 'استكشاف القائمة', '2', '٢']:
+            # Explore menu selection (allow even if already in explore mode to prevent loops)
             result['action'] = 'explore_menu_selection'
             result['understood_intent'] = "User wants to explore the menu"
             result['extracted_data'] = extracted_data

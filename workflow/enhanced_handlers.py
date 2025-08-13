@@ -428,6 +428,15 @@ class EnhancedMessageHandler:
         """Handle explore menu mode selection"""
         language = user_context.get('language', 'arabic')
         
+        # Check if already in explore mode to prevent loops
+        current_order_mode = session.get('order_mode')
+        if current_order_mode == 'explore':
+            # Already in explore mode, just show categories again
+            if language == 'arabic':
+                return self._create_response("ممتاز! إليك الفئات الرئيسية:\n\n1. المشروبات الباردة\n2. المشروبات الحارة\n3. الحلويات والمعجنات\n\nاختر رقم الفئة التي تفضلها!")
+            else:
+                return self._create_response("Great! Here are the main categories:\n\n1. Cold Drinks\n2. Hot Drinks\n3. Pastries & Sweets\n\nPlease select the category number you prefer!")
+        
         # Set explore menu mode in session
         self.db.create_or_update_session(
             phone_number, 'waiting_for_category', language,
@@ -710,9 +719,16 @@ class EnhancedMessageHandler:
         selected_sub_category = None
         
         if sub_category_id:
-            # Direct ID selection
+            # Direct ID selection - check both display order and actual ID
+            # First try by display order (1-based index)
             if 1 <= sub_category_id <= len(sub_categories):
                 selected_sub_category = sub_categories[sub_category_id - 1]
+            else:
+                # Try by actual database ID
+                for sub_cat in sub_categories:
+                    if sub_cat['id'] == sub_category_id:
+                        selected_sub_category = sub_cat
+                        break
         
         elif sub_category_name:
             # Name-based selection
@@ -737,10 +753,22 @@ class EnhancedMessageHandler:
             return self._show_sub_category_items(phone_number, selected_sub_category, language)
         else:
             logger.warning(f"❌ Sub-category not found: name='{sub_category_name}', id={sub_category_id}")
+            
+            # Get available sub-categories to show options
+            available_sub_categories = self.db.get_sub_categories(main_category_id)
+            
             if language == 'arabic':
-                return self._create_response(f"عذراً، لم نجد الفئة الفرعية '{sub_category_name}'. الرجاء اختيار من القائمة المتاحة.")
+                response = f"عذراً، لم نجد الفئة الفرعية '{sub_category_name}'. الفئات الفرعية المتاحة:\n\n"
+                for i, sub_cat in enumerate(available_sub_categories, 1):
+                    response += f"{i}. {sub_cat['name_ar']}\n"
+                response += "\nالرجاء اختيار رقم الفئة الفرعية المطلوبة."
             else:
-                return self._create_response(f"Sorry, we couldn't find the sub-category '{sub_category_name}'. Please select from the available options.")
+                response = f"Sorry, we couldn't find the sub-category '{sub_category_name}'. Available sub-categories:\n\n"
+                for i, sub_cat in enumerate(available_sub_categories, 1):
+                    response += f"{i}. {sub_cat['name_en']}\n"
+                response += "\nPlease select the sub-category number you prefer."
+            
+            return self._create_response(response)
 
     def _handle_intelligent_item_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle intelligent item selection that can work across different steps"""
