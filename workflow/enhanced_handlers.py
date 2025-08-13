@@ -554,7 +554,9 @@ class EnhancedMessageHandler:
                     logger.error(f"🚫 CRITICAL: AI suggested invalid sub-category {suggested_sub_category} for main category {main_category_id}")
                     logger.info(f"🔄 Falling back to structured processing for context-invalid AI suggestion with original message: '{original_user_message}'")
                     return self._handle_structured_message(phone_number, original_user_message, current_step, session, user_context)
-                
+            
+            # If we found a valid sub-category, proceed with it
+            if selected_sub_category:
                 # Update session
                 self.db.create_or_update_session(
                     phone_number, 'waiting_for_item', language,
@@ -776,7 +778,12 @@ class EnhancedMessageHandler:
                     'coffee': ['قهوة', 'coffee', 'espresso', 'اسبرسو', 'قهوة واسبرسو', 'coffee & espresso'],
                     'tea': ['شاي', 'tea', 'teas', 'مشروبات ساخنة أخرى', 'other hot drinks'],
                     'espresso': ['اسبرسو', 'espresso', 'قهوة واسبرسو', 'coffee & espresso'],
-                    'cappuccino': ['كابتشينو', 'cappuccino', 'لاتيه ومشروبات خاصة', 'lattes & specialties']
+                    'cappuccino': ['كابتشينو', 'cappuccino', 'لاتيه ومشروبات خاصة', 'lattes & specialties'],
+                    'sandwich': ['ساندويت', 'سندويش', 'سندويشة', 'سندويشات', 'sandwich', 'sandwiches'],
+                    'toast': ['توست', 'toast'],
+                    'croissant': ['كرواسان', 'كرواسون', 'croissant', 'croissants'],
+                    'pastry': ['فطائر', 'فطيرة', 'فطاير', 'pastry', 'pastries'],
+                    'cake': ['كيك', 'كيكة', 'قطع كيك', 'cake', 'cakes']
                 }
                 
                 for variation_key, variations in voice_variations.items():

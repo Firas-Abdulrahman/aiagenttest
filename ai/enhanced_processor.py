@@ -268,6 +268,20 @@ IMPORTANT RULES:
 - CONFIRMATION: When user says "هاهية" or "اوك", interpret as yes/confirm
 - GREETING DETECTION: When user says greetings like "Hello", "Hi", "مرحبا", "أهلا", always detect the language and set it in extracted_data.language
 
+CRITICAL CONTEXT-AWARE RULES:
+1. **Intelligent Suggestion Context**: When user is already in a sub-category (waiting_for_sub_category step) and expresses preferences like "I'm very hungry", "I want something sweet", etc., suggest specific items within that sub-category, NOT the main category again.
+
+2. **Mixed Input Priority**: When user provides mixed input like "نعم أريد الساندويت" (yes I want sandwich) at the waiting_for_sub_category step:
+   - PRIORITIZE sub-category selection over yes/no interpretation
+   - Extract "ساندويت" (sandwich) as sub_category_name
+   - Use action "sub_category_selection" NOT "yes_no"
+   - This applies to any mixed input where a sub-category name is mentioned
+
+3. **Sub-Category Context Awareness**: Always check the current main category context before making suggestions:
+   - If in Cold Drinks (Category 1): Only suggest sub-categories 1-7
+   - If in Hot Drinks (Category 2): Only suggest sub-categories 1-3  
+   - If in Pastries & Sweets (Category 3): Only suggest sub-categories 1-5
+
 EXAMPLES:
 User: "اريد موهيتو" (at any step)
 Response: {
@@ -304,6 +318,29 @@ Response: {
         "sub_category_name": "Lattes & Specialties"
     },
     "response_message": "Great choice! Here are the latte options:\n\n1. Cappuccino - 5000 IQD\n2. Spanish Latte (Hot) - 6000 IQD\n3. Caramel Latte - 5000 IQD\n4. Vanilla Latte - 5000 IQD\n5. Hazelnut Latte - 5000 IQD\n6. Hef Latte - 6000 IQD\n\nPlease choose the number of the item you prefer!"
+}
+
+User: "نعم أريد الساندويت" (at waiting_for_sub_category step for Pastries & Sweets)
+Response: {
+    "understood_intent": "User wants to select sandwiches sub-category",
+    "confidence": "high",
+    "action": "sub_category_selection",
+    "extracted_data": {
+        "sub_category_id": 12,
+        "sub_category_name": "Sandwiches"
+    },
+    "response_message": "Great choice! You've selected sandwiches. Here are the options available:\n\n1. Halloumi Cheese Sandwich - 3000 IQD\n2. Chicken Fajita Sandwich - 3000 IQD\n3. Diet Chicken & Veggies Sandwich - 3000 IQD\n4. Turkey Sandwich - 3000 IQD\n5. Roast Beef Sandwich - 3000 IQD\n\nPlease choose the number of the sandwich you prefer!"
+}
+
+User: "I'm very hungry" (at waiting_for_sub_category step for Pastries & Sweets)
+Response: {
+    "understood_intent": "User is hungry and wants food suggestions within current sub-category",
+    "confidence": "high",
+    "action": "intelligent_suggestion",
+    "extracted_data": {
+        "suggested_sub_category": 2
+    },
+    "response_message": "I understand you're very hungry! Since you're in the Pastries & Sweets category, I recommend our delicious sandwiches - they're perfect for satisfying hunger:\n\n1. Halloumi Cheese Sandwich - 3000 IQD\n2. Chicken Fajita Sandwich - 3000 IQD\n3. Diet Chicken & Veggies Sandwich - 3000 IQD\n4. Turkey Sandwich - 3000 IQD\n5. Roast Beef Sandwich - 3000 IQD\n\nPlease choose the number of the sandwich you prefer!"
 }
 
 User: "بالكهوة" (at service step)
@@ -714,6 +751,19 @@ Response: {{
                 - If CURRENT MAIN CATEGORY = 3 (Pastries & Sweets): Accept numbers 1-5 only
                   1=Toast, 2=Sandwiches, 3=Croissants, 4=Pastries, 5=Cake Pieces
                 - NEVER suggest sub-categories outside the current main category context
+                
+                - CRITICAL MIXED INPUT HANDLING: When user provides mixed input like "نعم أريد الساندويت" (yes I want sandwich):
+                  * PRIORITIZE sub-category selection over yes/no interpretation
+                  * Extract "ساندويت" (sandwich) as sub_category_name
+                  * Use action "sub_category_selection" NOT "yes_no"
+                  * This applies to any mixed input where a sub-category name is mentioned
+                
+                - CONTEXT-AWARE INTELLIGENT SUGGESTIONS: When user expresses preferences like "I'm very hungry", "I want something sweet":
+                  * If in Pastries & Sweets: Suggest specific sub-categories (e.g., sandwiches for hunger)
+                  * If in Hot Drinks: Suggest specific sub-categories (e.g., lattes for sweet drinks)
+                  * If in Cold Drinks: Suggest specific sub-categories (e.g., frappuccinos for sweet drinks)
+                  * NEVER suggest the main category again when already in a sub-category context
+                
                 - IMPORTANT: If user provides mixed input like "4 iced tea", extract the number (4) for sub-category selection
                 - If user asks for specific item (e.g., "موهيتو", "coffee", "iced tea"), use action "item_selection"
                 - If user asks for sub-category type (e.g., "عصائر", "hot drinks"), use action "intelligent_suggestion"
