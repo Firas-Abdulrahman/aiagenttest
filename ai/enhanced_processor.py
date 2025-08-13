@@ -1163,6 +1163,31 @@ Response: {{
         if action not in valid_actions:
             return False
         
+        # Convert Arabic numerals to English for processing
+        arabic_to_english = {
+            '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+            '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'
+        }
+        
+        user_message_lower = user_message.lower().strip()
+        processed_message = user_message_lower
+        
+        for arabic, english in arabic_to_english.items():
+            processed_message = processed_message.replace(arabic, english)
+        
+        # Extra validation for numeric inputs at item step (for explore mode)
+        if processed_message in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']:
+            # Force correct interpretation for item step
+            forced_item_id = int(processed_message)
+            
+            extracted_data['item_id'] = forced_item_id  # Set item_id directly
+            extracted_data['item_name'] = None  # Clear item_name if it was set by AI
+            result['extracted_data'] = extracted_data
+            result['action'] = 'item_selection'
+            result['understood_intent'] = f"User wants to select item number {forced_item_id}"
+            logger.info(f"🔧 Fixed item selection: {user_message} -> item_id={forced_item_id}")
+            return True
+        
         # Check for multi-item indicators in the message
         if 'و' in user_message and ('واحد' in user_message or 'one' in user_message.lower()):
             # If AI didn't detect multi-item but message suggests it, fix it
