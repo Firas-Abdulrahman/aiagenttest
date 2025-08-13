@@ -1099,29 +1099,7 @@ Response: {{
         # Get order mode from context
         order_mode = user_context.get('order_mode') if user_context else None
         
-        # Handle button clicks (only if not in explore mode)
-        if order_mode != 'explore' and user_message_lower in ['quick_order', 'الطلب السريع', '1', '١']:
-            # Quick order selection
-            result['action'] = 'quick_order_selection'
-            result['understood_intent'] = "User wants to use quick order mode"
-            result['extracted_data'] = extracted_data
-            logger.info(f"🔧 Quick order selection detected: {user_message}")
-            return True
-        elif user_message_lower in ['explore_menu', 'استكشاف القائمة', '2', '٢']:
-            # Explore menu selection (allow even if already in explore mode to prevent loops)
-            result['action'] = 'explore_menu_selection'
-            result['understood_intent'] = "User wants to explore the menu"
-            result['extracted_data'] = extracted_data
-            logger.info(f"🔧 Explore menu selection detected: {user_message}")
-            return True
-        
-        # Handle traditional category selection
-        if action == 'category_selection':
-            category_id = extracted_data.get('category_id')
-            if category_id and (category_id < 1 or category_id > 3):
-                return False
-        
-        # Extra validation for numeric inputs at category step (for explore mode)
+        # Extra validation for numeric inputs at category step (for explore mode) - PRIORITY
         if user_message_lower in ['1', '2', '3', '4', '5', '6', '7', '١', '٢', '٣', '٤', '٥', '٦', '٧']:
             # Force correct interpretation for category step
             if user_message_lower in ['1', '١']:
@@ -1140,6 +1118,29 @@ Response: {{
             result['action'] = 'category_selection'
             result['understood_intent'] = f"User wants to select main category number {forced_category_id}"
             logger.info(f"🔧 Fixed category selection: {user_message} -> main_category={forced_category_id}")
+            return True
+        
+        # Handle button clicks (only if not in explore mode) - SECONDARY
+        if order_mode != 'explore' and user_message_lower in ['quick_order', 'الطلب السريع', '1', '١']:
+            # Quick order selection
+            result['action'] = 'quick_order_selection'
+            result['understood_intent'] = "User wants to use quick order mode"
+            result['extracted_data'] = extracted_data
+            logger.info(f"🔧 Quick order selection detected: {user_message}")
+            return True
+        elif user_message_lower in ['explore_menu', 'استكشاف القائمة']:
+            # Explore menu selection (allow even if already in explore mode to prevent loops)
+            result['action'] = 'explore_menu_selection'
+            result['understood_intent'] = "User wants to explore the menu"
+            result['extracted_data'] = extracted_data
+            logger.info(f"🔧 Explore menu selection detected: {user_message}")
+            return True
+        
+        # Handle traditional category selection
+        if action == 'category_selection':
+            category_id = extracted_data.get('category_id')
+            if category_id and (category_id < 1 or category_id > 3):
+                return False
         
         return True
 
