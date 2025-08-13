@@ -252,11 +252,9 @@ class EnhancedMessageHandler:
             sub_cat_name = (extracted_data or {}).get('sub_category_name')
             if sub_cat_name:
                 probe = {'item_name': sub_cat_name}
-                matched_probe = self._handle_intelligent_item_selection(phone_number, probe, session, user_context)
-                # If intelligent item flow produced a response that is not a generic fallback, use it.
-                if matched_probe and matched_probe.get('type') != 'text' or (matched_probe.get('type') == 'text' and 'لم نجد' not in matched_probe.get('body', '') and 'couldn\'t find' not in matched_probe.get('body', '')):
-                    logger.info("🔀 Sub-category name matched an item; using intelligent item selection flow")
-                    return matched_probe
+                matched_probe = self._handle_intelligent_item_selection(phone_number, probe, session, user_context, allow_cross_step=True)
+                logger.info("🔀 Sub-category name probed as item; using intelligent item selection flow result")
+                return matched_probe
             return self._handle_sub_category_selection(phone_number, extracted_data, session, user_context)
         elif action == 'item_selection':
             # Check if we're in quick order mode
@@ -855,7 +853,7 @@ class EnhancedMessageHandler:
             else:
                 return self._create_response(f"Sorry, we couldn't find the sub-category '{sub_category_name}'. Please select from the available options.")
 
-    def _handle_intelligent_item_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
+    def _handle_intelligent_item_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict, allow_cross_step: bool = False) -> Dict:
         """Handle intelligent item selection that can work across different steps"""
         item_name = extracted_data.get('item_name')
         item_id = extracted_data.get('item_id')
@@ -864,8 +862,8 @@ class EnhancedMessageHandler:
         
         logger.info(f"🧠 Intelligent item selection: '{item_name}' at step '{current_step}'")
         
-        # Validate that we're at the correct step for item selection
-        if current_step == 'waiting_for_sub_category':
+        # Validate that we're at the correct step for item selection unless cross-step matching is allowed
+        if current_step == 'waiting_for_sub_category' and not allow_cross_step:
             logger.warning(f"❌ Invalid: Attempting item selection at sub-category step")
             if language == 'arabic':
                 return self._create_response("الرجاء اختيار الفئة الفرعية أولاً قبل اختيار المنتج المحدد.")
