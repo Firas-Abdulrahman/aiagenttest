@@ -80,11 +80,24 @@ class VoicePipeline:
 
             response = self.handler.handle_message(synthetic_message)
 
+            # Check response type - interactive messages should be sent directly, not as voice
+            response_type = response.get('type', 'text')
+            if response_type == 'interactive':
+                # Send interactive message directly (can't convert buttons to voice)
+                success = self.whatsapp.send_interactive_message(
+                    phone_number,
+                    response.get('header', ''),
+                    response.get('body', ''),
+                    response.get('footer', ''),
+                    response.get('buttons', [])
+                )
+                return success
+
             reply_text = response.get('content', '')
             if not reply_text:
                 return False
 
-            # TTS
+            # TTS for text responses
             # Decide output format: prefer OGG voice notes; fallback to MP3 if configured
             preferred_mime = "audio/ogg"
             # Choose TTS language: prefer session language; fallback to transcript language
