@@ -1909,7 +1909,19 @@ class EnhancedMessageHandler:
                     
                     return self._show_sub_category_items(phone_number, selected_sub_category, language)
                 else:
-                    return self._create_response(f"الرقم غير صحيح. الرجاء اختيار من 1 إلى {len(sub_categories)}")
+                    # Enhanced error message with available options
+                    if language == 'arabic':
+                        response = f"الرقم {sub_category_num} غير صحيح. الفئات الفرعية المتاحة:\n\n"
+                        for i, sub_cat in enumerate(sub_categories, 1):
+                            response += f"{i}. {sub_cat['name_ar']}\n"
+                        response += f"\nالرجاء اختيار رقم من 1 إلى {len(sub_categories)}"
+                    else:
+                        response = f"Number {sub_category_num} is invalid. Available sub-categories:\n\n"
+                        for i, sub_cat in enumerate(sub_categories, 1):
+                            response += f"{i}. {sub_cat['name_en']}\n"
+                        response += f"\nPlease choose a number from 1 to {len(sub_categories)}"
+                    
+                    return self._create_response(response)
                     
             except ValueError:
                 pass  # Fall through to name matching

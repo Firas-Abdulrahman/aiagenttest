@@ -343,6 +343,18 @@ Response: {
     "response_message": "I understand you're very hungry! Since you're in the Pastries & Sweets category, I recommend our delicious sandwiches - they're perfect for satisfying hunger:\n\n1. Halloumi Cheese Sandwich - 3000 IQD\n2. Chicken Fajita Sandwich - 3000 IQD\n3. Diet Chicken & Veggies Sandwich - 3000 IQD\n4. Turkey Sandwich - 3000 IQD\n5. Roast Beef Sandwich - 3000 IQD\n\nPlease choose the number of the sandwich you prefer!"
 }
 
+User: "٥" (at waiting_for_sub_category step for Cold Drinks)
+Response: {
+    "understood_intent": "User wants to select sub-category number 5",
+    "confidence": "high",
+    "action": "sub_category_selection",
+    "extracted_data": {
+        "sub_category_id": 5,
+        "sub_category_name": "عصائر طازجة"
+    },
+    "response_message": "ممتاز! سأعرض لك قائمة العصائر الطازجة:\n\n1. عصير برتقال طازج - 3000 دينار\n2. عصير تفاح طازج - 3000 دينار\n3. عصير جزر طازج - 3000 دينار\n\nاختر الرقم الذي تفضله!"
+}
+
 User: "بالكهوة" (at service step)
 Response: {
     "understood_intent": "User wants dine-in service",
@@ -764,10 +776,12 @@ Response: {{
                   * If in Cold Drinks: Suggest specific sub-categories (e.g., frappuccinos for sweet drinks)
                   * NEVER suggest the main category again when already in a sub-category context
                 
+                - CRITICAL: When user provides a number at waiting_for_sub_category step, ALWAYS use action "sub_category_selection" NOT "category_selection"
+                - CRITICAL: Extract the number as sub_category_id (1-based index) NOT suggested_main_category
                 - IMPORTANT: If user provides mixed input like "4 iced tea", extract the number (4) for sub-category selection
                 - If user asks for specific item (e.g., "موهيتو", "coffee", "iced tea"), use action "item_selection"
                 - If user asks for sub-category type (e.g., "عصائر", "hot drinks"), use action "intelligent_suggestion"
-                - If user provides just a number, use action "intelligent_suggestion" with suggested_sub_category
+                - If user provides just a number, use action "sub_category_selection" with sub_category_id
                 - NEVER suggest sub-category numbers higher than 7 for Cold Drinks or 3 for Hot Drinks
                 - Response: For items, directly show quantity selection; for categories, show sub-category items
             """,
