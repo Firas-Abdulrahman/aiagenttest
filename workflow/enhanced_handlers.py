@@ -522,20 +522,38 @@ class EnhancedMessageHandler:
                     logger.error(f"❌ Cannot convert main_category_id to int: {main_category_id}")
                     return self._create_response("خطأ في النظام. الرجاء البدء من جديد")
                 
-            # CRITICAL VALIDATION: Check if suggested sub-category is valid for current main category
-            max_sub_categories_by_main = {1: 7, 2: 3, 3: 5}  # Cold Drinks: 7, Hot Drinks: 3, Pastries & Sweets: 5
-            max_allowed = max_sub_categories_by_main.get(main_category_id, 0)
-            
-            if suggested_sub_category > max_allowed:
-                logger.error(f"🚫 CRITICAL: AI suggested invalid sub-category {suggested_sub_category} for main category {main_category_id} (max: {max_allowed})")
-                logger.info(f"🔄 Falling back to structured processing for context-invalid AI suggestion with original message: '{original_user_message}'")
-                return self._handle_structured_message(phone_number, original_user_message, current_step, session, user_context)
-                
+            # Get available sub-categories for this main category
             sub_categories = self.db.get_sub_categories(main_category_id)
             logger.info(f"🔍 Sub-category selection: suggested={suggested_sub_category}, available={len(sub_categories)}, main_category={main_category_id}")
             
+            # Try to find the sub-category by both display order and actual database ID
+            selected_sub_category = None
+            
+            # First try by display order (1-based index)
             if 1 <= suggested_sub_category <= len(sub_categories):
                 selected_sub_category = sub_categories[suggested_sub_category - 1]
+                logger.info(f"✅ Found sub-category by display order: {selected_sub_category['name_en']} (ID: {selected_sub_category['id']})")
+            
+            # If not found by display order, try by actual database ID
+            if not selected_sub_category:
+                for sub_cat in sub_categories:
+                    if sub_cat['id'] == suggested_sub_category:
+                        selected_sub_category = sub_cat
+                        logger.info(f"✅ Found sub-category by database ID: {selected_sub_category['name_en']} (ID: {selected_sub_category['id']})")
+                        break
+            
+            # If still not found, check if it's a valid sub-category ID for this main category
+            if not selected_sub_category:
+                # Get the valid sub-category IDs for this main category
+                valid_sub_category_ids = [sub_cat['id'] for sub_cat in sub_categories]
+                if suggested_sub_category in valid_sub_category_ids:
+                    # This is a valid ID but not in our list (shouldn't happen, but just in case)
+                    logger.warning(f"⚠️ Sub-category ID {suggested_sub_category} is valid but not found in sub_categories list")
+                    return self._handle_structured_message(phone_number, original_user_message, current_step, session, user_context)
+                else:
+                    logger.error(f"🚫 CRITICAL: AI suggested invalid sub-category {suggested_sub_category} for main category {main_category_id}")
+                    logger.info(f"🔄 Falling back to structured processing for context-invalid AI suggestion with original message: '{original_user_message}'")
+                    return self._handle_structured_message(phone_number, original_user_message, current_step, session, user_context)
                 
                 # Update session
                 self.db.create_or_update_session(
@@ -731,12 +749,47 @@ class EnhancedMessageHandler:
                         break
         
         elif sub_category_name:
-            # Name-based selection
+            # Name-based selection with enhanced matching for voice input
+            sub_category_name_lower = sub_category_name.lower().strip()
+            
+            # Enhanced matching for common voice input variations
             for sub_cat in sub_categories:
-                if (sub_category_name.lower() in sub_cat['name_ar'].lower() or 
-                    sub_category_name.lower() in sub_cat['name_en'].lower()):
+                # Check exact matches first
+                if (sub_category_name_lower == sub_cat['name_ar'].lower() or 
+                    sub_category_name_lower == sub_cat['name_en'].lower()):
                     selected_sub_category = sub_cat
+                    logger.info(f"✅ Exact match found for '{sub_category_name}' -> '{sub_cat['name_en']}'")
                     break
+                
+                # Check partial matches
+                if (sub_category_name_lower in sub_cat['name_ar'].lower() or 
+                    sub_category_name_lower in sub_cat['name_en'].lower()):
+                    selected_sub_category = sub_cat
+                    logger.info(f"✅ Partial match found for '{sub_category_name}' -> '{sub_cat['name_en']}'")
+                    break
+            
+            # If no match found, try fuzzy matching for common voice input variations
+            if not selected_sub_category:
+                # Common voice input variations for sub-categories
+                voice_variations = {
+                    'latte': ['لاتيه', 'latte', 'lattes', 'لاتيه ومشروبات خاصة', 'lattes & specialties'],
+                    'coffee': ['قهوة', 'coffee', 'espresso', 'اسبرسو', 'قهوة واسبرسو', 'coffee & espresso'],
+                    'tea': ['شاي', 'tea', 'teas', 'مشروبات ساخنة أخرى', 'other hot drinks'],
+                    'espresso': ['اسبرسو', 'espresso', 'قهوة واسبرسو', 'coffee & espresso'],
+                    'cappuccino': ['كابتشينو', 'cappuccino', 'لاتيه ومشروبات خاصة', 'lattes & specialties']
+                }
+                
+                for variation_key, variations in voice_variations.items():
+                    if sub_category_name_lower in variations:
+                        # Find the matching sub-category
+                        for sub_cat in sub_categories:
+                            if any(var in sub_cat['name_en'].lower() or var in sub_cat['name_ar'].lower() 
+                                   for var in variations):
+                                selected_sub_category = sub_cat
+                                logger.info(f"✅ Voice variation match found: '{sub_category_name}' -> '{sub_cat['name_en']}'")
+                                break
+                        if selected_sub_category:
+                            break
         
         if selected_sub_category:
             logger.info(f"✅ Found sub-category: '{selected_sub_category['name_ar']}' (ID: {selected_sub_category['id']})")

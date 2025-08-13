@@ -180,7 +180,8 @@ ENHANCED ARABIC TERM MAPPING (CRITICAL):
 - "شاي" or "شاي مثلج" = Iced Tea (Sub-category 4 of Cold Drinks)
 - "عصير برتقال" or "عصير تفاح" = Fresh Juices (Sub-category 5 of Cold Drinks)
 - "لاتيه" or "كابتشينو" = Latte & Special Drinks (Sub-category 2 of Hot Drinks)
-- "اسبرسو" or "تركي" or "قهوة واسبرسو" or "coffee and espresso" or "coffee & espresso" = Coffee & Espresso (Sub-category 1 of Hot Drinks)
+- "اسبرسو" or "تركي" or "قهوة واسبرسو" or "coffee and espresso" or "coffee & espresso" = Coffee & Espresso (Sub-category 1 of Hot Drinks, Database ID: 8)
+- "لاتيه" or "كابتشينو" or "latte" or "cappuccino" = Latte & Special Drinks (Sub-category 2 of Hot Drinks, Database ID: 9)
 
 SERVICE TYPE MAPPING (CRITICAL):
 - "بالكهوة" or "في الكهوة" or "في المقهى" or "تناول" = Dine-in service
@@ -291,6 +292,18 @@ Response: {
         "category_name": "الحلويات والمعجنات"
     },
     "response_message": "ممتاز! اختر من قائمة الحلويات والمعجنات"
+}
+
+User: "latte" (at sub-category step for Hot Drinks)
+Response: {
+    "understood_intent": "User wants to select latte sub-category",
+    "confidence": "high",
+    "action": "sub_category_selection",
+    "extracted_data": {
+        "sub_category_id": 9,
+        "sub_category_name": "Lattes & Specialties"
+    },
+    "response_message": "Great choice! Here are the latte options:\n\n1. Cappuccino - 5000 IQD\n2. Spanish Latte (Hot) - 6000 IQD\n3. Caramel Latte - 5000 IQD\n4. Vanilla Latte - 5000 IQD\n5. Hazelnut Latte - 5000 IQD\n6. Hef Latte - 6000 IQD\n\nPlease choose the number of the item you prefer!"
 }
 
 User: "بالكهوة" (at service step)
