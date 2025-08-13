@@ -42,22 +42,16 @@ class EnhancedMessageHandler:
             if should_reset:
                 logger.info(f"🔄 Resetting session for {phone_number} due to fresh start intent or timeout")
                 
-                # Special case: If we're in confirmation step and user sends greeting, 
-                # use fresh start flow instead of just clearing
-                if session and session.get('current_step') == 'waiting_for_confirmation':
-                    logger.info(f"🔄 Using fresh start flow for post-order greeting")
-                    return self._handle_fresh_start_after_order(phone_number, session, user_context)
-                else:
-                    # Clear any existing order and session completely
-                    self.db.cancel_order(phone_number)
-                    self.db.delete_session(phone_number)
-                    session = None
-                    logger.info(f"✅ Session and order cleared for {phone_number}")
-                    
-                    # Update context after session reset
-                    current_step = 'waiting_for_language'
-                    user_context = self._build_user_context(phone_number, session, current_step, text)
-                    user_context['customer_name'] = customer_name
+                # Clear any existing order and session completely
+                self.db.cancel_order(phone_number)
+                self.db.delete_session(phone_number)
+                session = None
+                logger.info(f"✅ Session and order cleared for {phone_number}")
+                
+                # Update context after session reset
+                current_step = 'waiting_for_language'
+                user_context = self._build_user_context(phone_number, session, current_step, text)
+                user_context['customer_name'] = customer_name
             else:
                 logger.info(f"📋 Session check for {phone_number}: should_reset={should_reset}, current_step={session.get('current_step') if session else 'None'}")
 
@@ -3151,13 +3145,7 @@ class EnhancedMessageHandler:
 
         logger.debug(f"🔍 Session reset check: message='{user_message}', current_step='{current_step}'")
 
-        # Special case: If we're in confirmation step and user sends a greeting, 
-        # it means they want a fresh start after order completion
-        if (current_step == 'waiting_for_confirmation' and 
-            any(greeting in user_lower for greeting in greeting_words) and
-            len(user_message.strip()) <= 15):
-            logger.info(f"🔄 Post-order fresh start detected for message: '{user_message}'")
-            return True
+        # Note: Removed special case for confirmation step greetings to prevent unwanted fresh start messages
 
         # Only reset if it's clearly a greeting and not at language selection step
         # Also, don't reset if we're in confirmation step and user says yes/no
