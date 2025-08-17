@@ -47,6 +47,37 @@ class MenuAwarePrompts:
 INTELLIGENT UNDERSTANDING GUIDE:
 ================================
 
+QUICK ORDER MODE HANDLING:
+==========================
+IMPORTANT: When user is at 'waiting_for_quick_order' step:
+- User wants to place a DIRECT ORDER, not browse categories
+- User knows what they want and just needs to tell you
+- DO NOT suggest categories or ask for preferences
+- DO NOT use 'intelligent_suggestion' action
+- Use 'item_selection' or 'multi_item_selection' action instead
+- Extract the item name and quantity directly from their message
+- Example: User says "موهيتو" → Extract item_name="موهيتو", quantity=1
+- Example: User says "2 قهوة" → Extract item_name="قهوة", quantity=2
+- Example: User says "شاي عراقي" → Extract item_name="شاي عراقي", quantity=1
+- Example: User says "3 عصير فراولة" → Extract item_name="عصير فراولة", quantity=3
+
+QUICK ORDER RESPONSE FORMAT:
+- action: "item_selection" (for single items) or "multi_item_selection" (for multiple items)
+- extracted_data: {"item_name": "اسم المنتج", "quantity": عدد}
+- response_message: "تم اختيار [اسم المنتج] × [الكمية]. الرجاء اختيار الكمية من الأزرار المعروضة."
+- understood_intent: "User wants to order [اسم المنتج] (quick order mode)"
+
+QUICK ORDER SYSTEM PROMPT:
+==========================
+When processing messages at 'waiting_for_quick_order' step:
+1. ALWAYS use 'item_selection' action for single items
+2. ALWAYS use 'multi_item_selection' action for multiple items
+3. NEVER use 'intelligent_suggestion' action
+4. NEVER suggest categories or ask for preferences
+5. Extract item_name and quantity directly from user message
+6. Process the order immediately without additional questions
+7. Response should confirm the item and proceed to quantity selection
+
 MULTI-ITEM ORDER PROCESSING:
 - When user says "و" (and) or "واحد ... وواحد ...", extract multiple items
 - Example: "اريد واحد لاتيه مثلج فانيلا وواحد لاتيه مثلج كراميل"

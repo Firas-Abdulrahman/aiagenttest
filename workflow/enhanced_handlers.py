@@ -231,6 +231,22 @@ class EnhancedMessageHandler:
         session = self.db.get_user_session(phone_number)
         logger.info(f"🔍 Refreshed session: order_mode={session.get('order_mode') if session else 'None'}")
 
+        # CRITICAL FIX: Override intelligent_suggestion in quick order mode
+        if action == 'intelligent_suggestion' and current_step == 'waiting_for_quick_order':
+            logger.info(f"🔄 Overriding intelligent_suggestion to item_selection for quick order mode")
+            # Convert intelligent suggestion to item selection for quick order
+            ai_result['action'] = 'item_selection'
+            action = 'item_selection'
+            
+            # Extract item name from the user message
+            user_message = user_context.get('original_user_message', '')
+            if user_message:
+                extracted_data['item_name'] = user_message.strip()
+                extracted_data['quantity'] = 1  # Default quantity
+                ai_result['extracted_data'] = extracted_data
+                ai_result['understood_intent'] = f"User wants to order {user_message.strip()} (quick order mode)"
+                logger.info(f"✅ Converted to item_selection: {extracted_data}")
+
         # Handle intelligent suggestions (items/categories) that can work across steps
         if action == 'intelligent_suggestion':
             return self._handle_intelligent_suggestion(phone_number, ai_result, session, user_context)
@@ -2491,27 +2507,33 @@ class EnhancedMessageHandler:
         recent_orders = self._get_recent_orders(phone_number)
         
         if language == 'arabic':
-            message = "الطلب السريع\n\n"
-            message += "اكتب اسم المنتج المطلوب:\n\n"
+            message = "🚀 الطلب السريع\n\n"
+            message += "ماذا تريد أن تطلب؟ أعطني اسم المنتج:\n\n"
             
             if popular_items:
-                message += "المنتجات الشائعة:\n"
+                message += "💡 المنتجات الشائعة:\n"
                 for item in popular_items[:3]:
                     message += f"• {item['name_ar']} - {item['price']} دينار\n"
                 message += "\n"
             
-            message += "مثال: 2 موهيتو ازرق"
+            message += "📝 مثال: موهيتو ازرق\n"
+            message += "📝 مثال: 2 قهوة عراقية\n"
+            message += "📝 مثال: 3 شاي بالنعناع\n\n"
+            message += "اكتب اسم المنتج المطلوب الآن!"
         else:
-            message = "Quick Order\n\n"
-            message += "Type the item name you want:\n\n"
+            message = "🚀 Quick Order\n\n"
+            message += "What do you want to order? Give me the item name:\n\n"
             
             if popular_items:
-                message += "Popular items:\n"
+                message += "💡 Popular items:\n"
                 for item in popular_items[:3]:
                     message += f"• {item['name_en']} - {item['price']} IQD\n"
                 message += "\n"
             
-            message += "Example: 2 blue mojito"
+            message += "📝 Example: blue mojito\n"
+            message += "📝 Example: 2 Iraqi coffee\n"
+            message += "📝 Example: 3 mint tea\n\n"
+            message += "Type the item name you want now!"
         
         return self._create_response(message)
     

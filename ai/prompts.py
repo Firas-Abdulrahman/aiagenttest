@@ -99,6 +99,21 @@ EXAMPLES FOR {current_step}:
                 - Response: Ask if they want to add more items
             """,
 
+            'waiting_for_quick_order': """
+                QUICK ORDER RULES:
+                - User is in QUICK ORDER mode - they know what they want
+                - User wants to place a DIRECT ORDER, not browse categories
+                - DO NOT suggest categories or ask for preferences
+                - Extract item name and quantity directly from their message
+                - Support Arabic and English item names
+                - Support quantity prefixes: "2 قهوة", "3 شاي", "one coffee", "two teas"
+                - Action should be "item_selection" for single items
+                - Action should be "multi_item_selection" for multiple items
+                - Response: Confirm the item selection and proceed to quantity
+                - Example: User says "موهيتو" → Extract item_name="موهيتو", quantity=1
+                - Example: User says "2 قهوة" → Extract item_name="قهوة", quantity=2
+            """,
+
             'waiting_for_additional': """
                 ADDITIONAL ITEMS RULES:
                 - 1 = Yes (add more items) → Go back to main categories
@@ -190,6 +205,15 @@ EXAMPLES FOR {current_step}:
 "1" → yes_no, yes_no: "yes"  
 "لا" → yes_no, yes_no: "no"
 "cancel" → yes_no, yes_no: "no"
+''',
+            'waiting_for_quick_order': '''
+"موهيتو" → item_selection, item_name: "موهيتو", quantity: 1
+"2 قهوة" → item_selection, item_name: "قهوة", quantity: 2
+"شاي عراقي" → item_selection, item_name: "شاي عراقي", quantity: 1
+"3 عصير فراولة" → item_selection, item_name: "عصير فراولة", quantity: 3
+"blue mojito" → item_selection, item_name: "blue mojito", quantity: 1
+"2 coffee" → item_selection, item_name: "coffee", quantity: 2
+"one tea" → item_selection, item_name: "tea", quantity: 1
 '''
         }
 

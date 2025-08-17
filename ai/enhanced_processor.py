@@ -443,6 +443,21 @@ Response: {
                     context['current_category_items'] = user_context.get('current_category_items')
                     context['category_item_matching'] = self._format_items_for_ai(user_context.get('current_category_items'), language)
                     
+                # CRITICAL FIX: Add quick order mode context to prevent intelligent suggestions
+                if current_step == 'waiting_for_quick_order':
+                    context['quick_order_mode'] = True
+                    context['quick_order_instructions'] = """
+                    QUICK ORDER MODE - CRITICAL INSTRUCTIONS:
+                    - User is in QUICK ORDER mode - they know what they want
+                    - User wants to place a DIRECT ORDER, not browse categories
+                    - DO NOT suggest categories or ask for preferences
+                    - DO NOT use 'intelligent_suggestion' action
+                    - Extract item name and quantity directly from their message
+                    - Use 'item_selection' action for single items
+                    - Use 'multi_item_selection' action for multiple items
+                    - Response should confirm the item selection and proceed to quantity
+                    """
+                    
             except Exception as e:
                 logger.warning(f"Could not get enhanced menu context: {e}")
                 context['menu_context'] = "Menu context unavailable"
@@ -1102,7 +1117,30 @@ Response: {{
     def _validate_quick_order_step(self, result: Dict, extracted_data: Dict, user_message: str, user_context: Dict = None) -> bool:
         """Validate quick order step"""
         action = result.get('action')
-        valid_actions = ['item_selection', 'multi_item_selection', 'service_selection', 'location_input', 'intelligent_suggestion', 'conversational_response']
+        valid_actions = ['item_selection', 'multi_item_selection', 'service_selection', 'location_input', 'conversational_response']
+        
+        # IMPORTANT: In quick order mode, users want to place DIRECT ORDERS
+        # DO NOT allow intelligent_suggestion as it will show categories instead of processing the order
+        if action == 'intelligent_suggestion':
+            # Convert intelligent suggestion to item selection for quick order
+            logger.info(f"🔄 Converting intelligent_suggestion to item_selection for quick order step")
+            result['action'] = 'item_selection'
+            
+            # Extract item name from the user message
+            item_name = user_message.strip()
+            if user_context and user_context.get('language') == 'arabic':
+                # For Arabic, use the message as item name
+                extracted_data['item_name'] = item_name
+                extracted_data['quantity'] = 1  # Default quantity
+                result['understood_intent'] = f"User wants to order {item_name} (quick order mode)"
+            else:
+                # For English, use the message as item name
+                extracted_data['item_name'] = item_name
+                extracted_data['quantity'] = 1  # Default quantity
+                result['understood_intent'] = f"User wants to order {item_name} (quick order mode)"
+            
+            result['extracted_data'] = extracted_data
+            return True
         
         if action not in valid_actions:
             return False
