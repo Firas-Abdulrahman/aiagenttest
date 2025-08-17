@@ -1731,7 +1731,7 @@ class EnhancedMessageHandler:
             return self._create_response(response)
         
         # Parse the input for quantity, item name, and optional table number
-        # Example: "2 موهيتو ازرق للطاولة 5" or "3 قهوة"
+        # Example: "2 موهيتو ازرق للطاولة 5" or "٣ قهوة" or "٢ موهيتو ازرق"
         text = text.strip()
         
         # Extract quantity (default to 1 if not specified)
@@ -1739,13 +1739,26 @@ class EnhancedMessageHandler:
         item_name = text
         table_number = None
         
-        # Look for quantity patterns
+        # Look for quantity patterns - support both English and Arabic numerals
         import re
+        
+        # Convert Arabic numerals to English for processing using existing method
+        processed_text = self._convert_arabic_numerals(text)
+        logger.info(f"🔍 Quick order processing: original='{text}', processed='{processed_text}'")
+        
+        # Look for quantity patterns (now handles both Arabic and English numerals)
         quantity_pattern = r'^(\d+)\s+'
-        quantity_match = re.match(quantity_pattern, text)
+        quantity_match = re.match(quantity_pattern, processed_text)
         if quantity_match:
             quantity = int(quantity_match.group(1))
-            item_name = text[quantity_match.group(0).__len__():].strip()
+            # Find the position of the quantity in the original text
+            original_quantity = text[:len(quantity_match.group(0))]
+            item_name = text[len(original_quantity):].strip()
+            logger.info(f"✅ Extracted quantity: {quantity}, item_name: '{item_name}'")
+        else:
+            logger.info(f"🔍 No quantity pattern found, defaulting to quantity=1")
+            quantity = 1
+            item_name = text.strip()
         
         # Look for table number patterns
         table_pattern = r'للطاولة\s+(\d+)'
@@ -1763,17 +1776,35 @@ class EnhancedMessageHandler:
             import json
             quick_order_item_json = json.dumps(matched_item, ensure_ascii=False)
             
-            # Update session to quantity selection step with item data
-            self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_quantity', language, session.get('customer_name'), order_mode='quick', quick_order_item=quick_order_item_json)
-            
-            # Also update the in-memory session to ensure consistency
-            session['quick_order_item'] = matched_item
-            session['quick_order_quantity'] = quantity
-            if table_number:
-                session['quick_order_table'] = table_number
-            
-            # Show quantity buttons
-            return self._show_quantity_buttons(phone_number, language, matched_item['item_name_ar'])
+            # If quantity was specified in the input, skip quantity selection and go directly to service
+            logger.info(f"🔍 Quantity decision: extracted_quantity={quantity}, should_skip_quantity={quantity > 1}")
+            if quantity > 1:
+                logger.info(f"✅ Quantity {quantity} already specified, skipping quantity selection")
+                # Update session to service selection step
+                self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_service', language, session.get('customer_name'), order_mode='quick', quick_order_item=quick_order_item_json)
+                
+                # Also update the in-memory session
+                session['quick_order_item'] = matched_item
+                session['quick_order_quantity'] = quantity
+                if table_number:
+                    session['quick_order_table'] = table_number
+                
+                # Show service type selection
+                return self._show_service_type_buttons(phone_number, language)
+            else:
+                # Quantity not specified, go to quantity selection
+                logger.info(f"✅ No quantity specified, proceeding to quantity selection")
+                # Update session to quantity selection step with item data
+                self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_quantity', language, session.get('customer_name'), order_mode='quick', quick_order_item=quick_order_item_json)
+                
+                # Also update the in-memory session to ensure consistency
+                session['quick_order_item'] = matched_item
+                session['quick_order_quantity'] = quantity
+                if table_number:
+                    session['quick_order_table'] = table_number
+                
+                # Show quantity buttons
+                return self._show_quantity_buttons(phone_number, language, matched_item['item_name_ar'])
         else:
             # Item not found
             if language == 'arabic':
