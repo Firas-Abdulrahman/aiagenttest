@@ -296,6 +296,9 @@ class EnhancedMessageHandler:
             return self._handle_multi_item_selection(phone_number, extracted_data, session, user_context)
         elif action == 'quick_order_selection':
             # Handle quick order mode selection
+            # Pass direct_order flag to user context if present
+            if ai_result.get('direct_order'):
+                user_context['direct_order'] = True
             return self._handle_quick_order_selection(phone_number, extracted_data, session, user_context)
         elif action == 'explore_menu_selection':
             # Handle explore menu mode selection
@@ -430,7 +433,27 @@ class EnhancedMessageHandler:
     def _handle_quick_order_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle quick order mode selection"""
         language = user_context.get('language', 'arabic')
+        original_user_message = user_context.get('original_user_message', '')
         
+        # Check if this is a direct order (user provided item name directly)
+        if extracted_data.get('item_name') or 'direct_order' in user_context:
+            logger.info(f"🎯 Direct order detected: {original_user_message}")
+            
+            # Set quick order mode in session
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_quick_order', language,
+                session.get('customer_name'),
+                order_mode='quick'
+            )
+            
+            # Update the session object in memory
+            session['order_mode'] = 'quick'
+            session['current_step'] = 'waiting_for_quick_order'
+            
+            # Process the direct order immediately
+            return self._handle_structured_quick_order(phone_number, original_user_message, session, user_context)
+        
+        # Regular quick order selection (user clicked button or typed "quick_order")
         # Set quick order mode in session
         self.db.create_or_update_session(
             phone_number, 'waiting_for_quick_order', language,

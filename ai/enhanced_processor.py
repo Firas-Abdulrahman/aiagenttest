@@ -1206,7 +1206,7 @@ Response: {{
     def _validate_category_step(self, result: Dict, extracted_data: Dict, user_message: str, user_context: Dict = None) -> bool:
         """Validate category selection step with two-button interface support"""
         action = result.get('action')
-        valid_actions = ['category_selection', 'quick_order_selection', 'explore_menu_selection', 'intelligent_suggestion', 'show_menu', 'help_request', 'conversational_response', 'language_selection']
+        valid_actions = ['category_selection', 'quick_order_selection', 'explore_menu_selection', 'intelligent_suggestion', 'show_menu', 'help_request', 'conversational_response', 'language_selection', 'item_selection', 'multi_item_selection']
         
         if action not in valid_actions:
             return False
@@ -1230,6 +1230,15 @@ Response: {{
             result['action'] = 'quick_order_selection'
             result['understood_intent'] = "User wants to use quick order mode"
             result['extracted_data'] = {}
+            return True
+        
+        # CRITICAL FIX: Handle direct item orders at category step
+        if action in ['item_selection', 'multi_item_selection']:
+            logger.info(f"🔄 Converting {action} to quick_order_selection for direct order: '{user_message}'")
+            result['action'] = 'quick_order_selection'
+            result['understood_intent'] = f"User wants to place a direct order: {user_message}"
+            result['extracted_data'] = extracted_data  # Keep the extracted data for quick order processing
+            result['direct_order'] = True  # Flag to indicate this is a direct order
             return True
         
         # Get order mode from context
