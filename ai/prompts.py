@@ -65,6 +65,18 @@ EXAMPLES FOR {current_step}:
                 - Response: Show main categories in detected language
             """,
 
+            'waiting_for_category': """
+                CATEGORY SELECTION RULES:
+                - User is at the main menu selection step
+                - Accept numbers 1-2 for order mode selection:
+                  * 1 = Quick Order (الطلب السريع)
+                  * 2 = Explore Menu (استكشاف القائمة)
+                - Accept text: "quick_order", "الطلب السريع", "explore", "استكشاف"
+                - If user greets (مرحبا, hello), treat as conversational response
+                - DO NOT use language_selection action at this step
+                - Response: Show quick order interface or category list based on selection
+            """,
+
             'waiting_for_main_category': """
                 MAIN CATEGORY SELECTION RULES:
                 - Accept numbers 1-3 for main categories
@@ -205,6 +217,16 @@ EXAMPLES FOR {current_step}:
 "1" → yes_no, yes_no: "yes"  
 "لا" → yes_no, yes_no: "no"
 "cancel" → yes_no, yes_no: "no"
+''',
+            'waiting_for_category': '''
+"1" → quick_order_selection
+"الطلب السريع" → quick_order_selection
+"quick_order" → quick_order_selection
+"2" → explore_menu_selection
+"استكشاف القائمة" → explore_menu_selection
+"explore" → explore_menu_selection
+"مرحبا" → conversational_response
+"hello" → conversational_response
 ''',
             'waiting_for_quick_order': '''
 "موهيتو" → item_selection, item_name: "موهيتو", quantity: 1

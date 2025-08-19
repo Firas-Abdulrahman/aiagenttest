@@ -1206,10 +1206,27 @@ Response: {{
     def _validate_category_step(self, result: Dict, extracted_data: Dict, user_message: str, user_context: Dict = None) -> bool:
         """Validate category selection step with two-button interface support"""
         action = result.get('action')
-        valid_actions = ['category_selection', 'quick_order_selection', 'explore_menu_selection', 'intelligent_suggestion', 'show_menu', 'help_request', 'conversational_response']
+        valid_actions = ['category_selection', 'quick_order_selection', 'explore_menu_selection', 'intelligent_suggestion', 'show_menu', 'help_request', 'conversational_response', 'language_selection']
         
         if action not in valid_actions:
             return False
+        
+        # Handle greetings at category step - treat as session reset
+        if action == 'language_selection':
+            # Convert language_selection to conversational_response for category step
+            logger.info(f"🔄 Converting language_selection to conversational_response for category step")
+            result['action'] = 'conversational_response'
+            result['understood_intent'] = "User greeted at category step, should reset session"
+            result['response_message'] = "مرحبا! يبدو أنك تريد البدء من جديد. الرجاء اختيار طريقة الطلب:\n\n1. الطلب السريع\n2. استكشاف القائمة"
+            return True
+        
+        # Handle quick_order text being interpreted as item_selection
+        if action == 'item_selection' and user_message_lower in ['quick_order', 'الطلب السريع']:
+            logger.info(f"🔄 Converting item_selection to quick_order_selection for '{user_message}'")
+            result['action'] = 'quick_order_selection'
+            result['understood_intent'] = "User wants to use quick order mode"
+            result['extracted_data'] = {}
+            return True
         
         # Handle two-button interface selections
         user_message_lower = user_message.lower().strip()
