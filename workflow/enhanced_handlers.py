@@ -73,8 +73,13 @@ class EnhancedMessageHandler:
                 if session:
                     language = session.get('language_preference', 'arabic')
                 
+                # CRITICAL FIX: Convert Arabic numerals before AI processing
+                processed_text = self._convert_arabic_numerals(text)
+                if processed_text != text:
+                    logger.info(f"🔢 Converted Arabic numerals: '{text}' → '{processed_text}'")
+                
                 ai_result = self.ai.understand_natural_language(
-                    user_message=text,
+                    user_message=processed_text,
                     current_step=current_step,
                     user_context=user_context,
                     language=language
@@ -1958,6 +1963,10 @@ class EnhancedMessageHandler:
         if not item_name:
             return self._create_response("لم أفهم المنتج المطلوب. الرجاء المحاولة مرة أخرى.")
         
+        # Get quantity from AI extraction
+        quantity = extracted_data.get('quantity', 1)
+        logger.info(f"🔍 AI extracted quantity: {quantity}")
+        
         # Search for the item across all categories
         all_items = self._get_all_items()
         matched_item = self._match_item_by_name(item_name, all_items, language)
@@ -1967,15 +1976,30 @@ class EnhancedMessageHandler:
             import json
             quick_order_item_json = json.dumps(matched_item, ensure_ascii=False)
             
-            # Update session to quantity selection step with item data
-            self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_quantity', language, session.get('customer_name'), order_mode='quick', quick_order_item=quick_order_item_json)
-            
-            # Also update the in-memory session to ensure consistency
-            session['current_step'] = 'waiting_for_quick_order_quantity'
-            session['quick_order_item'] = matched_item
-            
-            # Show quantity buttons
-            return self._show_quantity_buttons(phone_number, language, matched_item['item_name_ar'])
+            # CRITICAL FIX: Check if quantity was already specified
+            if quantity > 1:
+                logger.info(f"✅ Quantity {quantity} already specified, skipping quantity selection")
+                # Update session to service selection step
+                self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_service', language, session.get('customer_name'), order_mode='quick', quick_order_item=quick_order_item_json)
+                
+                # Also update the in-memory session
+                session['current_step'] = 'waiting_for_quick_order_service'
+                session['quick_order_item'] = matched_item
+                session['quick_order_quantity'] = quantity
+                
+                # Show service type selection
+                return self._show_service_type_buttons(phone_number, language)
+            else:
+                logger.info(f"✅ No quantity specified, proceeding to quantity selection")
+                # Update session to quantity selection step with item data
+                self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_quantity', language, session.get('customer_name'), order_mode='quick', quick_order_item=quick_order_item_json)
+                
+                # Also update the in-memory session to ensure consistency
+                session['current_step'] = 'waiting_for_quick_order_quantity'
+                session['quick_order_item'] = matched_item
+                
+                # Show quantity buttons
+                return self._show_quantity_buttons(phone_number, language, matched_item['item_name_ar'])
         else:
             # Item not found
             if language == 'arabic':
