@@ -1519,6 +1519,18 @@ class EnhancedMessageHandler:
         """Handle conversational responses that need acknowledgment"""
         response_message = ai_result.get('response_message', '')
         
+        # Check if we should show interactive buttons
+        if ai_result.get('show_interactive_buttons'):
+            logger.info(f"🎯 Showing interactive buttons for conversational response")
+            current_step = user_context.get('current_step')
+            
+            # Show appropriate interactive buttons based on step
+            if current_step == 'waiting_for_category':
+                return self._show_main_categories(phone_number, user_context.get('language', 'arabic'))
+            else:
+                # Fallback to text response
+                return self._create_response(response_message)
+        
         # If AI provided a response, use it (it should include the redirect)
         if response_message:
             return self._create_response(response_message)

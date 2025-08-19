@@ -32,7 +32,7 @@ RESPOND WITH JSON:
 {{
     "understood_intent": "clear description of what user wants",
     "confidence": "high/medium/low",
-    "action": "language_selection/category_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu/help_request/stay_current_step",
+    "action": "language_selection/category_selection/quick_order_selection/explore_menu_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu/help_request/stay_current_step",
     "extracted_data": {{
         "language": "arabic/english/null",
         "category_id": "number or null",
@@ -175,11 +175,16 @@ EXAMPLES FOR {current_step}:
 "مرحبا" → language_selection, language: "arabic"
 ''',
             'waiting_for_category': '''
-"1" → category_selection, category_id: 1
-"٧" → category_selection, category_id: 7
-"موهيتو" → category_selection, category_id: 7, category_name: "موهيتو"
-"frappuccino" → category_selection, category_id: 5, category_name: "فرابتشينو"
-"toast" → category_selection, category_id: 9, category_name: "توست"
+"1" → quick_order_selection
+"الطلب السريع" → quick_order_selection
+"quick_order" → quick_order_selection
+"quick order" → quick_order_selection
+"2" → explore_menu_selection
+"استكشاف القائمة" → explore_menu_selection
+"explore" → explore_menu_selection
+"explore menu" → explore_menu_selection
+"مرحبا" → conversational_response
+"hello" → conversational_response
 ''',
             'waiting_for_item': '''
 "1" → item_selection, item_id: 1
@@ -222,9 +227,11 @@ EXAMPLES FOR {current_step}:
 "1" → quick_order_selection
 "الطلب السريع" → quick_order_selection
 "quick_order" → quick_order_selection
+"quick order" → quick_order_selection
 "2" → explore_menu_selection
 "استكشاف القائمة" → explore_menu_selection
 "explore" → explore_menu_selection
+"explore menu" → explore_menu_selection
 "مرحبا" → conversational_response
 "hello" → conversational_response
 ''',

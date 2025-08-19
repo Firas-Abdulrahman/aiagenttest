@@ -1211,13 +1211,17 @@ Response: {{
         if action not in valid_actions:
             return False
         
+        # Define user_message_lower at the top for use in all checks
+        user_message_lower = user_message.lower().strip()
+        
         # Handle greetings at category step - treat as session reset
         if action == 'language_selection':
             # Convert language_selection to conversational_response for category step
             logger.info(f"🔄 Converting language_selection to conversational_response for category step")
             result['action'] = 'conversational_response'
-            result['understood_intent'] = "User greeted at category step, should reset session"
-            result['response_message'] = "مرحبا! يبدو أنك تريد البدء من جديد. الرجاء اختيار طريقة الطلب:\n\n1. الطلب السريع\n2. استكشاف القائمة"
+            result['understood_intent'] = "User greeted at category step, should show interactive buttons"
+            result['response_message'] = "مرحبا! يبدو أنك تريد البدء من جديد. الرجاء اختيار طريقة الطلب من الأزرار أدناه."
+            result['show_interactive_buttons'] = True  # Flag to show interactive buttons
             return True
         
         # Handle quick_order text being interpreted as item_selection
@@ -1227,9 +1231,6 @@ Response: {{
             result['understood_intent'] = "User wants to use quick order mode"
             result['extracted_data'] = {}
             return True
-        
-        # Handle two-button interface selections
-        user_message_lower = user_message.lower().strip()
         
         # Get order mode from context
         order_mode = user_context.get('order_mode') if user_context else None
