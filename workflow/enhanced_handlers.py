@@ -509,12 +509,21 @@ class EnhancedMessageHandler:
             if sub_category_id:
                 current_category_items = self.db.get_sub_category_items(sub_category_id)
         
+        language = user_context.get('language', 'arabic')
+        
+        # If still empty, fallback to matching across all items
         if not current_category_items:
-            logger.warning("⚠️ No items available for matching")
-            return None
+            try:
+                all_items = self._get_all_items()
+            except Exception as e:
+                logger.exception(f"⚠️ Failed to fetch all items for global matching fallback: {e}")
+                all_items = []
+            if not all_items:
+                logger.warning("⚠️ No items available for matching")
+                return None
+            return self._match_item_by_name(item_name, all_items, language)
         
         # Use the existing matching logic
-        language = user_context.get('language', 'arabic')
         return self._match_item_by_name(item_name, current_category_items, language)
 
     def _handle_intelligent_suggestion(self, phone_number: str, ai_result: Dict, session: Dict, user_context: Dict) -> Dict:
@@ -1779,26 +1788,48 @@ class EnhancedMessageHandler:
         item_name = text
         table_number = None
         
-        # Look for quantity patterns - support both English and Arabic numerals
+        # Look for quantity patterns - support both English and Arabic numerals and words
         import re
         
-        # Convert Arabic numerals to English for processing using existing method
-        processed_text = self._convert_arabic_numerals(text)
-        logger.info(f"🔍 Quick order processing: original='{text}', processed='{processed_text}'")
+        # Remove common leading intent verbs (Arabic dialects and English)
+        verb_leading_pattern = r'^(?:أ?ريد|بدي|ابي|ابغى|عايز|حاب|ارغب|i\s*w(?:ant|anna)|give\s*me)\s+'
+        text_wo_verbs = re.sub(verb_leading_pattern, '', text, flags=re.IGNORECASE).strip()
         
-        # Look for quantity patterns (now handles both Arabic and English numerals)
-        quantity_pattern = r'^(\d+)\s+'
-        quantity_match = re.match(quantity_pattern, processed_text)
-        if quantity_match:
-            quantity = int(quantity_match.group(1))
-            # Find the position of the quantity in the original text
-            original_quantity = text[:len(quantity_match.group(0))]
-            item_name = text[len(original_quantity):].strip()
-            logger.info(f"✅ Extracted quantity: {quantity}, item_name: '{item_name}'")
+        # Convert Arabic numerals to English for processing using existing method
+        processed_text = self._convert_arabic_numerals(text_wo_verbs)
+        logger.info(f"🔍 Quick order processing: original='{text}', no_verbs='{text_wo_verbs}', processed='{processed_text}'")
+        
+        # Try leading quantity WORDS first (Arabic/English + common ASR variants)
+        quantity_words_map = {
+            'واحد': 1, 'واحدة': 1, 'one': 1,
+            'اثنين': 2, 'إثنين': 2, 'اتنين': 2, 'ثنين': 2, 'two': 2,
+            'الاثنين': 2, 'الأثنين': 2, 'الثنين': 2, 'الثين': 2,
+            'الثيه': 2, 'ثيه': 2  # common ASR mis-hearings
+        }
+        qw_pattern = r'^(?:' + '|'.join(map(re.escape, quantity_words_map.keys())) + r')\s+'
+        qw_match = re.match(qw_pattern, text_wo_verbs, flags=re.IGNORECASE)
+        if qw_match:
+            matched_word = qw_match.group(0).strip()
+            key = matched_word.lower()
+            qty = quantity_words_map.get(matched_word, quantity_words_map.get(key))
+            if qty:
+                quantity = int(qty)
+                item_name = text_wo_verbs[qw_match.end():].strip()
+                logger.info(f"✅ Extracted leading word quantity: {matched_word} -> {quantity}, item_name: '{item_name}'")
         else:
-            logger.info(f"🔍 No quantity pattern found, defaulting to quantity=1")
-            quantity = 1
-            item_name = text.strip()
+            # Look for quantity patterns (now handles both Arabic and English numerals)
+            quantity_pattern = r'^(\d+)\s+'
+            quantity_match = re.match(quantity_pattern, processed_text)
+            if quantity_match:
+                quantity = int(quantity_match.group(1))
+                # Find the position of the quantity in the original (verb-stripped) text
+                original_quantity = text_wo_verbs[:len(quantity_match.group(0))]
+                item_name = text_wo_verbs[len(original_quantity):].strip()
+                logger.info(f"✅ Extracted numeric quantity: {quantity}, item_name: '{item_name}'")
+            else:
+                logger.info(f"🔍 No leading quantity found, defaulting to quantity=1")
+                quantity = 1
+                item_name = text_wo_verbs.strip()
         
         # Look for table number patterns
         table_pattern = r'للطاولة\s+(\d+)'
@@ -3350,4 +3381,4 @@ class EnhancedMessageHandler:
             'body_text': body_text,
             'footer_text': footer_text,
             'buttons': buttons
-        } 
+        }

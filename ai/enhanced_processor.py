@@ -1377,7 +1377,9 @@ Response: {{
             
             # Look for quantity indicators (both Arabic words and numbers)
             quantity_patterns = {
-                'واحد': 1, 'اثنين': 2, 'ثلاثة': 3, 'اربعة': 4, 'خمسة': 5,
+                'واحد': 1, 'واحدة': 1, 'اثنين': 2, 'ثلاثة': 3, 'اربعة': 4, 'خمسة': 5,
+                'ثنين': 2, 'اتنين': 2, 'الاثنين': 2, 'الأثنين': 2, 'الثنين': 2, 'الثين': 2,
+                'الثيه': 2, 'ثيه': 2,  # common ASR mis-hearings for "اثنين"
                 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5
             }
             
