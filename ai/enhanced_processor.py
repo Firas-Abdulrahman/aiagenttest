@@ -1225,7 +1225,7 @@ Response: {{
             return True
         
         # Handle quick_order text being interpreted as item_selection
-        if action == 'item_selection' and user_message_lower in ['quick_order', 'الطلب السريع']:
+        if action == 'item_selection' and user_message_lower in ['quick_order', 'quick order', 'الطلب السريع', 'طلب سريع', 'طالب سريع', 'اوردر سريع', 'أوردر سريع']:
             logger.info(f"🔄 Converting item_selection to quick_order_selection for '{user_message}'")
             result['action'] = 'quick_order_selection'
             result['understood_intent'] = "User wants to use quick order mode"
@@ -1772,6 +1772,16 @@ Response: {{
         for arabic, english in arabic_to_english.items():
             processed_message = processed_message.replace(arabic, english)
         
+        # Normalize common quick-order triggers (handle ASR variants like 'طالب سريع')
+        pm_lower = processed_message.lower().strip()
+        quick_order_triggers = {
+            'quick order', 'quick_order',
+            'الطلب السريع', 'طلب سريع', 'طالب سريع',
+            'اوردر سريع', 'أوردر سريع'
+        }
+        if pm_lower in quick_order_triggers:
+            processed_message = 'الطلب السريع'
+        
         # Enhanced Arabic quantity word recognition
         arabic_quantity_mapping = {
             'واحد': '1', 'واحدة': '1',
@@ -1826,4 +1836,4 @@ Response: {{
         if self.consecutive_failures > 0:
             logger.info(f"✅ Enhanced AI processing successful, resetting failure counter from {self.consecutive_failures}")
             self.consecutive_failures = 0
-            self.failure_window_start = None 
+            self.failure_window_start = None
