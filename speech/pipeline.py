@@ -60,9 +60,38 @@ class VoicePipeline:
 
             response = self.handler.handle_message(synthetic_message)
 
-            reply_text = response.get('content', '')
+            # Prepare text for TTS, supporting both plain text and interactive buttons
+            reply_text = ""
+            rtype = response.get('type') if isinstance(response, dict) else None
+            if rtype == 'text':
+                reply_text = response.get('content', '') or ''
+            elif rtype == 'interactive_buttons':
+                header = (response.get('header_text') or '').strip()
+                body = (response.get('body_text') or '').strip()
+                buttons = response.get('buttons') or []
+                options_lines = []
+                for idx, btn in enumerate(buttons, 1):
+                    try:
+                        title = (btn.get('reply') or {}).get('title') or btn.get('title') or ''
+                    except Exception:
+                        title = ''
+                    if title:
+                        options_lines.append(f"{idx}. {title}")
+                options_text = "\n".join(options_lines).strip()
+                parts = [p for p in [header, body, options_text] if p]
+                reply_text = "\n".join(parts)
+                logger.info("🗣️ Converted interactive buttons to TTS text")
+            else:
+                # Fallback to any content field if present
+                reply_text = response.get('content', '') if isinstance(response, dict) else ''
+
             if not reply_text:
-                return False
+                # Last resort fallback based on detected language to keep voice UX
+                default_text_ar = "الرجاء اختيار خيار مناسب."
+                default_text_en = "Please choose an option."
+                lang = (transcript.language or '').lower()
+                reply_text = default_text_ar if lang.startswith('ar') else default_text_en
+                logger.warning("No reply_text from handler; using default prompt for TTS")
 
             # TTS
             # Decide output format: prefer OGG voice notes; fallback to MP3 if configured
