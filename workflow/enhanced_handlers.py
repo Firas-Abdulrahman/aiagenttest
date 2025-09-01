@@ -1863,11 +1863,7 @@ class EnhancedMessageHandler:
                 success = self.db.add_item_to_order(
                     phone_number=phone_number,
                     item_id=matched_item['id'],
-                    item_name_ar=matched_item['item_name_ar'],
-                    item_name_en=matched_item['item_name_en'],
-                    price=matched_item['price'],
-                    quantity=quantity,
-                    customizations=None
+                    quantity=quantity
                 )
                 
                 if success:
@@ -1966,11 +1962,7 @@ class EnhancedMessageHandler:
         success = self.db.add_item_to_order(
             phone_number=phone_number,
             item_id=item_id,
-            item_name_ar=quick_order_item['item_name_ar'],
-            item_name_en=quick_order_item['item_name_en'],
-            price=quick_order_item['price'],
-            quantity=quantity,
-            customizations=None
+            quantity=quantity
         )
         
         if not success:
@@ -2048,11 +2040,7 @@ class EnhancedMessageHandler:
                 success = self.db.add_item_to_order(
                     phone_number=phone_number,
                     item_id=matched_item['id'],
-                    item_name_ar=matched_item['item_name_ar'],
-                    item_name_en=matched_item['item_name_en'],
-                    price=matched_item['price'],
-                    quantity=quantity,
-                    customizations=None
+                    quantity=quantity
                 )
                 
                 if success:
