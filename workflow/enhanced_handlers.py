@@ -1357,8 +1357,13 @@ class EnhancedMessageHandler:
         # Update order details with clean location
         self.db.update_order_details(phone_number, location=clean_location)
         
-        # Show order summary
-        return self._show_order_summary(phone_number, session, user_context, clean_location)
+        # Check if this is a quick order and route appropriately
+        if order_mode == 'quick':
+            logger.info(f"🎯 Quick order detected, showing quick order confirmation")
+            return self._show_quick_order_confirmation(phone_number, session, user_context)
+        else:
+            logger.info(f"📋 Regular order, showing order summary")
+            return self._show_order_summary(phone_number, session, user_context, clean_location)
 
     def _handle_ai_confirmation(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle AI confirmation"""
@@ -2524,8 +2529,16 @@ class EnhancedMessageHandler:
         # Update order details with clean location
         self.db.update_order_details(phone_number, location=clean_location)
         
-        # Show order summary
-        return self._show_order_summary(phone_number, session, user_context, clean_location)
+        # Check order mode and route accordingly
+        order_mode = session.get('order_mode')
+        logger.info(f"🔄 Structured location input: order_mode={order_mode}")
+        
+        if order_mode == 'quick':
+            logger.info("📋 Routing to quick order confirmation")
+            return self._show_quick_order_confirmation(phone_number, session, user_context)
+        else:
+            logger.info("📋 Routing to regular order summary")
+            return self._show_order_summary(phone_number, session, user_context, clean_location)
 
     def _handle_structured_fresh_start_choice(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
         """Handle user's choice for fresh start after order"""
@@ -2986,8 +2999,14 @@ class EnhancedMessageHandler:
         
         # Get current order details
         current_order = self.db.get_current_order(phone_number)
+        logger.info(f"🔍 Quick order confirmation - Retrieved order: {current_order}")
         
-        if not current_order or not current_order.get('items'):
+        if not current_order:
+            logger.warning(f"❌ No current order found for {phone_number}")
+            return self._create_response("لا توجد أصناف في الطلب. الرجاء المحاولة مرة أخرى.")
+        
+        if not current_order.get('items'):
+            logger.warning(f"❌ Order exists but no items found: {current_order}")
             return self._create_response("لا توجد أصناف في الطلب. الرجاء المحاولة مرة أخرى.")
         
         # Calculate total
