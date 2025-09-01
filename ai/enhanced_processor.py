@@ -1367,36 +1367,69 @@ Response: {{
         # Look for 'و' that is surrounded by spaces or at word boundaries
         import re
         
-        # First, protect compound words that contain 'و' by temporarily replacing them
-        compound_words = {
-            'موهيتو': '__MOJITO__',
-            'موهيطو': '__MOJITO__',  # Common typo
-            'موهيطة': '__MOJITO__',  # Common typo
-        }
+        # Split by 'و' that appears as a conjunction, but be smarter about it
+        # First try to split by 'و' with spaces around it
+        parts = re.split(r'\s+و\s+', processed_message)
         
-        # Protect compound words
-        protected_message = processed_message
-        for compound, placeholder in compound_words.items():
-            protected_message = protected_message.replace(compound, placeholder)
-        
-        # Now split by 'و' that appears as a conjunction (with spaces around it)
-        # This regex looks for 'و' that is either:
-        # 1. Preceded and followed by spaces
-        # 2. At the beginning/end with space on one side
-        parts = re.split(r'\s+و\s+|^و\s+|\s+و$', protected_message)
-        
-        # If no proper conjunctions found, treat as single item
+        # If that didn't work, try splitting by 'و' at word boundaries
+        # but exclude cases where 'و' is part of a compound word like 'موهيتو'
         if len(parts) == 1:
-            parts = [protected_message]
+            # Look for 'و' that is not part of known compound words
+            compound_patterns = ['موهيتو', 'موهيطو', 'موهيطة']
+            
+            # Create a pattern that matches 'و' not preceded by compound word patterns
+            # Split by 'و' that is either at start, or preceded by space, or at word boundary
+            # but not if it's part of a compound word
+            temp_parts = []
+            current_part = ""
+            
+            i = 0
+            while i < len(processed_message):
+                char = processed_message[i]
+                
+                if char == 'و':
+                    # Check if this 'و' is part of a compound word
+                    is_compound = False
+                    for compound in compound_patterns:
+                        # Check if 'و' is within a compound word
+                        start_pos = max(0, i - len(compound) + 1)
+                        end_pos = min(len(processed_message), i + len(compound))
+                        context = processed_message[start_pos:end_pos]
+                        if compound in context:
+                            # Check if the 'و' is actually part of this compound
+                            compound_start = context.find(compound)
+                            if compound_start != -1:
+                                relative_pos = i - start_pos
+                                if compound_start <= relative_pos < compound_start + len(compound):
+                                    is_compound = True
+                                    break
+                    
+                    if not is_compound and (i == 0 or processed_message[i-1] == ' ' or i == len(processed_message)-1 or processed_message[i+1] == ' '):
+                        # This is a conjunction 'و', split here
+                        if current_part.strip():
+                            temp_parts.append(current_part.strip())
+                        current_part = ""
+                    else:
+                        current_part += char
+                else:
+                    current_part += char
+                
+                i += 1
+            
+            if current_part.strip():
+                temp_parts.append(current_part.strip())
+            
+            if len(temp_parts) > 1:
+                parts = temp_parts
+        
+        # If still no proper conjunctions found, treat as single item
+        if len(parts) == 1:
+            parts = [processed_message]
         
         for part in parts:
             part = part.strip()
             if not part:
                 continue
-            
-            # Restore compound words
-            for compound, placeholder in compound_words.items():
-                part = part.replace(placeholder, compound)
                 
             # Extract quantity and item name from each part
             quantity = 1  # Default quantity
