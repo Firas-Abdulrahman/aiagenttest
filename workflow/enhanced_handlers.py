@@ -3328,23 +3328,43 @@ class EnhancedMessageHandler:
                 logger.warning(f"⚠️ Error parsing session time: {e}")
                 return True
 
+        # Get current step and order mode
+        current_step = session.get('current_step')
+        order_mode = session.get('order_mode')
+        
+        logger.debug(f"🔍 Session reset check: message='{user_message}', current_step='{current_step}', order_mode='{order_mode}'")
+
+        # CRITICAL FIX: Never reset session during quick order flow
+        if order_mode == 'quick':
+            logger.debug(f"🎯 Quick order mode detected - preventing session reset")
+            return False
+
+        # CRITICAL FIX: Never reset during active order steps
+        active_order_steps = [
+            'waiting_for_location', 'waiting_for_confirmation', 'waiting_for_service_type',
+            'waiting_for_quick_order_service', 'waiting_for_quantity', 'waiting_for_additional'
+        ]
+        if current_step in active_order_steps:
+            logger.debug(f"🛡️ Active order step '{current_step}' - preventing session reset")
+            return False
+
         # Check for greeting words that might indicate a fresh start
         greeting_words = ['مرحبا', 'السلام عليكم', 'أهلا', 'hello', 'hi', 'hey']
         user_lower = user_message.lower().strip()
-        current_step = session.get('current_step')
-
-        logger.debug(f"🔍 Session reset check: message='{user_message}', current_step='{current_step}'")
-
-        # Note: Removed special case for confirmation step greetings to prevent unwanted fresh start messages
-
+        
+        # Convert Arabic numerals to check if message is numeric
+        converted_message = self._convert_arabic_numerals(user_message)
+        
         # Only reset if it's clearly a greeting and not at language selection step
         # Also, don't reset if we're in confirmation step and user says yes/no
         if (any(greeting in user_lower for greeting in greeting_words) and
                 len(user_message.strip()) <= 15 and  # Allow slightly longer greetings
                 current_step not in ['waiting_for_language', 'waiting_for_category', 'waiting_for_confirmation'] and
-                # Make sure it's not just a number or other input
+                # Make sure it's not just a number (including Arabic numerals)
                 not user_message.strip().isdigit() and
-                not any(char.isdigit() for char in user_message)):
+                not converted_message.strip().isdigit() and
+                not any(char.isdigit() for char in user_message) and
+                not any(char.isdigit() for char in converted_message)):
             logger.info(f"🔄 Fresh start intent detected for message: '{user_message}' at step '{current_step}'")
             return True
 
