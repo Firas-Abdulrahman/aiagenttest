@@ -266,6 +266,9 @@ class EnhancedMessageHandler:
         # Handle specific step-based actions
         if action == 'language_selection':
             return self._handle_ai_language_selection(phone_number, extracted_data, session)
+        elif action == 'show_menu':
+            # Handle show menu request
+            return self._handle_ai_show_menu(phone_number, session, user_context)
         elif action == 'category_selection':
             return self._handle_ai_category_selection(phone_number, extracted_data, session, user_context)
         elif action == 'sub_category_selection':
@@ -1392,7 +1395,7 @@ class EnhancedMessageHandler:
         current_step = user_context.get('current_step')
 
         if current_step == 'waiting_for_category':
-            return self._show_main_categories(phone_number, language)
+            return self._show_traditional_categories(phone_number, language)
         elif current_step == 'waiting_for_sub_category' and session:
             main_categories = self.db.get_main_categories()
             selected_category = next((cat for cat in main_categories if cat['id'] == session.get('selected_main_category')), None)
@@ -2954,20 +2957,29 @@ class EnhancedMessageHandler:
         
         items = self.db.get_sub_category_items(sub_category_id)
         
-        if language == 'arabic':
-            message = f"قائمة {sub_category['name_ar']}:\n\n"
-            for i, item in enumerate(items, 1):
-                message += f"{i}. {item['item_name_ar']}\n"
-                message += f"   السعر: {item['price']} دينار\n\n"
-            message += "الرجاء اختيار المنتج المطلوب"
-        else:
-            message = f"{sub_category['name_en']} Menu:\n\n"
-            for i, item in enumerate(items, 1):
-                message += f"{i}. {item['item_name_en']}\n"
-                message += f"   Price: {item['price']} IQD\n\n"
-            message += "Please select the required item"
+        # Create interactive buttons for items
+        buttons = []
+        for item in items:
+            if language == 'arabic':
+                button_title = f"{item['item_name_ar']} - {item['price']} دينار"
+            else:
+                button_title = f"{item['item_name_en']} - {item['price']} IQD"
+            
+            buttons.append({
+                'id': f"item_{item['id']}",
+                'title': button_title
+            })
         
-        return self._create_response(message)
+        if language == 'arabic':
+            header_text = f"قائمة {sub_category['name_ar']}"
+            body_text = "اختر المنتج الذي تريده:"
+            footer_text = "الرجاء اختيار المنتج المطلوب"
+        else:
+            header_text = f"{sub_category['name_en']} Menu"
+            body_text = "Choose the item you want:"
+            footer_text = "Please select the required item"
+        
+        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
 
     def _show_quantity_selection(self, phone_number: str, selected_item: Dict, language: str) -> Dict:
         """Show quantity selection for selected item"""
