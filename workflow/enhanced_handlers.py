@@ -1402,7 +1402,7 @@ class EnhancedMessageHandler:
                 self.db.create_or_update_session(
                     phone_number=phone_number,
                     current_step='waiting_for_category',
-                    language_preference=language,
+                    language=language,
                     order_mode='explore'
                 )
                 logger.info(f"🔍 Set order_mode to 'explore' for {phone_number}")
