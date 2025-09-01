@@ -92,6 +92,78 @@ def test_two_button_interface():
     for order in recent_orders:
         print(f"  • {order}")
     
+    # -------------------------
+    # New: E2E Quick Order tests
+    # -------------------------
+    print("\n6. E2E Quick Order: Quantity words/numerals and ASR variants")
+    print("-" * 40)
+
+    import json as _json
+
+    scenarios = [
+        {"language": "english", "text": "two tea", "expect_specific": None},
+        {"language": "arabic",  "text": "اثنين شاي", "expect_specific": None},
+        {"language": "arabic",  "text": "اريد 2 شاي عراقي", "expect_specific": "شاي عراقي"},
+        {"language": "arabic",  "text": "أريد الثيه والشاي العراقي", "expect_specific": "شاي عراقي"},
+    ]
+
+    for idx, sc in enumerate(scenarios, start=1):
+        lang = sc["language"]
+        text = sc["text"]
+        expect_specific = sc["expect_specific"]
+
+        # Ensure a clean session per scenario
+        try:
+            db.delete_session(phone_number)
+        except Exception:
+            pass
+
+        # Initialize quick order step
+        db.create_or_update_session(
+            phone_number=phone_number,
+            current_step='waiting_for_quick_order',
+            language=lang,
+            customer_name='Test User',
+            order_mode='quick'
+        )
+        session = db.get_user_session(phone_number)
+        user_context = {"language": lang}
+
+        print(f"\nScenario {idx}: [{lang}] '{text}'")
+        response = handler._handle_structured_quick_order(phone_number, text, session, user_context)
+
+        # Expect skipping quantity selection (quantity=2) -> service buttons interactive response
+        resp_type = response.get('type')
+        assert resp_type == 'interactive', f"Expected interactive response with service buttons, got: {resp_type}"
+        buttons = response.get('buttons') or []
+        assert len(buttons) >= 2, "Expected at least two service buttons"
+        assert buttons[0].get('reply', {}).get('id') == 'dine_in', "First button should be dine_in"
+        assert buttons[1].get('reply', {}).get('id') == 'delivery', "Second button should be delivery"
+
+        # Verify session advanced to quick order service step
+        sess_after = db.get_user_session(phone_number)
+        assert sess_after and sess_after.get('current_step') == 'waiting_for_quick_order_service', \
+            f"Expected current_step 'waiting_for_quick_order_service', got: {sess_after.get('current_step') if sess_after else None}"
+
+        # Verify quick_order_item stored in session as JSON
+        qoi_json = sess_after.get('quick_order_item')
+        assert qoi_json, "quick_order_item should be stored in session"
+        try:
+            qoi = _json.loads(qoi_json)
+        except Exception as e:
+            raise AssertionError(f"quick_order_item is not valid JSON: {e}\nValue: {qoi_json}")
+
+        # If scenario expects a specific item, verify it
+        if expect_specific:
+            assert qoi.get('item_name_ar') == expect_specific, \
+                f"Expected matched item '{expect_specific}', got '{qoi.get('item_name_ar')}'"
+
+        print("  ✓ Interactive service buttons shown and session advanced correctly")
+        if expect_specific:
+            print(f"  ✓ Matched specific item: {qoi.get('item_name_ar')}")
+
+    print("\n✅ E2E Quick Order tests passed!")
+
     print("\n✅ Two-Button Interface Test Completed!")
     print("\nKey Features Implemented:")
     print("  ✓ Two-button main interface (Quick Order vs Explore Menu)")

@@ -77,6 +77,9 @@ class ThreadSafeDatabaseManager:
                     conn.execute(sql)
                     logger.debug(f"✅ Created/verified table: {table_name}")
 
+                # Ensure new columns exist on existing installations
+                self._ensure_user_sessions_columns(conn)
+
                 conn.commit()
 
                 # Populate initial data if needed
@@ -132,6 +135,31 @@ class ThreadSafeDatabaseManager:
             logger.error(f"❌ Error populating initial data: {e}")
             conn.rollback()
             raise
+
+    def _ensure_user_sessions_columns(self, conn):
+        """Ensure critical columns exist in user_sessions for backward compatibility"""
+        try:
+            cursor = conn.execute("PRAGMA table_info(user_sessions)")
+            columns = {row[1] for row in cursor.fetchall()}
+
+            missing = []
+            if 'order_mode' not in columns:
+                missing.append(('order_mode', 'TEXT'))
+            if 'quick_order_item' not in columns:
+                missing.append(('quick_order_item', 'TEXT'))
+            if 'conversation_context' not in columns:
+                missing.append(('conversation_context', 'TEXT'))
+
+            for col_name, col_type in missing:
+                try:
+                    conn.execute(f"ALTER TABLE user_sessions ADD COLUMN {col_name} {col_type}")
+                    logger.info(f"✅ Added missing column user_sessions.{col_name}")
+                except sqlite3.OperationalError as e:
+                    # Column might have been added concurrently or by another process
+                    logger.warning(f"⚠️ Could not add column {col_name}: {e}")
+        except Exception as e:
+            logger.error(f"❌ Error ensuring user_sessions columns: {e}")
+        # No explicit commit here; caller (init_database) handles commit
 
     # User Session Operations (Thread-Safe)
     def get_user_session(self, phone_number: str) -> Optional[Dict]:
