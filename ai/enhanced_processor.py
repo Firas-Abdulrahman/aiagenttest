@@ -1363,13 +1363,40 @@ Response: {{
         for arabic, english in arabic_to_english.items():
             processed_message = processed_message.replace(arabic, english)
         
-        # Split by 'و' (and) to get individual item requests
-        parts = processed_message.split('و')
+        # Use regex to find proper conjunctions, avoiding splitting compound words
+        # Look for 'و' that is surrounded by spaces or at word boundaries
+        import re
+        
+        # First, protect compound words that contain 'و' by temporarily replacing them
+        compound_words = {
+            'موهيتو': '__MOJITO__',
+            'موهيطو': '__MOJITO__',  # Common typo
+            'موهيطة': '__MOJITO__',  # Common typo
+        }
+        
+        # Protect compound words
+        protected_message = processed_message
+        for compound, placeholder in compound_words.items():
+            protected_message = protected_message.replace(compound, placeholder)
+        
+        # Now split by 'و' that appears as a conjunction (with spaces around it)
+        # This regex looks for 'و' that is either:
+        # 1. Preceded and followed by spaces
+        # 2. At the beginning/end with space on one side
+        parts = re.split(r'\s+و\s+|^و\s+|\s+و$', protected_message)
+        
+        # If no proper conjunctions found, treat as single item
+        if len(parts) == 1:
+            parts = [protected_message]
         
         for part in parts:
             part = part.strip()
             if not part:
                 continue
+            
+            # Restore compound words
+            for compound, placeholder in compound_words.items():
+                part = part.replace(placeholder, compound)
                 
             # Extract quantity and item name from each part
             quantity = 1  # Default quantity
@@ -1393,7 +1420,6 @@ Response: {{
             
             # If no word quantity found, look for numeric quantities
             if quantity == 1:
-                import re
                 numbers = re.findall(r'\d+', part)
                 if numbers:
                     quantity = int(numbers[0])
@@ -1403,7 +1429,7 @@ Response: {{
             # Clean up item name
             item_name = item_name.replace('اريد', '').replace('بدي', '').strip()
             
-            # Handle common typos in mojito
+            # Handle common typos in mojito (after restoration)
             item_name = item_name.replace('موهيطة', 'موهيتو').replace('موهيطو', 'موهيتو')
             
             if item_name:
