@@ -1944,9 +1944,6 @@ class EnhancedMessageHandler:
             logger.error(f"❌ Failed to add item to order: item_id={item_id}, quantity={quantity}")
             return self._create_response("حدث خطأ في إضافة المنتج. الرجاء المحاولة مرة أخرى.")
         
-        # Mark as added to avoid double-adding later
-        session['quick_order_added'] = True
-        
         # Update session to service selection step
         self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_service', language, session.get('customer_name'), order_mode='quick')
         
@@ -1968,26 +1965,6 @@ class EnhancedMessageHandler:
         else:
             # Fallback: try to extract from AI
             service_type = extracted_data.get('service_type', 'dine-in')
-        
-        # Ensure item is added if we skipped quantity step
-        try:
-            if not session.get('quick_order_added'):
-                quick_order_item = session.get('quick_order_item')
-                if isinstance(quick_order_item, str):
-                    import json
-                    quick_order_item = json.loads(quick_order_item)
-                item_id = quick_order_item.get('id') if quick_order_item else None
-                qty = session.get('quick_order_quantity', 1)
-                if item_id:
-                    logger.info(f"🔧 Pre-adding item at service step: item_id={item_id}, quantity={qty}")
-                    if self.db.add_item_to_order(phone_number, item_id, qty):
-                        session['quick_order_added'] = True
-                    else:
-                        logger.error("❌ Failed to add item during service step")
-                        return self._create_response("حدث خطأ في إضافة المنتج. الرجاء المحاولة مرة أخرى.")
-        except Exception as e:
-            logger.exception(f"❌ Exception during service-step add: {e}")
-            return self._create_response("حدث خطأ غير متوقع. الرجاء المحاولة مرة أخرى.")
         
         # Update order details
         self.db.update_order_details(phone_number, service_type=service_type)
@@ -3399,7 +3376,7 @@ class EnhancedMessageHandler:
     def _create_interactive_response(self, header_text: str, body_text: str, footer_text: str, buttons: List[Dict]) -> Dict[str, Any]:
         """Create interactive button response structure"""
         return {
-            'type': 'interactive',
+            'type': 'interactive_buttons',
             'header_text': header_text,
             'body_text': body_text,
             'footer_text': footer_text,
