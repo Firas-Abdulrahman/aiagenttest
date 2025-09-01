@@ -139,6 +139,13 @@ class EnhancedMessageHandler:
                 logger.info(f"🔧 Using AI-extracted yes/no: {yes_no}")
                 return self._handle_ai_yes_no(phone_number, {'yes_no': yes_no}, session, user_context)
         
+        elif current_step == 'waiting_for_sub_category':
+            # AI might have extracted sub-category information
+            sub_category_id = extracted_data.get('sub_category_id')
+            if sub_category_id:
+                logger.info(f"🔧 Using AI-extracted sub-category: {sub_category_id}")
+                return self._handle_sub_category_selection(phone_number, extracted_data, session, user_context)
+        
         elif current_step == 'waiting_for_item':
             # AI might have extracted item information
             item_name = extracted_data.get('item_name')
@@ -351,10 +358,19 @@ class EnhancedMessageHandler:
 
     def _handle_multi_item_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle multiple item selection in one message"""
+        # First try to get multi_items from AI extracted data
         multi_items = extracted_data.get('multi_items', [])
+        
+        # If not found, check if AI provided item_name array (which is the correct format from AI)
+        if not multi_items and 'item_name' in extracted_data:
+            ai_items = extracted_data.get('item_name', [])
+            if isinstance(ai_items, list):
+                multi_items = [{'item_name': item.get('name', ''), 'quantity': item.get('quantity', 1)} for item in ai_items]
+                logger.info(f"🤖 Using AI-extracted items: {multi_items}")
+        
         language = user_context.get('language', 'arabic')
         
-        # If AI didn't extract multi_items but we have the action, try to extract from the original message
+        # Only fall back to manual extraction if AI completely failed
         if not multi_items:
             logger.info("🔧 AI didn't extract multi_items, attempting to extract from original message")
             original_message = user_context.get('original_user_message', '')
@@ -1729,9 +1745,12 @@ class EnhancedMessageHandler:
         """Handle category selection with structured logic"""
         language = user_context.get('language', 'arabic')
         
+        # Convert Arabic numerals to English first
+        converted_text = self._convert_arabic_numerals(text.strip())
+        
         # Try to extract number
         try:
-            category_num = int(text.strip())
+            category_num = int(converted_text)
             categories = self.db.get_main_categories()
             
             if 1 <= category_num <= len(categories):
@@ -2810,21 +2829,33 @@ class EnhancedMessageHandler:
         return self._create_interactive_response(header_text, body_text, footer_text, buttons)
 
     def _show_traditional_categories(self, phone_number: str, language: str) -> Dict:
-        """Show traditional category selection for explore mode"""
+        """Show traditional category selection for explore mode with interactive buttons"""
         categories = self.db.get_main_categories()
         
         if language == 'arabic':
-            message = "استكشاف القائمة\n\n"
-            message += "اختر الفئة المطلوبة:\n\n"
+            header_text = "استكشاف القائمة"
+            body_text = "اختر الفئة المطلوبة:"
+            footer_text = "اضغط على الفئة المطلوبة"
+            
+            buttons = []
             for i, cat in enumerate(categories, 1):
-                message += f"{i}. {cat['name_ar']}\n"
+                buttons.append({
+                    "id": f"category_{cat['id']}",
+                    "title": f"{i}. {cat['name_ar']}"
+                })
         else:
-            message = "Explore Menu\n\n"
-            message += "Select the category:\n\n"
+            header_text = "Explore Menu"
+            body_text = "Select the category:"
+            footer_text = "Press the required category"
+            
+            buttons = []
             for i, cat in enumerate(categories, 1):
-                message += f"{i}. {cat['name_en']}\n"
+                buttons.append({
+                    "id": f"category_{cat['id']}",
+                    "title": f"{i}. {cat['name_en']}"
+                })
         
-        return self._create_response(message)
+        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
 
     def _get_popular_items(self) -> List[Dict]:
         """Get popular items for quick order suggestions"""
@@ -2876,17 +2907,29 @@ class EnhancedMessageHandler:
         sub_categories = self.db.get_sub_categories(main_category_id)
         
         if language == 'arabic':
-            message = f"قائمة {category_name_ar}:\n\n"
+            header_text = f"قائمة {category_name_ar}"
+            body_text = "الرجاء اختيار الفئة الفرعية المطلوبة"
+            footer_text = "🔙 اكتب 'رجوع' للعودة للخطوة السابقة"
+            
+            buttons = []
             for i, sub_cat in enumerate(sub_categories, 1):
-                message += f"{i}. {sub_cat['name_ar']}\n"
-            message += "\nالرجاء اختيار الفئة الفرعية المطلوبة\n\n🔙 اكتب 'رجوع' للعودة للخطوة السابقة"
+                buttons.append({
+                    "id": f"subcategory_{sub_cat['id']}",
+                    "title": f"{i}. {sub_cat['name_ar']}"
+                })
         else:
-            message = f"{category_name_en} Menu:\n\n"
+            header_text = f"{category_name_en} Menu"
+            body_text = "Please select the required sub-category"
+            footer_text = "🔙 Type 'back' to go to previous step"
+            
+            buttons = []
             for i, sub_cat in enumerate(sub_categories, 1):
-                message += f"{i}. {sub_cat['name_en']}\n"
-            message += "\nPlease select the required sub-category\n\n🔙 Type 'back' to go to previous step"
+                buttons.append({
+                    "id": f"subcategory_{sub_cat['id']}",
+                    "title": f"{i}. {sub_cat['name_en']}"
+                })
         
-        return self._create_response(message)
+        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
 
 
 
