@@ -1858,6 +1858,24 @@ class EnhancedMessageHandler:
             logger.info(f"🔍 Quantity decision: extracted_quantity={quantity}, should_skip_quantity={quantity > 1}")
             if quantity > 1:
                 logger.info(f"✅ Quantity {quantity} already specified, skipping quantity selection")
+                
+                # Add item to order immediately since quantity is specified
+                success = self.db.add_item_to_order(
+                    phone_number=phone_number,
+                    item_id=matched_item['id'],
+                    item_name_ar=matched_item['item_name_ar'],
+                    item_name_en=matched_item['name_en'],
+                    price=matched_item['price'],
+                    quantity=quantity,
+                    customizations=None
+                )
+                
+                if success:
+                    logger.info(f"✅ Added {quantity}x {matched_item['item_name_ar']} to order for {phone_number}")
+                else:
+                    logger.error(f"❌ Failed to add item to order for {phone_number}")
+                    return self._create_response("حدث خطأ في إضافة المنتج. يرجى المحاولة مرة أخرى." if language == 'arabic' else "Error adding item. Please try again.")
+                
                 # Update session to service selection step
                 self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_service', language, session.get('customer_name'), order_mode='quick', quick_order_item=quick_order_item_json)
                 
@@ -1945,7 +1963,15 @@ class EnhancedMessageHandler:
             return self._create_response("حدث خطأ. الرجاء المحاولة مرة أخرى.")
         
         logger.info(f"🔧 Adding item to order: item_id={item_id}, quantity={quantity}")
-        success = self.db.add_item_to_order(phone_number, item_id, quantity)
+        success = self.db.add_item_to_order(
+            phone_number=phone_number,
+            item_id=item_id,
+            item_name_ar=quick_order_item['item_name_ar'],
+            item_name_en=quick_order_item['name_en'],
+            price=quick_order_item['price'],
+            quantity=quantity,
+            customizations=None
+        )
         
         if not success:
             logger.error(f"❌ Failed to add item to order: item_id={item_id}, quantity={quantity}")
@@ -2017,6 +2043,24 @@ class EnhancedMessageHandler:
             # CRITICAL FIX: Check if quantity was already specified
             if quantity > 1:
                 logger.info(f"✅ Quantity {quantity} already specified, skipping quantity selection")
+                
+                # Add item to order immediately since quantity is specified
+                success = self.db.add_item_to_order(
+                    phone_number=phone_number,
+                    item_id=matched_item['id'],
+                    item_name_ar=matched_item['item_name_ar'],
+                    item_name_en=matched_item['name_en'],
+                    price=matched_item['price'],
+                    quantity=quantity,
+                    customizations=None
+                )
+                
+                if success:
+                    logger.info(f"✅ Added {quantity}x {matched_item['item_name_ar']} to order for {phone_number}")
+                else:
+                    logger.error(f"❌ Failed to add item to order for {phone_number}")
+                    return self._create_response("حدث خطأ في إضافة المنتج. يرجى المحاولة مرة أخرى." if language == 'arabic' else "Error adding item. Please try again.")
+                
                 # Update session to service selection step
                 self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_service', language, session.get('customer_name'), order_mode='quick', quick_order_item=quick_order_item_json)
                 
@@ -2997,9 +3041,20 @@ class EnhancedMessageHandler:
         """Show quick order confirmation with interactive buttons"""
         language = user_context.get('language', 'arabic')
         
+        # Add detailed debugging before getting order
+        logger.info(f"🔍 Quick order confirmation called for {phone_number}")
+        logger.info(f"🔍 Session state: {session}")
+        logger.info(f"🔍 User context: {user_context}")
+        
         # Get current order details
         current_order = self.db.get_current_order(phone_number)
         logger.info(f"🔍 Quick order confirmation - Retrieved order: {current_order}")
+        
+        # Additional debugging for database state
+        if current_order:
+            logger.info(f"🔍 Order items count: {len(current_order.get('items', []))}")
+            logger.info(f"🔍 Order details: {current_order.get('details', {})}")
+            logger.info(f"🔍 Order total: {current_order.get('total', 0)}")
         
         if not current_order:
             logger.warning(f"❌ No current order found for {phone_number}")

@@ -314,8 +314,15 @@ class ThreadSafeDatabaseManager:
                     """, (phone_number,))
 
                     conn.commit()
+                    
+                    # Verify the item was actually added
+                    verify_cursor = conn.execute(
+                        "SELECT COUNT(*) FROM user_orders WHERE phone_number = ? AND menu_item_id = ?",
+                        (phone_number, item_id)
+                    )
+                    count = verify_cursor.fetchone()[0]
+                    logger.info(f"✅ Added item {item_id} × {quantity} to order for {phone_number}. Verification count: {count}")
 
-                logger.info(f"✅ Added item {item_id} × {quantity} to order for {phone_number}")
                 return True
 
             except Exception as e:
@@ -326,6 +333,8 @@ class ThreadSafeDatabaseManager:
         """Get user order with thread safety"""
         try:
             with self.get_db_connection() as conn:
+                logger.info(f"🔍 Getting user order for {phone_number}")
+                
                 # Get order items
                 cursor = conn.execute("""
                     SELECT uo.id, uo.phone_number, uo.menu_item_id, uo.quantity, 
@@ -342,8 +351,11 @@ class ThreadSafeDatabaseManager:
 
                 items = []
                 total = 0
+                
+                rows = cursor.fetchall()
+                logger.info(f"🔍 Database query returned {len(rows)} rows for {phone_number}")
 
-                for row in cursor.fetchall():
+                for row in rows:
                     item = {
                         'id': row[0],
                         'phone_number': row[1],
@@ -359,6 +371,9 @@ class ThreadSafeDatabaseManager:
                     }
                     items.append(item)
                     total += row[4]
+                    logger.info(f"🔍 Found item: {item['item_name_ar']} × {item['quantity']} = {item['subtotal']}")
+                
+                logger.info(f"🔍 Total items found: {len(items)}, Total amount: {total}")
 
                 # Get order details
                 cursor = conn.execute("""
