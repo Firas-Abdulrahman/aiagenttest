@@ -1346,10 +1346,12 @@ class EnhancedMessageHandler:
                 else:
                     return self._create_response("Please enter a valid table number (1-7):")
         
-        # Update session step
+        # Update session step (preserve order_mode for quick orders)
+        order_mode = session.get('order_mode') if session else None
         self.db.create_or_update_session(
             phone_number, 'waiting_for_confirmation', language,
-            session.get('customer_name') if session else None
+            session.get('customer_name') if session else None,
+            order_mode=order_mode
         )
         
         # Update order details with clean location
