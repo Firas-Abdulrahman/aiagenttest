@@ -1395,6 +1395,18 @@ class EnhancedMessageHandler:
         current_step = user_context.get('current_step')
 
         if current_step == 'waiting_for_category':
+            # If user is at waiting_for_category and wants to explore menu,
+            # set order_mode to 'explore' and show traditional categories
+            if not session or session.get('order_mode') is None:
+                # Update session to set order_mode to 'explore'
+                self.db.create_or_update_session(
+                    phone_number=phone_number,
+                    current_step='waiting_for_category',
+                    language_preference=language,
+                    order_mode='explore'
+                )
+                logger.info(f"🔍 Set order_mode to 'explore' for {phone_number}")
+            
             return self._show_traditional_categories(phone_number, language)
         elif current_step == 'waiting_for_sub_category' and session:
             main_categories = self.db.get_main_categories()
