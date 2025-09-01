@@ -1864,7 +1864,7 @@ class EnhancedMessageHandler:
                     phone_number=phone_number,
                     item_id=matched_item['id'],
                     item_name_ar=matched_item['item_name_ar'],
-                    item_name_en=matched_item['name_en'],
+                    item_name_en=matched_item['item_name_en'],
                     price=matched_item['price'],
                     quantity=quantity,
                     customizations=None
@@ -1913,7 +1913,7 @@ class EnhancedMessageHandler:
                 response = f"Could not find '{item_name}' in our menu.\n\n"
                 response += "Available items:\n"
                 for item in all_items[:5]:  # Show first 5 items as suggestions
-                    response += f"• {item['name_en']} - {item['price']} IQD\n"
+                    response += f"• {item['item_name_en']} - {item['price']} IQD\n"
                 response += "\nOr choose 'Explore Menu' for full browsing."
             
             return self._create_response(response)
