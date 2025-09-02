@@ -1339,12 +1339,27 @@ class EnhancedMessageHandler:
 
         elif yes_no == 'no':
             if current_step == 'waiting_for_additional':
-                # Proceed to service selection
-                self.db.create_or_update_session(
-                    phone_number, 'waiting_for_service', language,
-                    session.get('customer_name') if session else None
-                )
-                return self._show_service_selection(phone_number, language)
+                # Check if we're in edit mode and should return to confirmation
+                order_mode = session.get('order_mode') if session else None
+                
+                if order_mode in ['edit_add_quick', 'edit_add_explore']:
+                    # Return to confirmation with updated order
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_confirmation', language,
+                        session.get('customer_name') if session else None,
+                        order_mode='quick'  # Restore to quick mode for confirmation
+                    )
+                    # Get refreshed session and user context for confirmation
+                    refreshed_session = self.db.get_session(phone_number)
+                    refreshed_user_context = self.db.get_user_context(phone_number)
+                    return self._show_quick_order_confirmation(phone_number, refreshed_session, refreshed_user_context)
+                else:
+                    # Normal flow: Proceed to service selection
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_service', language,
+                        session.get('customer_name') if session else None
+                    )
+                    return self._show_service_selection(phone_number, language)
             
             elif current_step == 'waiting_for_confirmation':
                 # Cancel order
@@ -1482,8 +1497,8 @@ class EnhancedMessageHandler:
         # Update order details with clean location
         self.db.update_order_details(phone_number, location=clean_location)
         
-        # Check if this is a quick order and route appropriately
-        if order_mode == 'quick':
+        # Check if this is a quick order (including edit modes) and route appropriately
+        if order_mode in ['quick', 'edit_add_quick', 'edit_add_explore']:
             logger.info(f"🎯 Quick order detected, showing quick order confirmation")
             return self._show_quick_order_confirmation(phone_number, session, user_context)
         else:
@@ -2701,7 +2716,10 @@ class EnhancedMessageHandler:
                     session.get('customer_name') if session else None,
                     order_mode='quick'  # Restore to quick mode for confirmation
                 )
-                return self._show_quick_order_confirmation(phone_number, session, user_context)
+                # Get refreshed session and user context for confirmation
+                refreshed_session = self.db.get_session(phone_number)
+                refreshed_user_context = self.db.get_user_context(phone_number)
+                return self._show_quick_order_confirmation(phone_number, refreshed_session, refreshed_user_context)
             else:
                 # Normal flow: Move to service selection
                 self.db.create_or_update_session(
@@ -2853,7 +2871,7 @@ class EnhancedMessageHandler:
         order_mode = session.get('order_mode')
         logger.info(f"🔄 Structured location input: order_mode={order_mode}")
         
-        if order_mode == 'quick':
+        if order_mode in ['quick', 'edit_add_quick', 'edit_add_explore']:
             logger.info("📋 Routing to quick order confirmation")
             return self._show_quick_order_confirmation(phone_number, session, user_context)
         else:
