@@ -3830,7 +3830,7 @@ class EnhancedMessageHandler:
                 phone_number, 'waiting_for_new_quantity', language,
                 session.get('customer_name') if session else None,
                 order_mode=session.get('order_mode') if session else None,
-                edit_item_id=item_id
+                selected_item=int(item_id)
             )
             
             if language == 'arabic':
@@ -3919,7 +3919,7 @@ class EnhancedMessageHandler:
                 raise ValueError("Quantity must be positive")
             
             # Get the item ID being edited
-            edit_item_id = session.get('edit_item_id')
+            edit_item_id = session.get('selected_item')
             if not edit_item_id:
                 if language == 'arabic':
                     return self._create_response("خطأ: لم يتم العثور على الصنف المراد تعديله.")
@@ -3934,7 +3934,7 @@ class EnhancedMessageHandler:
                 current_order = self.db.get_current_order(phone_number)
                 updated_item = None
                 for item in current_order.get('items', []):
-                    if str(item['item_id']) == edit_item_id:
+                    if item['menu_item_id'] == int(edit_item_id):
                         updated_item = item
                         break
                 
