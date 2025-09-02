@@ -32,7 +32,7 @@ RESPOND WITH JSON:
 {{
     "understood_intent": "clear description of what user wants",
     "confidence": "high/medium/low",
-    "action": "language_selection/category_selection/quick_order_selection/explore_menu_selection/item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu/help_request/stay_current_step",
+    "action": "language_selection/category_selection/quick_order_selection/explore_menu_selection/item_selection/multi_item_selection/quantity_selection/yes_no/service_selection/location_input/confirmation/show_menu/help_request/stay_current_step",
     "extracted_data": {{
         "language": "arabic/english/null",
         "category_id": "number or null",
@@ -40,6 +40,7 @@ RESPOND WITH JSON:
         "item_id": "number or null",
         "item_name": "string or null",
         "quantity": "number or null",
+        "multi_items": "array of objects with item_name and quantity for multi-item orders",
         "yes_no": "yes/no/null",
         "service_type": "dine-in/delivery/null",
         "location": "string or null"
@@ -120,10 +121,17 @@ EXAMPLES FOR {current_step}:
                 - Support Arabic and English item names
                 - Support quantity prefixes: "2 قهوة", "3 شاي", "one coffee", "two teas"
                 - Action should be "item_selection" for single items
-                - Action should be "multi_item_selection" for multiple items
-                - Response: Confirm the item selection and proceed to quantity
-                - Example: User says "موهيتو" → Extract item_name="موهيتو", quantity=1
-                - Example: User says "2 قهوة" → Extract item_name="قهوة", quantity=2
+                - Action should be "multi_item_selection" for multiple items (containing "و")
+                - CRITICAL: For multi-item orders, extract ALL items in multi_items array
+                - CRITICAL: Extract service_type and location if provided
+                - Table number patterns: "طاولة رقم X", "للطاولة X", "table X" → service_type="dine-in", location="Table X"
+                - Service patterns: "توصيل", "delivery" → service_type="delivery"
+                - Response: Confirm the item selection and proceed appropriately
+                - Example: "موهيتو" → item_selection, item_name="موهيتو", quantity=1
+                - Example: "2 قهوة" → item_selection, item_name="قهوة", quantity=2
+                - Example: "٣ موهيتو و٢ شاي" → multi_item_selection, multi_items=[{"item_name":"موهيتو","quantity":3}, {"item_name":"شاي","quantity":2}]
+                - Example: "٣ موهيتو طاولة رقم ٧" → item_selection, item_name="موهيتو", quantity=3, service_type="dine-in", location="Table 7"
+                - Example: "٣ موهيتو و٢ شاي طاولة رقم٧" → multi_item_selection, multi_items=[{"item_name":"موهيتو","quantity":3}, {"item_name":"شاي","quantity":2}], service_type="dine-in", location="Table 7"
             """,
 
             'waiting_for_additional': """
@@ -236,13 +244,24 @@ EXAMPLES FOR {current_step}:
 "hello" → conversational_response
 ''',
             'waiting_for_quick_order': '''
+SINGLE ITEM EXAMPLES:
 "موهيتو" → item_selection, item_name: "موهيتو", quantity: 1
 "2 قهوة" → item_selection, item_name: "قهوة", quantity: 2
 "شاي عراقي" → item_selection, item_name: "شاي عراقي", quantity: 1
 "3 عصير فراولة" → item_selection, item_name: "عصير فراولة", quantity: 3
 "blue mojito" → item_selection, item_name: "blue mojito", quantity: 1
 "2 coffee" → item_selection, item_name: "coffee", quantity: 2
-"one tea" → item_selection, item_name: "tea", quantity: 1
+
+MULTI-ITEM EXAMPLES:
+"٣ موهيتو ازرق و٢ جاي عراقي" → multi_item_selection, multi_items: [{"item_name": "موهيتو ازرق", "quantity": 3}, {"item_name": "جاي عراقي", "quantity": 2}]
+"واحد لاتيه وواحد شاي" → multi_item_selection, multi_items: [{"item_name": "لاتيه", "quantity": 1}, {"item_name": "شاي", "quantity": 1}]
+"2 coffee and 3 tea" → multi_item_selection, multi_items: [{"item_name": "coffee", "quantity": 2}, {"item_name": "tea", "quantity": 3}]
+
+WITH SERVICE TYPE AND TABLE:
+"٣ موهيتو ازرق طاولة رقم ٧" → item_selection, item_name: "موهيتو ازرق", quantity: 3, service_type: "dine-in", location: "Table 7"
+"٣ موهيتو ازرق و٢ جاي عراقي طاولة رقم٧" → multi_item_selection, multi_items: [{"item_name": "موهيتو ازرق", "quantity": 3}, {"item_name": "جاي عراقي", "quantity": 2}], service_type: "dine-in", location: "Table 7"
+"2 قهوة توصيل" → item_selection, item_name: "قهوة", quantity: 2, service_type: "delivery"
+"واحد لاتيه وواحد شاي للطاولة ٥" → multi_item_selection, multi_items: [{"item_name": "لاتيه", "quantity": 1}, {"item_name": "شاي", "quantity": 1}], service_type: "dine-in", location: "Table 5"
 '''
         }
 

@@ -80,8 +80,14 @@ When processing messages at 'waiting_for_quick_order' step:
 
 MULTI-ITEM ORDER PROCESSING:
 - When user says "و" (and) or "واحد ... وواحد ...", extract multiple items
+- CRITICAL: Extract ALL items in multi_items array format
+- CRITICAL: Also extract service_type and location if provided
+- Table number patterns: "طاولة رقم X", "للطاولة X", "table X" → service_type="dine-in", location="Table X"
+- Service patterns: "توصيل", "delivery" → service_type="delivery"
 - Example: "اريد واحد لاتيه مثلج فانيلا وواحد لاتيه مثلج كراميل"
-  → Extract: [{"item_name": "لاتيه مثلج فانيلا", "quantity": 1}, {"item_name": "لاتيه مثلج كراميل", "quantity": 1}]
+  → Extract: multi_items=[{"item_name": "لاتيه مثلج فانيلا", "quantity": 1}, {"item_name": "لاتيه مثلج كراميل", "quantity": 1}]
+- Example: "٣ موهيتو ازرق و٢ جاي عراقي طاولة رقم٧" 
+  → Extract: multi_items=[{"item_name": "موهيتو ازرق", "quantity": 3}, {"item_name": "جاي عراقي", "quantity": 2}], service_type="dine-in", location="Table 7"
 - Use "multi_item_selection" action for multiple items
 - For single items, use "item_selection" action
 

@@ -454,8 +454,12 @@ Response: {
                     - DO NOT use 'intelligent_suggestion' action
                     - Extract item name and quantity directly from their message
                     - Use 'item_selection' action for single items
-                    - Use 'multi_item_selection' action for multiple items
-                    - Response should confirm the item selection and proceed to quantity
+                    - Use 'multi_item_selection' action for multiple items (containing "و")
+                    - CRITICAL: For multi-item orders, extract ALL items in multi_items array
+                    - CRITICAL: Extract service_type and location if provided
+                    - Table number patterns: "طاولة رقم X", "للطاولة X", "table X" → service_type="dine-in", location="Table X"
+                    - Service patterns: "توصيل", "delivery" → service_type="delivery"
+                    - Response should confirm the item selection and proceed appropriately
                     """
                     
             except Exception as e:
