@@ -434,7 +434,63 @@ class EnhancedMessageHandler:
             self.db.add_item_to_order(phone_number, item['item_id'], item['quantity'])
             logger.info(f"➕ Added item {item['item_id']} × {item['quantity']} to order for {phone_number}")
         
-        # Build response message
+        # Check if service type and table number were detected in the multi-item extraction
+        detected_service_type = None
+        detected_table_number = None
+        
+        # Look for service type and table number in any of the multi_items
+        for item_data in multi_items:
+            if item_data.get('service_type') and not detected_service_type:
+                detected_service_type = item_data.get('service_type')
+            if item_data.get('table_number') and not detected_table_number:
+                detected_table_number = item_data.get('table_number')
+        
+        # If service type detected, handle appropriately
+        if detected_service_type:
+            logger.info(f"✅ Multi-item order with service type: {detected_service_type}, table: {detected_table_number}")
+            
+            # Update order details
+            self.db.update_order_details(phone_number, service_type=detected_service_type)
+            
+            order_mode = session.get('order_mode') if session else None
+            if order_mode == 'quick':
+                # Handle dine-in with table number
+                if detected_service_type == 'dine-in' and detected_table_number:
+                    self.db.update_order_details(phone_number, location=f"Table {detected_table_number}")
+                    
+                    # Go directly to confirmation
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_confirmation', language,
+                        session.get('customer_name'),
+                        order_mode='quick'
+                    )
+                    return self._show_quick_order_confirmation(phone_number, session, user_context)
+                
+                # Handle dine-in without table number (ask for table)
+                elif detected_service_type == 'dine-in' and not detected_table_number:
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_location', language,
+                        session.get('customer_name'),
+                        order_mode='quick'
+                    )
+                    if language == 'arabic':
+                        return self._create_response("اختر رقم الطاولة (1-7):")
+                    else:
+                        return self._create_response("Select table number (1-7):")
+                
+                # Handle delivery (ask for address)
+                elif detected_service_type == 'delivery':
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_location', language,
+                        session.get('customer_name'),
+                        order_mode='quick'
+                    )
+                    if language == 'arabic':
+                        return self._create_response("الرجاء مشاركة عنوانك أو موقعك للتوصيل:")
+                    else:
+                        return self._create_response("Please share your address or location for delivery:")
+        
+        # Regular flow: Build response message and ask for additional items
         if language == 'arabic':
             response = "تم إضافة العناصر التالية إلى طلبك:\n\n"
             for item in processed_items:

@@ -1350,7 +1350,7 @@ Response: {{
         return True
     
     def _extract_multiple_items(self, message: str) -> List[Dict]:
-        """Extract multiple items from a message containing 'و' (and)"""
+        """Extract multiple items from a message containing 'و' (and), preserving service type and table info"""
         items = []
         
         # Convert Arabic numerals to English for processing
@@ -1362,6 +1362,56 @@ Response: {{
         processed_message = message
         for arabic, english in arabic_to_english.items():
             processed_message = processed_message.replace(arabic, english)
+        
+        # Extract table number and service type information first (before splitting)
+        table_number = None
+        service_type = None
+        
+        import re
+        
+        # Look for table number patterns
+        table_patterns = [
+            r'طاولة\s*رقم\s*(\d+)',  # طاولة رقم 6
+            r'للطاولة\s+(\d+)',      # للطاولة 5  
+            r'طاولة\s+(\d+)',        # طاولة 3
+            r'table\s*(\d+)',        # table 4
+            r'table\s*number\s*(\d+)', # table number 5
+            r'رقم\s*الطاولة\s*(\d+)', # رقم الطاولة 2
+        ]
+        
+        for pattern in table_patterns:
+            table_match = re.search(pattern, processed_message, re.IGNORECASE)
+            if table_match:
+                table_number = table_match.group(1)
+                service_type = 'dine-in'  # Table number implies dine-in
+                # Remove table pattern from processed message
+                processed_message = re.sub(pattern, '', processed_message, flags=re.IGNORECASE).strip()
+                break
+        
+        # If no table found, look for other service type patterns
+        if not service_type:
+            service_patterns = {
+                'dine-in': [
+                    r'في\s*المقهى', r'في\s*الكافيه', r'بالكهوة', r'بالكافيه', r'تناول', 
+                    r'عندكم', r'عندك', r'dine.?in', r'restaurant', r'في\s*المطعم',
+                    r'بالمقهى', r'بالكافيه', r'في\s*الكافي', r'داخل\s*المقهى'
+                ],
+                'delivery': [
+                    r'توصيل', r'للبيت', r'للمنزل', r'delivery', r'deliver', 
+                    r'وصل', r'وصلي', r'وصله', r'للمنطقة', r'للعنوان',
+                    r'للعنواني', r'للموقع', r'deliver\s*to', r'take\s*away'
+                ]
+            }
+            
+            for service, patterns in service_patterns.items():
+                for pattern in patterns:
+                    if re.search(pattern, processed_message, re.IGNORECASE):
+                        service_type = service
+                        # Remove service pattern from processed message
+                        processed_message = re.sub(pattern, '', processed_message, flags=re.IGNORECASE).strip()
+                        break
+                if service_type:
+                    break
         
         # Use regex to find proper conjunctions, avoiding splitting compound words
         # Look for 'و' that is surrounded by spaces or at word boundaries
@@ -1466,10 +1516,18 @@ Response: {{
             item_name = item_name.replace('موهيطة', 'موهيتو').replace('موهيطو', 'موهيتو')
             
             if item_name:
-                items.append({
+                item_data = {
                     'item_name': item_name,
                     'quantity': quantity
-                })
+                }
+                
+                # Add service type and table number info if detected
+                if service_type:
+                    item_data['service_type'] = service_type
+                if table_number:
+                    item_data['table_number'] = table_number
+                
+                items.append(item_data)
         
         return items
 
