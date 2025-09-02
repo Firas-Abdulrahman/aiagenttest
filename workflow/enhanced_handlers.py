@@ -2194,7 +2194,7 @@ class EnhancedMessageHandler:
                 self.db.create_or_update_session(
                     phone_number, session.get('current_step', 'waiting_for_quick_order'), 
                     language, session.get('customer_name'),
-                    order_mode='quick', quick_order_table=table_number
+                    order_mode='quick'
                 )
         
         # Search for the item across all categories
@@ -2265,15 +2265,12 @@ class EnhancedMessageHandler:
                 logger.info(f"✅ No quantity specified, proceeding to quantity selection")
                 # Update session to quantity selection step with item data
                 table_number = session.get('quick_order_table')
-                if table_number:
-                    # Preserve table number in database session
-                    self.db.create_or_update_session(
-                        phone_number, 'waiting_for_quick_order_quantity', language, 
-                        session.get('customer_name'), order_mode='quick', 
-                        quick_order_item=quick_order_item_json, quick_order_table=table_number
-                    )
-                else:
-                    self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_quantity', language, session.get('customer_name'), order_mode='quick', quick_order_item=quick_order_item_json)
+                # Update database session (table number is preserved in session dictionary)
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_quick_order_quantity', language, 
+                    session.get('customer_name'), order_mode='quick', 
+                    quick_order_item=quick_order_item_json
+                )
                 
                 # Also update the in-memory session to ensure consistency
                 session['current_step'] = 'waiting_for_quick_order_quantity'
