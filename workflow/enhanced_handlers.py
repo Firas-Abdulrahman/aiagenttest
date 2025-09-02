@@ -2074,6 +2074,12 @@ class EnhancedMessageHandler:
         # Check if service type was already provided in the original message
         quick_order_service = session.get('quick_order_service')
         quick_order_location = session.get('quick_order_location')
+        quick_order_table = session.get('quick_order_table')
+        
+        # Convert table number to location format if needed
+        if not quick_order_location and quick_order_table:
+            quick_order_location = f"Table {quick_order_table}"
+            logger.info(f"✅ Converted table number {quick_order_table} to location: {quick_order_location}")
         
         if quick_order_service:
             logger.info(f"✅ Service type {quick_order_service} already provided, skipping service selection")
@@ -2108,9 +2114,21 @@ class EnhancedMessageHandler:
                 else:
                     return self._create_response("Please share your address or location for delivery:")
         else:
-            # No service type provided, show service selection
-            self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_service', language, session.get('customer_name'), order_mode='quick')
-            return self._show_service_type_buttons(phone_number, language)
+            # No service type provided, but check if table number was provided
+            if quick_order_table:
+                logger.info(f"✅ Table number {quick_order_table} provided, inferring dine-in service")
+                
+                # Infer dine-in service from table number
+                self.db.update_order_details(phone_number, service_type='dine-in')
+                self.db.update_order_details(phone_number, location=f"Table {quick_order_table}")
+                
+                # Go directly to confirmation
+                self.db.create_or_update_session(phone_number, 'waiting_for_confirmation', language, session.get('customer_name'), order_mode='quick')
+                return self._show_quick_order_confirmation(phone_number, session, user_context)
+            else:
+                # No service type or table provided, show service selection
+                self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_service', language, session.get('customer_name'), order_mode='quick')
+                return self._show_service_type_buttons(phone_number, language)
     
     def _handle_quick_order_service(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle quick order service type selection"""
