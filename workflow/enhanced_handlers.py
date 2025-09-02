@@ -1803,11 +1803,8 @@ class EnhancedMessageHandler:
             return self._handle_structured_location_input(phone_number, text, session, user_context)
             
         elif current_step == 'waiting_for_confirmation':
-            # Check if this is a quick order and show interactive confirmation
-            if session.get('order_mode') == 'quick':
-                return self._show_quick_order_confirmation(phone_number, session, user_context)
-            else:
-                return self._handle_structured_confirmation(phone_number, text, session, user_context)
+            # Always handle structured confirmation first (for button clicks)
+            return self._handle_structured_confirmation(phone_number, text, session, user_context)
         
         elif current_step == 'waiting_for_edit_choice':
             return self._handle_edit_choice(phone_number, text, session, user_context)
@@ -2778,7 +2775,11 @@ class EnhancedMessageHandler:
         elif any(word in text_lower for word in ['لا', 'no', '2', 'إلغاء', 'cancel']):
             return self._cancel_order(phone_number, session, user_context)
         
-        # Invalid input
+        # If it's a quick order and not a recognized command, show confirmation again
+        if session and session.get('order_mode') == 'quick':
+            return self._show_quick_order_confirmation(phone_number, session, user_context)
+        
+        # Invalid input for regular orders
         if language == 'arabic':
             return self._create_response("الرجاء الرد بـ 'نعم' للتأكيد أو 'لا' للإلغاء")
         else:
