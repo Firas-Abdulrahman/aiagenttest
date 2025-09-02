@@ -1820,14 +1820,15 @@ class EnhancedMessageHandler:
             
             return self._create_response(response)
         
-        # Parse the input for quantity, item name, and optional table number
-        # Example: "2 موهيتو ازرق للطاولة 5" or "٣ قهوة" or "٢ موهيتو ازرق"
+        # Parse the input for quantity, item name, service type, and optional table number
+        # Example: "2 موهيتو ازرق للطاولة 5" or "٣ قهوة توصيل" or "٢ موهيتو ازرق في المقهى"
         text = text.strip()
         
         # Extract quantity (default to 1 if not specified)
         quantity = 1
         item_name = text
         table_number = None
+        service_type = None
         
         # Look for quantity patterns - support both English and Arabic numerals and words
         import re
@@ -1872,6 +1873,23 @@ class EnhancedMessageHandler:
                 quantity = 1
                 item_name = text_wo_verbs.strip()
         
+        # Look for service type patterns before table number
+        service_patterns = {
+            'dine-in': [r'في\s*المقهى', r'في\s*الكافيه', r'بالكهوة', r'بالكافيه', r'تناول', r'عندكم', r'عندك', r'dine.?in', r'restaurant'],
+            'delivery': [r'توصيل', r'للبيت', r'للمنزل', r'delivery', r'deliver']
+        }
+        
+        for service, patterns in service_patterns.items():
+            for pattern in patterns:
+                if re.search(pattern, item_name, re.IGNORECASE):
+                    service_type = service
+                    # Remove service type from item name
+                    item_name = re.sub(pattern, '', item_name, flags=re.IGNORECASE).strip()
+                    logger.info(f"✅ Extracted service type: {service_type} from pattern: {pattern}")
+                    break
+            if service_type:
+                break
+        
         # Look for table number patterns
         table_pattern = r'للطاولة\s+(\d+)'
         table_match = re.search(table_pattern, item_name)
@@ -1888,7 +1906,7 @@ class EnhancedMessageHandler:
             import json
             quick_order_item_json = json.dumps(matched_item, ensure_ascii=False)
             
-            # If quantity was specified in the input, skip quantity selection and go directly to service
+            # If quantity was specified in the input, skip quantity selection
             logger.info(f"🔍 Quantity decision: extracted_quantity={quantity}, should_skip_quantity={quantity > 1}")
             if quantity > 1:
                 logger.info(f"✅ Quantity {quantity} already specified, skipping quantity selection")
@@ -1906,28 +1924,68 @@ class EnhancedMessageHandler:
                     logger.error(f"❌ Failed to add item to order for {phone_number}")
                     return self._create_response("حدث خطأ في إضافة المنتج. يرجى المحاولة مرة أخرى." if language == 'arabic' else "Error adding item. Please try again.")
                 
-                # Update session to service selection step
-                self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_service', language, session.get('customer_name'), order_mode='quick', quick_order_item=quick_order_item_json)
-                
                 # Also update the in-memory session
                 session['quick_order_item'] = matched_item
                 session['quick_order_quantity'] = quantity
                 if table_number:
                     session['quick_order_table'] = table_number
                 
-                # Show service type selection
-                return self._show_service_type_buttons(phone_number, language)
+                # Check if service type was provided in the message
+                if service_type:
+                    logger.info(f"✅ Service type {service_type} already specified, skipping service selection")
+                    
+                    # Update order details with service type
+                    self.db.update_order_details(phone_number, service_type=service_type)
+                    
+                    # If dine-in and table number provided, skip location step too
+                    if service_type == 'dine-in' and table_number:
+                        logger.info(f"✅ Table number {table_number} already specified for dine-in, going to confirmation")
+                        
+                        # Update location with table number
+                        self.db.update_order_details(phone_number, location=f"Table {table_number}")
+                        
+                        # Go directly to confirmation
+                        self.db.create_or_update_session(phone_number, 'waiting_for_confirmation', language, session.get('customer_name'), order_mode='quick', quick_order_item=quick_order_item_json)
+                        return self._show_quick_order_confirmation(phone_number, session, user_context)
+                    
+                    elif service_type == 'dine-in':
+                        # Ask for table number
+                        self.db.create_or_update_session(phone_number, 'waiting_for_location', language, session.get('customer_name'), order_mode='quick', quick_order_item=quick_order_item_json)
+                        if language == 'arabic':
+                            return self._create_response("اختر رقم الطاولة (1-7):")
+                        else:
+                            return self._create_response("Select table number (1-7):")
+                    
+                    elif service_type == 'delivery':
+                        # Ask for delivery address
+                        self.db.create_or_update_session(phone_number, 'waiting_for_location', language, session.get('customer_name'), order_mode='quick', quick_order_item=quick_order_item_json)
+                        if language == 'arabic':
+                            return self._create_response("الرجاء مشاركة عنوانك أو موقعك للتوصيل:")
+                        else:
+                            return self._create_response("Please share your address or location for delivery:")
+                else:
+                    # No service type specified, show service selection
+                    self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_service', language, session.get('customer_name'), order_mode='quick', quick_order_item=quick_order_item_json)
+                    return self._show_service_type_buttons(phone_number, language)
             else:
-                # Quantity not specified, go to quantity selection
-                logger.info(f"✅ No quantity specified, proceeding to quantity selection")
-                # Update session to quantity selection step with item data
-                self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_quantity', language, session.get('customer_name'), order_mode='quick', quick_order_item=quick_order_item_json)
+                # Quantity not specified, but check if service type was provided
+                logger.info(f"✅ No quantity specified, checking for service type")
                 
                 # Also update the in-memory session to ensure consistency
                 session['quick_order_item'] = matched_item
                 session['quick_order_quantity'] = quantity
                 if table_number:
                     session['quick_order_table'] = table_number
+                
+                # If service type was provided, store it in session for later use
+                if service_type:
+                    logger.info(f"✅ Service type {service_type} provided with item, storing for later")
+                    session['quick_order_service'] = service_type
+                    if table_number and service_type == 'dine-in':
+                        session['quick_order_location'] = f"Table {table_number}"
+                
+                # Update session to quantity selection step with item data
+                self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_quantity', language, session.get('customer_name'), order_mode='quick', quick_order_item=quick_order_item_json)
                 
                 # Show quantity buttons
                 return self._show_quantity_buttons(phone_number, language, matched_item['item_name_ar'])
@@ -2003,11 +2061,46 @@ class EnhancedMessageHandler:
             logger.error(f"❌ Failed to add item to order: item_id={item_id}, quantity={quantity}")
             return self._create_response("حدث خطأ في إضافة المنتج. الرجاء المحاولة مرة أخرى.")
         
-        # Update session to service selection step
-        self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_service', language, session.get('customer_name'), order_mode='quick')
+        # Check if service type was already provided in the original message
+        quick_order_service = session.get('quick_order_service')
+        quick_order_location = session.get('quick_order_location')
         
-        # Show service type buttons
-        return self._show_service_type_buttons(phone_number, language)
+        if quick_order_service:
+            logger.info(f"✅ Service type {quick_order_service} already provided, skipping service selection")
+            
+            # Update order details with service type
+            self.db.update_order_details(phone_number, service_type=quick_order_service)
+            
+            # If location was also provided (dine-in with table), go directly to confirmation
+            if quick_order_location:
+                logger.info(f"✅ Location {quick_order_location} already provided, going to confirmation")
+                
+                # Update location
+                self.db.update_order_details(phone_number, location=quick_order_location)
+                
+                # Go directly to confirmation
+                self.db.create_or_update_session(phone_number, 'waiting_for_confirmation', language, session.get('customer_name'), order_mode='quick')
+                return self._show_quick_order_confirmation(phone_number, session, user_context)
+            
+            elif quick_order_service == 'dine-in':
+                # Ask for table number
+                self.db.create_or_update_session(phone_number, 'waiting_for_location', language, session.get('customer_name'), order_mode='quick')
+                if language == 'arabic':
+                    return self._create_response("اختر رقم الطاولة (1-7):")
+                else:
+                    return self._create_response("Select table number (1-7):")
+            
+            elif quick_order_service == 'delivery':
+                # Ask for delivery address
+                self.db.create_or_update_session(phone_number, 'waiting_for_location', language, session.get('customer_name'), order_mode='quick')
+                if language == 'arabic':
+                    return self._create_response("الرجاء مشاركة عنوانك أو موقعك للتوصيل:")
+                else:
+                    return self._create_response("Please share your address or location for delivery:")
+        else:
+            # No service type provided, show service selection
+            self.db.create_or_update_session(phone_number, 'waiting_for_quick_order_service', language, session.get('customer_name'), order_mode='quick')
+            return self._show_service_type_buttons(phone_number, language)
     
     def _handle_quick_order_service(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle quick order service type selection"""
