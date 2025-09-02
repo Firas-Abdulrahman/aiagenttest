@@ -63,10 +63,15 @@ class EnhancedMessageHandler:
                 logger.info(f"📋 Session check for {phone_number}: should_reset={should_reset}, current_step={session.get('current_step') if session else 'None'}")
 
             # Hybrid AI + Structured Processing
-            logger.info(f"🔍 AI Status: ai={self.ai is not None}, available={self.ai.is_available() if self.ai else False}")
+            try:
+                ai_available = self.ai.is_available() if self.ai and hasattr(self.ai, 'is_available') else False
+                logger.info(f"🔍 AI Status: ai={self.ai is not None}, available={ai_available}")
+            except Exception as e:
+                logger.warning(f"⚠️ Error checking AI availability: {e}")
+                ai_available = False
             ai_result = None
             
-            if self.ai and self.ai.is_available():
+            if self.ai and ai_available:
                 logger.info(f"🧠 Using enhanced AI for message: '{text}' at step '{current_step}'")
                 # Determine language safely
                 language = 'arabic'  # Default
@@ -1242,12 +1247,44 @@ class EnhancedMessageHandler:
 
         elif yes_no == 'no':
             if current_step == 'waiting_for_additional':
-                # Proceed to service selection
-                self.db.create_or_update_session(
-                    phone_number, 'waiting_for_service', language,
-                    session.get('customer_name') if session else None
-                )
-                return self._show_service_selection(phone_number, language)
+                # CRITICAL FIX: Check if service info already exists from quick order
+                order_mode = session.get('order_mode') if session else None
+                extracted_service_type = session.get('quick_order_service') if session else None
+                table_number = session.get('quick_order_table') if session else None
+                
+                if order_mode == 'quick' and (extracted_service_type or table_number):
+                    # Service info already available from quick order, skip to confirmation
+                    final_service_type = extracted_service_type or 'dine-in'
+                    final_location = f"Table {table_number}" if table_number else None
+                    
+                    logger.info(f"🎯 Service info already available - Service: {final_service_type}, Location: {final_location}")
+                    
+                    # Update database with service info
+                    self.db.update_order_details(phone_number, service_type=final_service_type)
+                    if final_location:
+                        self.db.update_order_details(phone_number, location=final_location)
+                    
+                    # Update session to confirmation step
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_confirmation', language, 
+                        session.get('customer_name'), order_mode='quick'
+                    )
+                    
+                    # Update in-memory session
+                    session['current_step'] = 'waiting_for_confirmation'
+                    session['quick_order_service_type'] = final_service_type
+                    if final_location:
+                        session['quick_order_location'] = final_location
+                    
+                    # Show order confirmation directly
+                    return self._show_order_summary(phone_number, session, user_context, final_location or '')
+                else:
+                    # No service info available, proceed to service selection
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_service', language,
+                        session.get('customer_name') if session else None
+                    )
+                    return self._show_service_selection(phone_number, language)
             
             elif current_step == 'waiting_for_confirmation':
                 # Cancel order
@@ -1759,6 +1796,28 @@ class EnhancedMessageHandler:
     def _handle_structured_category_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
         """Handle category selection with structured logic"""
         language = user_context.get('language', 'arabic')
+        
+        # Handle button clicks first
+        text_lower = text.lower().strip()
+        if text_lower == 'quick_order':
+            logger.info(f"🚀 Quick order button clicked")
+            # Set order mode to quick and show quick order interface
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_quick_order', language,
+                session.get('customer_name') if session else None,
+                order_mode='quick'
+            )
+            return self._show_quick_order_interface(phone_number, language)
+            
+        elif text_lower == 'explore_menu':
+            logger.info(f"🔍 Explore menu button clicked")
+            # Set order mode to traditional and show categories
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_category', language,
+                session.get('customer_name') if session else None,
+                order_mode='traditional'
+            )
+            return self._show_traditional_categories(phone_number, language)
         
         # Convert Arabic numerals to English first
         converted_text = self._convert_arabic_numerals(text.strip())
@@ -2693,7 +2752,66 @@ class EnhancedMessageHandler:
             return self._show_main_categories(phone_number, language)
             
         elif any(word in text_lower for word in ['لا', 'no', '2']):
-            # Move to service selection
+            # Check if this is a quick order with existing service information
+            order_mode = session.get('order_mode')
+            if order_mode == 'quick':
+                # Check for existing service information from quick order
+                quick_order_service = session.get('quick_order_service')
+                quick_order_table = session.get('quick_order_table')
+                
+                if quick_order_service or quick_order_table:
+                    logger.info(f"🔍 Found existing service info: service={quick_order_service}, table={quick_order_table}")
+                    
+                    # Determine service type and location
+                    service_type = quick_order_service
+                    location = None
+                    
+                    # If table number exists, infer dine-in service
+                    if quick_order_table:
+                        service_type = 'dine-in'
+                        location = f"Table {quick_order_table}"
+                    elif quick_order_service == 'dine-in' and session.get('quick_order_location'):
+                        location = session.get('quick_order_location')
+                    
+                    # Update order details with service information
+                    if service_type:
+                        self.db.update_order_details(phone_number, service_type=service_type)
+                        logger.info(f"✅ Updated order with service type: {service_type}")
+                    
+                    if location:
+                        self.db.update_order_details(phone_number, location=location)
+                        logger.info(f"✅ Updated order with location: {location}")
+                    
+                    # Skip to confirmation if we have both service and location
+                    if service_type and location:
+                        self.db.create_or_update_session(
+                            phone_number, 'waiting_for_confirmation', language,
+                            session.get('customer_name'), order_mode='quick'
+                        )
+                        return self._show_quick_order_confirmation(phone_number, session, user_context)
+                    
+                    # If we have service but need location
+                    elif service_type == 'dine-in' and not location:
+                        self.db.create_or_update_session(
+                            phone_number, 'waiting_for_location', language,
+                            session.get('customer_name'), order_mode='quick'
+                        )
+                        if language == 'arabic':
+                            return self._create_response("اختر رقم الطاولة (1-7):")
+                        else:
+                            return self._create_response("Select table number (1-7):")
+                    
+                    elif service_type == 'delivery' and not location:
+                        self.db.create_or_update_session(
+                            phone_number, 'waiting_for_location', language,
+                            session.get('customer_name'), order_mode='quick'
+                        )
+                        if language == 'arabic':
+                            return self._create_response("الرجاء مشاركة عنوانك أو موقعك للتوصيل:")
+                        else:
+                            return self._create_response("Please share your address or location for delivery:")
+            
+            # Default: Move to service selection
             self.db.create_or_update_session(
                 phone_number, 'waiting_for_service', language,
                 session.get('customer_name')
