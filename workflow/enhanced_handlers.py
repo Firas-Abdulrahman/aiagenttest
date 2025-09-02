@@ -1425,9 +1425,17 @@ class EnhancedMessageHandler:
         if service_type == 'dine-in':
             # Additional validation for table number (1-7)
             try:
-                # Convert Arabic numerals to English
-                clean_location = self._convert_arabic_numerals(clean_location)
-                table_num = int(clean_location)
+                # Extract table number from AI's location format or direct input
+                table_num = None
+                
+                # Check if AI provided "Table X" format
+                if clean_location.startswith('Table '):
+                    table_num_str = clean_location.replace('Table ', '').strip()
+                else:
+                    # Direct number input, convert Arabic numerals to English
+                    table_num_str = self._convert_arabic_numerals(clean_location)
+                
+                table_num = int(table_num_str)
                 
                 if table_num < 1 or table_num > 7:
                     if language == 'arabic':
@@ -1435,7 +1443,8 @@ class EnhancedMessageHandler:
                     else:
                         return self._create_response("Invalid table number. Please choose a number from 1 to 7:")
                 
-                clean_location = str(table_num)  # Use clean number
+                # Store in consistent format for database
+                clean_location = f"Table {table_num}"
                 
             except ValueError:
                 if language == 'arabic':
@@ -2772,7 +2781,8 @@ class EnhancedMessageHandler:
                     else:
                         return self._create_response("Invalid table number. Please choose a number from 1 to 7:")
                 
-                clean_location = str(table_num)  # Use clean number
+                # Store in consistent format for database
+                clean_location = f"Table {table_num}"
                 
             except ValueError:
                 if language == 'arabic':
