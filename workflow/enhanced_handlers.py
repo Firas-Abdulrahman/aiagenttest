@@ -1350,8 +1350,8 @@ class EnhancedMessageHandler:
                         order_mode='quick'  # Restore to quick mode for confirmation
                     )
                     # Get refreshed session and user context for confirmation
-                    refreshed_session = self.db.get_session(phone_number)
-                    refreshed_user_context = self.db.get_user_context(phone_number)
+                    refreshed_session = self.db.get_user_session(phone_number)
+                    refreshed_user_context = self._build_user_context(phone_number, refreshed_session, 'waiting_for_confirmation')
                     return self._show_quick_order_confirmation(phone_number, refreshed_session, refreshed_user_context)
                 else:
                     # Normal flow: Proceed to service selection
@@ -2717,8 +2717,8 @@ class EnhancedMessageHandler:
                     order_mode='quick'  # Restore to quick mode for confirmation
                 )
                 # Get refreshed session and user context for confirmation
-                refreshed_session = self.db.get_session(phone_number)
-                refreshed_user_context = self.db.get_user_context(phone_number)
+                refreshed_session = self.db.get_user_session(phone_number)
+                refreshed_user_context = self._build_user_context(phone_number, refreshed_session, 'waiting_for_confirmation')
                 return self._show_quick_order_confirmation(phone_number, refreshed_session, refreshed_user_context)
             else:
                 # Normal flow: Move to service selection
