@@ -361,18 +361,22 @@ class EnhancedMessageHandler:
 
     def _handle_multi_item_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle multiple item selection in one message"""
-        # Check if we're in quick order mode - if so, use structured quick order processing
+        # Check if we have valid AI-extracted multi-item data first
         current_step = user_context.get('current_step', '')
         order_mode = session.get('order_mode') if session else None
         
-        if current_step == 'waiting_for_quick_order' or order_mode == 'quick':
-            logger.info("🎯 Multi-item selection in quick order mode, using structured processing")
+        # First try to get multi_items from AI extracted data
+        multi_items = extracted_data.get('multi_items', [])
+        
+        # If AI provided good multi-item data, use it regardless of mode
+        if multi_items and len(multi_items) > 0:
+            logger.info(f"✅ Using AI-extracted multi-items data: {len(multi_items)} items")
+        elif current_step == 'waiting_for_quick_order' or order_mode == 'quick':
+            logger.info("🎯 Multi-item selection in quick order mode but no AI data, falling back to structured processing")
             original_message = user_context.get('original_user_message', '')
             return self._handle_structured_quick_order(phone_number, original_message, session, user_context)
         
-        # Regular multi-item processing for non-quick orders
-        # First try to get multi_items from AI extracted data
-        multi_items = extracted_data.get('multi_items', [])
+        # Continue with multi-item processing if no fallback needed
         
         # If not found, check if AI provided item_name array (which is the correct format from AI)
         if not multi_items and 'item_name' in extracted_data:
@@ -434,29 +438,37 @@ class EnhancedMessageHandler:
             self.db.add_item_to_order(phone_number, item['item_id'], item['quantity'])
             logger.info(f"➕ Added item {item['item_id']} × {item['quantity']} to order for {phone_number}")
         
-        # Check if service type and table number were detected in the multi-item extraction
-        detected_service_type = None
+        # Check if service type and location were detected by AI first
+        detected_service_type = extracted_data.get('service_type')
+        detected_location = extracted_data.get('location')
         detected_table_number = None
         
-        # Look for service type and table number in any of the multi_items
-        for item_data in multi_items:
-            if item_data.get('service_type') and not detected_service_type:
-                detected_service_type = item_data.get('service_type')
-            if item_data.get('table_number') and not detected_table_number:
-                detected_table_number = item_data.get('table_number')
+        # Extract table number from location if it's in "Table X" format
+        if detected_location and detected_location.startswith('Table '):
+            detected_table_number = detected_location.replace('Table ', '')
+        
+        # If not found at top level, look for service type and table number in any of the multi_items
+        if not detected_service_type:
+            for item_data in multi_items:
+                if item_data.get('service_type') and not detected_service_type:
+                    detected_service_type = item_data.get('service_type')
+                if item_data.get('table_number') and not detected_table_number:
+                    detected_table_number = item_data.get('table_number')
         
         # If service type detected, handle appropriately
         if detected_service_type:
-            logger.info(f"✅ Multi-item order with service type: {detected_service_type}, table: {detected_table_number}")
+            logger.info(f"✅ Multi-item order with service type: {detected_service_type}, location: {detected_location or detected_table_number}")
             
             # Update order details
             self.db.update_order_details(phone_number, service_type=detected_service_type)
             
             order_mode = session.get('order_mode') if session else None
             if order_mode == 'quick':
-                # Handle dine-in with table number
-                if detected_service_type == 'dine-in' and detected_table_number:
-                    self.db.update_order_details(phone_number, location=f"Table {detected_table_number}")
+                # Handle dine-in with table number or location
+                if detected_service_type == 'dine-in' and (detected_table_number or detected_location):
+                    # Use the AI-provided location if available, otherwise format table number
+                    location_to_save = detected_location if detected_location else f"Table {detected_table_number}"
+                    self.db.update_order_details(phone_number, location=location_to_save)
                     
                     # Go directly to confirmation
                     self.db.create_or_update_session(
@@ -466,8 +478,8 @@ class EnhancedMessageHandler:
                     )
                     return self._show_quick_order_confirmation(phone_number, session, user_context)
                 
-                # Handle dine-in without table number (ask for table)
-                elif detected_service_type == 'dine-in' and not detected_table_number:
+                # Handle dine-in without table number or location (ask for table)
+                elif detected_service_type == 'dine-in' and not detected_table_number and not detected_location:
                     self.db.create_or_update_session(
                         phone_number, 'waiting_for_location', language,
                         session.get('customer_name'),
