@@ -361,6 +361,16 @@ class EnhancedMessageHandler:
 
     def _handle_multi_item_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle multiple item selection in one message"""
+        # Check if we're in quick order mode - if so, use structured quick order processing
+        current_step = user_context.get('current_step', '')
+        order_mode = session.get('order_mode') if session else None
+        
+        if current_step == 'waiting_for_quick_order' or order_mode == 'quick':
+            logger.info("🎯 Multi-item selection in quick order mode, using structured processing")
+            original_message = user_context.get('original_user_message', '')
+            return self._handle_structured_quick_order(phone_number, original_message, session, user_context)
+        
+        # Regular multi-item processing for non-quick orders
         # First try to get multi_items from AI extracted data
         multi_items = extracted_data.get('multi_items', [])
         
@@ -1873,37 +1883,51 @@ class EnhancedMessageHandler:
                 quantity = 1
                 item_name = text_wo_verbs.strip()
         
-        # Look for service type patterns before table number
-        service_patterns = {
-            'dine-in': [
-                r'في\s*المقهى', r'في\s*الكافيه', r'بالكهوة', r'بالكافيه', r'تناول', 
-                r'عندكم', r'عندك', r'dine.?in', r'restaurant', r'في\s*المطعم',
-                r'بالمقهى', r'بالكافيه', r'في\s*الكافي', r'داخل\s*المقهى'
-            ],
-            'delivery': [
-                r'توصيل', r'للبيت', r'للمنزل', r'delivery', r'deliver', 
-                r'وصل', r'وصلي', r'وصله', r'للمنطقة', r'للعنوان',
-                r'للعنواني', r'للموقع', r'deliver\s*to', r'take\s*away'
-            ]
-        }
+        # Look for table number patterns first (which implies dine-in service)
+        table_patterns = [
+            r'طاولة\s*رقم\s*(\d+)',  # طاولة رقم 6
+            r'للطاولة\s+(\d+)',      # للطاولة 5  
+            r'طاولة\s+(\d+)',        # طاولة 3
+            r'table\s*(\d+)',        # table 4
+            r'table\s*number\s*(\d+)', # table number 5
+            r'رقم\s*الطاولة\s*(\d+)', # رقم الطاولة 2
+        ]
         
-        for service, patterns in service_patterns.items():
-            for pattern in patterns:
-                if re.search(pattern, item_name, re.IGNORECASE):
-                    service_type = service
-                    # Remove service type from item name
-                    item_name = re.sub(pattern, '', item_name, flags=re.IGNORECASE).strip()
-                    logger.info(f"✅ Extracted service type: {service_type} from pattern: {pattern}")
-                    break
-            if service_type:
+        for pattern in table_patterns:
+            table_match = re.search(pattern, item_name, re.IGNORECASE)
+            if table_match:
+                table_number = table_match.group(1)
+                service_type = 'dine-in'  # Table number implies dine-in
+                # Remove table pattern from item name
+                item_name = re.sub(pattern, '', item_name, flags=re.IGNORECASE).strip()
+                logger.info(f"✅ Extracted table number: {table_number} and service type: dine-in from pattern: {pattern}")
                 break
         
-        # Look for table number patterns
-        table_pattern = r'للطاولة\s+(\d+)'
-        table_match = re.search(table_pattern, item_name)
-        if table_match:
-            table_number = table_match.group(1)
-            item_name = re.sub(table_pattern, '', item_name).strip()
+        # If no table number found, look for other service type patterns
+        if not service_type:
+            service_patterns = {
+                'dine-in': [
+                    r'في\s*المقهى', r'في\s*الكافيه', r'بالكهوة', r'بالكافيه', r'تناول', 
+                    r'عندكم', r'عندك', r'dine.?in', r'restaurant', r'في\s*المطعم',
+                    r'بالمقهى', r'بالكافيه', r'في\s*الكافي', r'داخل\s*المقهى'
+                ],
+                'delivery': [
+                    r'توصيل', r'للبيت', r'للمنزل', r'delivery', r'deliver', 
+                    r'وصل', r'وصلي', r'وصله', r'للمنطقة', r'للعنوان',
+                    r'للعنواني', r'للموقع', r'deliver\s*to', r'take\s*away'
+                ]
+            }
+            
+            for service, patterns in service_patterns.items():
+                for pattern in patterns:
+                    if re.search(pattern, item_name, re.IGNORECASE):
+                        service_type = service
+                        # Remove service type from item name
+                        item_name = re.sub(pattern, '', item_name, flags=re.IGNORECASE).strip()
+                        logger.info(f"✅ Extracted service type: {service_type} from pattern: {pattern}")
+                        break
+                if service_type:
+                    break
         
         # Search for the item across all categories
         all_items = self._get_all_items()
