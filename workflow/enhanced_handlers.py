@@ -62,6 +62,25 @@ class EnhancedMessageHandler:
             else:
                 logger.info(f"📋 Session check for {phone_number}: should_reset={should_reset}, current_step={session.get('current_step') if session else 'None'}")
 
+            # Check for button clicks first - these should always use structured handling
+            button_clicks = [
+                'confirm_order', 'cancel_order', 'edit_order',
+                'add_item_to_order', 'edit_item_quantity', 'remove_item_from_order',
+                'quick_order_add', 'explore_menu_add', 'dine_in', 'delivery'
+            ]
+            
+            # Check for edit/remove/quantity button patterns
+            is_button_click = (
+                text in button_clicks or
+                text.startswith('edit_qty_') or
+                text.startswith('remove_') or
+                text.startswith('quantity_')
+            )
+            
+            if is_button_click:
+                logger.info(f"🔘 Button click detected: '{text}' - using structured handling")
+                return self._handle_structured_message(text, current_step, session, user_context)
+
             # Hybrid AI + Structured Processing
             logger.info(f"🔍 AI Status: ai={self.ai is not None}, available={self.ai.is_available() if self.ai else False}")
             ai_result = None
