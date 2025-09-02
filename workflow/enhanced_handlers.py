@@ -1890,12 +1890,22 @@ class EnhancedMessageHandler:
             if service_type:
                 break
         
-        # Look for table number patterns
-        table_pattern = r'للطاولة\s+(\d+)'
-        table_match = re.search(table_pattern, item_name)
-        if table_match:
-            table_number = table_match.group(1)
-            item_name = re.sub(table_pattern, '', item_name).strip()
+        # Look for table number patterns (Arabic and English)
+        table_patterns = [
+            r'للطاولة\s+(\d+)',  # Arabic: للطاولة 6
+            r'طاولة\s+(\d+)',    # Arabic: طاولة 6
+            r'table\s+(\d+)',    # English: table 6
+            r'رقم\s+(\d+)',      # Arabic: رقم 6
+            r'number\s+(\d+)'    # English: number 6
+        ]
+        
+        for pattern in table_patterns:
+            table_match = re.search(pattern, item_name, re.IGNORECASE)
+            if table_match:
+                table_number = table_match.group(1)
+                item_name = re.sub(pattern, '', item_name, flags=re.IGNORECASE).strip()
+                logger.info(f"✅ Extracted table number: {table_number} from pattern: {pattern}")
+                break
         
         # Search for the item across all categories
         all_items = self._get_all_items()
