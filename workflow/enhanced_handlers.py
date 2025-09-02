@@ -79,7 +79,7 @@ class EnhancedMessageHandler:
             
             if is_button_click:
                 logger.info(f"🔘 Button click detected: '{text}' - using structured handling")
-                return self._handle_structured_message(text, current_step, session, user_context)
+                return self._handle_structured_message(phone_number, text, current_step, session, user_context)
 
             # Hybrid AI + Structured Processing
             logger.info(f"🔍 AI Status: ai={self.ai is not None}, available={self.ai.is_available() if self.ai else False}")
