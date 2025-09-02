@@ -1351,7 +1351,7 @@ class EnhancedMessageHandler:
                     )
                     # Get refreshed session and user context for confirmation
                     refreshed_session = self.db.get_user_session(phone_number)
-                    refreshed_user_context = self._build_user_context(phone_number, refreshed_session, 'waiting_for_confirmation')
+                    refreshed_user_context = self._build_user_context(phone_number, refreshed_session, 'waiting_for_confirmation', '')
                     return self._show_quick_order_confirmation(phone_number, refreshed_session, refreshed_user_context)
                 else:
                     # Normal flow: Proceed to service selection
@@ -2039,18 +2039,18 @@ class EnhancedMessageHandler:
                     r'وصل', r'وصلي', r'وصله', r'للمنطقة', r'للعنوان',
                     r'للعنواني', r'للموقع', r'deliver\s*to', r'take\s*away'
                 ]
-            }
-            
-            for service, patterns in service_patterns.items():
-                for pattern in patterns:
-                    if re.search(pattern, item_name, re.IGNORECASE):
-                        service_type = service
-                        # Remove service type from item name
-                        item_name = re.sub(pattern, '', item_name, flags=re.IGNORECASE).strip()
-                        logger.info(f"✅ Extracted service type: {service_type} from pattern: {pattern}")
-                        break
-                if service_type:
+        }
+        
+        for service, patterns in service_patterns.items():
+            for pattern in patterns:
+                if re.search(pattern, item_name, re.IGNORECASE):
+                    service_type = service
+                    # Remove service type from item name
+                    item_name = re.sub(pattern, '', item_name, flags=re.IGNORECASE).strip()
+                    logger.info(f"✅ Extracted service type: {service_type} from pattern: {pattern}")
                     break
+            if service_type:
+                break
         
         # Search for the item across all categories
         all_items = self._get_all_items()
@@ -2718,7 +2718,7 @@ class EnhancedMessageHandler:
                 )
                 # Get refreshed session and user context for confirmation
                 refreshed_session = self.db.get_user_session(phone_number)
-                refreshed_user_context = self._build_user_context(phone_number, refreshed_session, 'waiting_for_confirmation')
+                refreshed_user_context = self._build_user_context(phone_number, refreshed_session, 'waiting_for_confirmation', '')
                 return self._show_quick_order_confirmation(phone_number, refreshed_session, refreshed_user_context)
             else:
                 # Normal flow: Move to service selection
