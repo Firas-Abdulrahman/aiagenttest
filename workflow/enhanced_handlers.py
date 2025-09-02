@@ -344,7 +344,14 @@ class EnhancedMessageHandler:
             # Handle quick order service selection
             return self._handle_quick_order_service(phone_number, extracted_data, session, user_context)
         elif action == 'quantity_selection':
-            return self._handle_ai_quantity_selection(phone_number, extracted_data, session, user_context)
+            # Check if we're editing an existing item quantity
+            current_step = user_context.get('current_step', '')
+            if current_step == 'waiting_for_new_quantity':
+                # User is editing quantity of existing item
+                return self._handle_new_quantity_input(phone_number, str(extracted_data.get('quantity', '')), session, user_context)
+            else:
+                # User is selecting quantity for new item
+                return self._handle_ai_quantity_selection(phone_number, extracted_data, session, user_context)
         elif action == 'confirmation':
             # Check for yes_no in extracted_data first
             yes_no = extracted_data.get('yes_no')
