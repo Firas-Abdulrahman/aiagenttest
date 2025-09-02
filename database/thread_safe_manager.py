@@ -679,6 +679,28 @@ class ThreadSafeDatabaseManager:
             logger.error(f"❌ Error removing last item from order: {e}")
             return False
 
+    def remove_item_from_order(self, phone_number: str, menu_item_id: int) -> bool:
+        """Remove a specific item from user's order by menu_item_id"""
+        try:
+            with self.get_db_connection() as conn:
+                # Remove the specific item
+                cursor = conn.execute("""
+                    DELETE FROM user_orders 
+                    WHERE phone_number = ? AND menu_item_id = ?
+                """, (phone_number, menu_item_id))
+                
+                if cursor.rowcount > 0:
+                    conn.commit()
+                    logger.info(f"✅ Removed menu item {menu_item_id} from order for {phone_number}")
+                    return True
+                else:
+                    logger.warning(f"⚠️ Item {menu_item_id} not found in order for {phone_number}")
+                    return False
+                
+        except Exception as e:
+            logger.error(f"❌ Error removing item from order: {e}")
+            return False
+
     def update_item_quantity(self, phone_number: str, item_id: int, new_quantity: int) -> bool:
         """Update quantity of existing item in user's order (thread-safe)"""
         try:

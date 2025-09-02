@@ -1808,6 +1808,21 @@ class EnhancedMessageHandler:
                 return self._show_quick_order_confirmation(phone_number, session, user_context)
             else:
                 return self._handle_structured_confirmation(phone_number, text, session, user_context)
+        
+        elif current_step == 'waiting_for_edit_choice':
+            return self._handle_edit_choice(phone_number, text, session, user_context)
+        
+        elif current_step == 'waiting_for_add_item_choice':
+            return self._handle_add_item_choice(phone_number, text, session, user_context)
+        
+        elif current_step == 'waiting_for_quantity_item_selection':
+            return self._handle_quantity_item_selection(phone_number, text, session, user_context)
+        
+        elif current_step == 'waiting_for_remove_item_selection':
+            return self._handle_remove_item_selection(phone_number, text, session, user_context)
+        
+        elif current_step == 'waiting_for_new_quantity':
+            return self._handle_new_quantity_input(phone_number, text, session, user_context)
             
         else:
             return self._create_response(self._get_fallback_message(current_step, language))
@@ -2660,13 +2675,25 @@ class EnhancedMessageHandler:
             return self._show_main_categories(phone_number, language)
             
         elif any(word in text_lower for word in ['لا', 'no', '2']):
-            # Move to service selection
-            self.db.create_or_update_session(
-                phone_number, 'waiting_for_service', language,
-                session.get('customer_name')
-            )
+            # Check if we're in edit mode and should return to confirmation
+            order_mode = session.get('order_mode') if session else None
             
-            return self._show_service_selection(phone_number, language)
+            if order_mode in ['edit_add_quick', 'edit_add_explore']:
+                # Return to confirmation with updated order
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_confirmation', language,
+                    session.get('customer_name') if session else None,
+                    order_mode='quick'  # Restore to quick mode for confirmation
+                )
+                return self._show_quick_order_confirmation(phone_number, session, user_context)
+            else:
+                # Normal flow: Move to service selection
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_service', language,
+                    session.get('customer_name')
+                )
+                
+                return self._show_service_selection(phone_number, language)
         
         return self._create_response("الرجاء الرد بـ '1' لإضافة المزيد أو '2' للمتابعة")
 
@@ -2741,6 +2768,8 @@ class EnhancedMessageHandler:
             return self._confirm_order(phone_number, session, user_context)
         elif text == 'cancel_order':
             return self._cancel_order(phone_number, session, user_context)
+        elif text == 'edit_order':
+            return self._show_edit_order_menu(phone_number, session, user_context)
         
         # Check for text confirmation
         if any(word in text_lower for word in ['نعم', 'yes', '1', 'تأكيد', 'confirm']):
@@ -3352,6 +3381,13 @@ class EnhancedMessageHandler:
                 {
                     "type": "reply",
                     "reply": {
+                        "id": "edit_order",
+                        "title": "تعديل الطلب"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
                         "id": "cancel_order",
                         "title": "إلغاء الطلب"
                     }
@@ -3377,6 +3413,13 @@ class EnhancedMessageHandler:
                     "reply": {
                         "id": "confirm_order",
                         "title": "Confirm Order"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "edit_order",
+                        "title": "Edit Order"
                     }
                 },
                 {
@@ -3433,6 +3476,465 @@ class EnhancedMessageHandler:
             message += "You can start a new order anytime by sending 'hello'"
         
         return self._create_response(message)
+
+    def _show_edit_order_menu(self, phone_number: str, session: Dict, user_context: Dict) -> Dict:
+        """Show edit order menu with 3 options"""
+        language = user_context.get('language', 'arabic')
+        
+        # Update session to edit mode
+        self.db.create_or_update_session(
+            phone_number, 'waiting_for_edit_choice', language,
+            session.get('customer_name') if session else None,
+            order_mode=session.get('order_mode') if session else None
+        )
+        
+        if language == 'arabic':
+            header_text = "تعديل الطلب"
+            body_text = "ماذا تريد أن تفعل؟"
+            footer_text = "اختر من الخيارات أدناه"
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "add_item_to_order",
+                        "title": "إضافة صنف آخر"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "edit_item_quantity",
+                        "title": "تعديل الكمية"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "remove_item_from_order",
+                        "title": "حذف صنف"
+                    }
+                }
+            ]
+        else:
+            header_text = "Edit Order"
+            body_text = "What would you like to do?"
+            footer_text = "Choose from the options below"
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "add_item_to_order",
+                        "title": "Add Another Item"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "edit_item_quantity",
+                        "title": "Edit Quantity"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "remove_item_from_order",
+                        "title": "Remove Item"
+                    }
+                }
+            ]
+        
+        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
+
+    def _handle_edit_choice(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle edit choice selection"""
+        language = user_context.get('language', 'arabic')
+        
+        # Check for button clicks
+        if text == 'add_item_to_order':
+            return self._show_add_item_choice(phone_number, session, user_context)
+        elif text == 'edit_item_quantity':
+            return self._show_quantity_edit_menu(phone_number, session, user_context)
+        elif text == 'remove_item_from_order':
+            return self._show_remove_item_menu(phone_number, session, user_context)
+        
+        # Handle text input (1, 2, 3)
+        text_lower = text.lower().strip()
+        if text_lower in ['1', '١']:
+            return self._show_add_item_choice(phone_number, session, user_context)
+        elif text_lower in ['2', '٢']:
+            return self._show_quantity_edit_menu(phone_number, session, user_context)
+        elif text_lower in ['3', '٣']:
+            return self._show_remove_item_menu(phone_number, session, user_context)
+        
+        # Invalid input
+        if language == 'arabic':
+            return self._create_response("الرجاء اختيار أحد الخيارات:\n1. إضافة صنف آخر\n2. تعديل الكمية\n3. حذف صنف")
+        else:
+            return self._create_response("Please choose one of the options:\n1. Add Another Item\n2. Edit Quantity\n3. Remove Item")
+
+    def _show_add_item_choice(self, phone_number: str, session: Dict, user_context: Dict) -> Dict:
+        """Show choice between quick order and explore menu for adding items"""
+        language = user_context.get('language', 'arabic')
+        
+        # Update session to add item choice
+        self.db.create_or_update_session(
+            phone_number, 'waiting_for_add_item_choice', language,
+            session.get('customer_name') if session else None,
+            order_mode=session.get('order_mode') if session else None
+        )
+        
+        if language == 'arabic':
+            header_text = "إضافة صنف جديد"
+            body_text = "كيف تريد أن تضيف صنف جديد؟"
+            footer_text = "اختر من الخيارات أدناه"
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "quick_order_add",
+                        "title": "طلب سريع"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "explore_menu_add",
+                        "title": "استكشف القائمة"
+                    }
+                }
+            ]
+        else:
+            header_text = "Add New Item"
+            body_text = "How would you like to add a new item?"
+            footer_text = "Choose from the options below"
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "quick_order_add",
+                        "title": "Quick Order"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "explore_menu_add",
+                        "title": "Explore Menu"
+                    }
+                }
+            ]
+        
+        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
+
+    def _show_quantity_edit_menu(self, phone_number: str, session: Dict, user_context: Dict) -> Dict:
+        """Show menu of items to edit quantity"""
+        language = user_context.get('language', 'arabic')
+        
+        # Get current order items
+        current_order = self.db.get_current_order(phone_number)
+        if not current_order or not current_order.get('items'):
+            if language == 'arabic':
+                return self._create_response("لا توجد أصناف في الطلب لتعديل كميتها.")
+            else:
+                return self._create_response("No items in the order to edit quantity.")
+        
+        # Update session
+        self.db.create_or_update_session(
+            phone_number, 'waiting_for_quantity_item_selection', language,
+            session.get('customer_name') if session else None,
+            order_mode=session.get('order_mode') if session else None
+        )
+        
+        if language == 'arabic':
+            header_text = "تعديل الكمية"
+            body_text = "أي صنف تريد تعديل كميته؟"
+            footer_text = "اختر الصنف"
+        else:
+            header_text = "Edit Quantity"
+            body_text = "Which item would you like to edit the quantity for?"
+            footer_text = "Select the item"
+        
+        buttons = []
+        for i, item in enumerate(current_order['items']):
+            buttons.append({
+                "type": "reply",
+                "reply": {
+                    "id": f"edit_qty_{item['menu_item_id']}",
+                    "title": f"{item['item_name_ar']} × {item['quantity']}"
+                }
+            })
+        
+        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
+
+    def _show_remove_item_menu(self, phone_number: str, session: Dict, user_context: Dict) -> Dict:
+        """Show menu of items to remove"""
+        language = user_context.get('language', 'arabic')
+        
+        # Get current order items
+        current_order = self.db.get_current_order(phone_number)
+        if not current_order or not current_order.get('items'):
+            if language == 'arabic':
+                return self._create_response("لا توجد أصناف في الطلب لحذفها.")
+            else:
+                return self._create_response("No items in the order to remove.")
+        
+        # Update session
+        self.db.create_or_update_session(
+            phone_number, 'waiting_for_remove_item_selection', language,
+            session.get('customer_name') if session else None,
+            order_mode=session.get('order_mode') if session else None
+        )
+        
+        if language == 'arabic':
+            header_text = "حذف صنف"
+            body_text = "أي صنف تريد حذفه؟"
+            footer_text = "اختر الصنف للحذف"
+        else:
+            header_text = "Remove Item"
+            body_text = "Which item would you like to remove?"
+            footer_text = "Select the item to remove"
+        
+        buttons = []
+        for i, item in enumerate(current_order['items']):
+            buttons.append({
+                "type": "reply",
+                "reply": {
+                    "id": f"remove_{item['menu_item_id']}",
+                    "title": f"{item['item_name_ar']} × {item['quantity']}"
+                }
+            })
+        
+        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
+
+    def _handle_add_item_choice(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle add item choice - quick order or explore menu"""
+        language = user_context.get('language', 'arabic')
+        
+        if text == 'quick_order_add':
+            # Set session to quick order mode for adding items
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_quick_order', language,
+                session.get('customer_name') if session else None,
+                order_mode='edit_add_quick'  # Special mode to return to confirmation after adding
+            )
+            
+            if language == 'arabic':
+                response = "🚀 الطلب السريع - إضافة صنف\n\n"
+                response += "ماذا تريد أن تضيف؟ أعطني اسم المنتج:\n\n"
+                response += "💡 المنتجات الشائعة:\n"
+                response += "• موهيتو ازرق - 5000 دينار\n"
+                response += "• فرابتشينو شوكولاتة - 5000 دينار\n"
+                response += "• لاتيه فانيلا - 4000 دينار\n\n"
+                response += "📝 مثال: موهيتو ازرق\n"
+                response += "📝 مثال: 2 قهوة عراقية\n"
+                response += "📝 مثال: 3 شاي بالنعناع\n\n"
+                response += "اكتب اسم المنتج المطلوب الآن!"
+            else:
+                response = "🚀 Quick Order - Add Item\n\n"
+                response += "What would you like to add? Give me the product name:\n\n"
+                response += "💡 Popular products:\n"
+                response += "• Blue Mojito - 5000 IQD\n"
+                response += "• Chocolate Frappuccino - 5000 IQD\n"
+                response += "• Vanilla Latte - 4000 IQD\n\n"
+                response += "📝 Example: Blue Mojito\n"
+                response += "📝 Example: 2 Iraqi coffee\n"
+                response += "📝 Example: 3 mint tea\n\n"
+                response += "Type the product name now!"
+            
+            return self._create_response(response)
+            
+        elif text == 'explore_menu_add':
+            # Set session to explore mode for adding items
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_category', language,
+                session.get('customer_name') if session else None,
+                order_mode='edit_add_explore'  # Special mode to return to confirmation after adding
+            )
+            return self._show_main_categories(phone_number, language)
+        
+        # Handle text input (1, 2)
+        text_lower = text.lower().strip()
+        if text_lower in ['1', '١']:
+            return self._handle_add_item_choice(phone_number, 'quick_order_add', session, user_context)
+        elif text_lower in ['2', '٢']:
+            return self._handle_add_item_choice(phone_number, 'explore_menu_add', session, user_context)
+        
+        # Invalid input
+        if language == 'arabic':
+            return self._create_response("الرجاء اختيار أحد الخيارات:\n1. طلب سريع\n2. استكشف القائمة")
+        else:
+            return self._create_response("Please choose one of the options:\n1. Quick Order\n2. Explore Menu")
+
+    def _handle_quantity_item_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle item selection for quantity editing"""
+        language = user_context.get('language', 'arabic')
+        
+        # Check if it's a button click with edit_qty_ prefix
+        if text.startswith('edit_qty_'):
+            item_id = text.replace('edit_qty_', '')
+            
+            # Get the item details
+            current_order = self.db.get_current_order(phone_number)
+            selected_item = None
+            for item in current_order.get('items', []):
+                if str(item['menu_item_id']) == item_id:
+                    selected_item = item
+                    break
+            
+            if not selected_item:
+                if language == 'arabic':
+                    return self._create_response("لم يتم العثور على الصنف المحدد.")
+                else:
+                    return self._create_response("Selected item not found.")
+            
+            # Store selected item in session and ask for new quantity
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_new_quantity', language,
+                session.get('customer_name') if session else None,
+                order_mode=session.get('order_mode') if session else None,
+                edit_item_id=item_id
+            )
+            
+            if language == 'arabic':
+                response = f"كم تريد من {selected_item['item_name_ar']}؟\n\n"
+                response += f"الكمية الحالية: {selected_item['quantity']}\n"
+                response += "أدخل الكمية الجديدة:"
+            else:
+                response = f"How many {selected_item['item_name_en']} do you want?\n\n"
+                response += f"Current quantity: {selected_item['quantity']}\n"
+                response += "Enter new quantity:"
+            
+            return self._create_response(response)
+        
+        # Invalid input
+        if language == 'arabic':
+            return self._create_response("الرجاء اختيار أحد الأصناف من القائمة أعلاه.")
+        else:
+            return self._create_response("Please select one of the items from the list above.")
+
+    def _handle_remove_item_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle item selection for removal"""
+        language = user_context.get('language', 'arabic')
+        
+        # Check if it's a button click with remove_ prefix
+        if text.startswith('remove_'):
+            item_id = text.replace('remove_', '')
+            
+            # Get the item details
+            current_order = self.db.get_current_order(phone_number)
+            selected_item = None
+            for item in current_order.get('items', []):
+                if str(item['menu_item_id']) == item_id:
+                    selected_item = item
+                    break
+            
+            if not selected_item:
+                if language == 'arabic':
+                    return self._create_response("لم يتم العثور على الصنف المحدد.")
+                else:
+                    return self._create_response("Selected item not found.")
+            
+            # Remove the item from order
+            success = self.db.remove_item_from_order(phone_number, int(item_id))
+            
+            if success:
+                if language == 'arabic':
+                    message = f"تم حذف {selected_item['item_name_ar']} من طلبك.\n\n"
+                    message += "سيتم عرض الطلب المحدث:"
+                else:
+                    message = f"{selected_item['item_name_en']} has been removed from your order.\n\n"
+                    message += "Updated order will be displayed:"
+                
+                # Return to confirmation with updated order
+                order_mode = session.get('order_mode') if session else None
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_confirmation', language,
+                    session.get('customer_name') if session else None,
+                    order_mode=order_mode
+                )
+                
+                # Send removal confirmation and then show updated confirmation
+                self._create_response(message)
+                return self._show_quick_order_confirmation(phone_number, session, user_context)
+            else:
+                if language == 'arabic':
+                    return self._create_response("فشل في حذف الصنف. الرجاء المحاولة مرة أخرى.")
+                else:
+                    return self._create_response("Failed to remove item. Please try again.")
+        
+        # Invalid input
+        if language == 'arabic':
+            return self._create_response("الرجاء اختيار أحد الأصناف من القائمة أعلاه.")
+        else:
+            return self._create_response("Please select one of the items from the list above.")
+
+    def _handle_new_quantity_input(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle new quantity input for editing"""
+        language = user_context.get('language', 'arabic')
+        
+        # Convert Arabic numerals to English
+        converted_text = self._convert_arabic_numerals(text.strip())
+        
+        try:
+            new_quantity = int(converted_text)
+            if new_quantity <= 0:
+                raise ValueError("Quantity must be positive")
+            
+            # Get the item ID being edited
+            edit_item_id = session.get('edit_item_id')
+            if not edit_item_id:
+                if language == 'arabic':
+                    return self._create_response("خطأ: لم يتم العثور على الصنف المراد تعديله.")
+                else:
+                    return self._create_response("Error: Item to edit not found.")
+            
+            # Update the quantity in database
+            success = self.db.update_item_quantity(phone_number, int(edit_item_id), new_quantity)
+            
+            if success:
+                # Get updated item details
+                current_order = self.db.get_current_order(phone_number)
+                updated_item = None
+                for item in current_order.get('items', []):
+                    if str(item['item_id']) == edit_item_id:
+                        updated_item = item
+                        break
+                
+                if language == 'arabic':
+                    if updated_item:
+                        message = f"تم تحديث {updated_item['item_name_ar']} إلى {new_quantity} قطعة.\n\n"
+                    else:
+                        message = f"تم تحديث الكمية إلى {new_quantity} قطعة.\n\n"
+                    message += "سيتم عرض الطلب المحدث:"
+                else:
+                    if updated_item:
+                        message = f"Updated {updated_item['item_name_en']} to {new_quantity} pieces.\n\n"
+                    else:
+                        message = f"Updated quantity to {new_quantity} pieces.\n\n"
+                    message += "Updated order will be displayed:"
+                
+                # Return to confirmation with updated order
+                order_mode = session.get('order_mode') if session else None
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_confirmation', language,
+                    session.get('customer_name') if session else None,
+                    order_mode=order_mode
+                )
+                
+                # Send update confirmation and then show updated confirmation
+                self._create_response(message)
+                return self._show_quick_order_confirmation(phone_number, session, user_context)
+            else:
+                if language == 'arabic':
+                    return self._create_response("فشل في تحديث الكمية. الرجاء المحاولة مرة أخرى.")
+                else:
+                    return self._create_response("Failed to update quantity. Please try again.")
+                    
+        except ValueError:
+            if language == 'arabic':
+                return self._create_response("الرجاء إدخال رقم صحيح للكمية.")
+            else:
+                return self._create_response("Please enter a valid number for quantity.")
 
     def _handle_fresh_start_after_order(self, phone_number: str, session: Dict, user_context: Dict) -> Dict:
         """Handle fresh start after order completion"""
