@@ -2988,24 +2988,17 @@ class EnhancedMessageHandler:
         recent_orders = self._get_recent_orders(phone_number)
         
         if language == 'arabic':
-            message = "🚀 الطلب السريع\n\n"
+            message = "🚀 الطلب السريع\n"
             message += "ماذا تريد أن تطلب؟ أعطني اسم المنتج:\n\n"
             
             if popular_items:
-                message += "💡 المنتجات المتاحة:\n"
+                message += "💡 المنتجات الاكثر طلبا:\n"
                 for item in popular_items[:5]:  # Show up to 5 items
                     message += f"• {item['item_name_ar']} - {item['price']} دينار\n"
                 message += "\n"
             
-            if recent_orders:
-                message += "🔄 طلباتك الأخيرة:\n"
-                for order in recent_orders[:2]:  # Show up to 2 recent orders
-                    message += f"• {order}\n"
-                message += "\n"
-            
-            message += "📝 أمثلة على الطلب:\n"
-            # Use real items from the menu for examples
             if popular_items:
+                message += "📝 أمثلة على الطلب:\n"
                 # Example 1: Single item
                 example1 = popular_items[0]['item_name_ar']
                 message += f"• {example1}\n"
@@ -3019,36 +3012,25 @@ class EnhancedMessageHandler:
                 if len(popular_items) > 2:
                     example3 = popular_items[2]['item_name_ar']
                     message += f"• 3 {example3}\n"
-            else:
-                # Fallback examples if no items found
-                message += "• قهوة عراقية\n"
-                message += "• 2 شاي بالنعناع\n"
-                message += "• 3 عصير برتقال\n"
+                message += "\n"
             
-            message += "\n💡 نصائح للطلب السريع:\n"
-            message += "• اكتب اسم المنتج فقط (مثل: قهوة عراقية)\n"
-            message += "• اكتب الكمية مع الاسم (مثل: 2 قهوة عراقية)\n"
+            message += "💡 نصائح للطلب السريع:\n"
+            message += "• اكتب اسم المنتج فقط (مثل: موهيتو رمان)\n"
+            message += "• اكتب الكمية مع الاسم وطريقة الخدمة (مثل: 2 موهيتو رمان ومع 2 شاي عراقي طاولة رقم 4)\n"
             message += "• يمكنك طلب أكثر من صنف في رسالة واحدة\n\n"
             message += "اكتب اسم المنتج المطلوب الآن! 🍽️"
         else:
-            message = "🚀 Quick Order\n\n"
+            message = "🚀 Quick Order\n"
             message += "What do you want to order? Give me the item name:\n\n"
             
             if popular_items:
-                message += "💡 Available items:\n"
+                message += "💡 Most popular items:\n"
                 for item in popular_items[:5]:  # Show up to 5 items
                     message += f"• {item['item_name_en']} - {item['price']} IQD\n"
                 message += "\n"
             
-            if recent_orders:
-                message += "🔄 Your recent orders:\n"
-                for order in recent_orders[:2]:  # Show up to 2 recent orders
-                    message += f"• {order}\n"
-                message += "\n"
-            
-            message += "📝 Order examples:\n"
-            # Use real items from the menu for examples
             if popular_items:
+                message += "📝 Order examples:\n"
                 # Example 1: Single item
                 example1 = popular_items[0]['item_name_en']
                 message += f"• {example1}\n"
@@ -3062,15 +3044,11 @@ class EnhancedMessageHandler:
                 if len(popular_items) > 2:
                     example3 = popular_items[2]['item_name_en']
                     message += f"• 3 {example3}\n"
-            else:
-                # Fallback examples if no items found
-                message += "• Iraqi Coffee\n"
-                message += "• 2 Mint Tea\n"
-                message += "• 3 Orange Juice\n"
+                message += "\n"
             
-            message += "\n💡 Quick order tips:\n"
-            message += "• Just type the item name (e.g., Iraqi Coffee)\n"
-            message += "• Include quantity with name (e.g., 2 Iraqi Coffee)\n"
+            message += "💡 Quick order tips:\n"
+            message += "• Just type the item name (e.g., Pomegranate Mojito)\n"
+            message += "• Include quantity with name and service method (e.g., 2 Pomegranate Mojito with 2 Iraqi Tea table 4)\n"
             message += "• You can order multiple items in one message\n\n"
             message += "Type the item name you want now! 🍽️"
         
@@ -3195,7 +3173,7 @@ class EnhancedMessageHandler:
                     "type": "reply",
                     "reply": {
                         "id": f"category_{cat['id']}",
-                        "title": f"{i}. {cat['name_ar']}"
+                        "title": f"{i}. {cat['name_ar'][:15]}"  # Limit title length
                     }
                 })
         else:
@@ -3209,7 +3187,7 @@ class EnhancedMessageHandler:
                     "type": "reply",
                     "reply": {
                         "id": f"category_{cat['id']}",
-                        "title": f"{i}. {cat['name_en']}"
+                        "title": f"{i}. {cat['name_en'][:15]}"  # Limit title length
                     }
                 })
         
@@ -3249,12 +3227,8 @@ class EnhancedMessageHandler:
             
         except Exception as e:
             logger.warning(f"⚠️ Error getting popular items from database: {e}")
-            # Fallback to some basic items if database fails
-            return [
-                {'item_name_ar': 'قهوة عراقية', 'item_name_en': 'Iraqi Coffee', 'price': 2000},
-                {'item_name_ar': 'شاي بالنعناع', 'item_name_en': 'Mint Tea', 'price': 1500},
-                {'item_name_ar': 'عصير برتقال', 'item_name_en': 'Orange Juice', 'price': 3000}
-            ]
+            # Return empty list if database fails - no hardcoded items
+            return []
 
     def _get_recent_orders(self, phone_number: str) -> List[str]:
         """Get recent orders for quick reorder suggestions from database"""
