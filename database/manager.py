@@ -422,7 +422,7 @@ class DatabaseManager:
             return None
 
     # Order Operations
-    def add_item_to_order(self, phone_number: str, item_id: int, quantity: int, special_requests: str = None) -> bool:
+    def add_item_to_order(self, phone_number: str, item_id: int, quantity: int, special_requests: str = None, special_price: int = None) -> bool:
         """Add item to user's order with new structure"""
         try:
             with sqlite3.connect(self.db_path, timeout=30.0) as conn:
@@ -438,6 +438,10 @@ class DatabaseManager:
                     return False
                 
                 price = item[0]
+                # Use special price if provided (for offers), otherwise use regular price
+                if special_price is not None:
+                    price = special_price
+                    logger.info(f"🎯 Using special price {special_price} for item {item_id} (regular price: {item[0]})")
                 subtotal = price * quantity
                 
                 # Add item to order

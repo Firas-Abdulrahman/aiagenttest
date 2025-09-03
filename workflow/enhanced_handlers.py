@@ -67,7 +67,7 @@ class EnhancedMessageHandler:
                 'confirm_order', 'cancel_order', 'edit_order',
                 'add_item_to_order', 'edit_item_quantity', 'remove_item_from_order',
                 'quick_order_add', 'explore_menu_add', 'dine_in', 'delivery',
-                'add_more_yes', 'add_more_no'
+                'add_more_yes', 'add_more_no', 'add_iced_latte_offer', 'decline_iced_latte_offer'
             ]
             
             # Check for edit/remove/quantity button patterns
@@ -1896,6 +1896,9 @@ class EnhancedMessageHandler:
         elif current_step == 'waiting_for_remove_item_selection':
             return self._handle_remove_item_selection(phone_number, text, session, user_context)
         
+        elif current_step == 'waiting_for_special_offer':
+            return self._handle_structured_special_offer(phone_number, text, session, user_context)
+        
         elif current_step == 'waiting_for_new_quantity':
             return self._handle_new_quantity_input(phone_number, text, session, user_context)
             
@@ -2768,7 +2771,7 @@ class EnhancedMessageHandler:
                 # Normal flow: Move to service selection
                 self.db.create_or_update_session(
                     phone_number, 'waiting_for_service', language,
-                    session.get('customer_name')
+                    session.get('customer_name') if session else None
                 )
                 
                 return self._show_service_selection(phone_number, language)
@@ -3566,12 +3569,13 @@ class EnhancedMessageHandler:
                     )
                     return self._show_service_selection(phone_number, language)
             else:
-                # Normal flow: Proceed to service selection
+                # Show special offer for iced latte before proceeding to service selection
+                logger.info(f"🎯 Showing special iced latte offer to {phone_number}")
                 self.db.create_or_update_session(
-                    phone_number, 'waiting_for_service', language,
+                    phone_number, 'waiting_for_special_offer', language,
                     session.get('customer_name') if session else None
                 )
-                return self._show_service_selection(phone_number, language)
+                return self._show_special_iced_latte_offer(phone_number, language)
         
         # Handle text input (fallback)
         text_lower = text.lower().strip()
@@ -4967,3 +4971,128 @@ class EnhancedMessageHandler:
             'footer_text': footer_text,
             'buttons': buttons
         }
+    
+    def _show_special_iced_latte_offer(self, phone_number: str, language: str) -> Dict[str, Any]:
+        """Show special offer for iced latte with image"""
+        if language == 'arabic':
+            header_text = "🎉 عرض خاص!"
+            body_text = "لا تفوت هذه الفرصة الرائعة!\n\n"
+            body_text += "☕ آيس لاتيه بخصم 50%\n"
+            body_text += "السعر الأصلي: 4000 دينار\n"
+            body_text += "السعر بعد الخصم: 2000 دينار\n\n"
+            body_text += "هل تريد إضافة هذا المشروب الرائع إلى طلبك؟"
+            footer_text = "اختر من الأزرار أدناه"
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "add_iced_latte_offer",
+                        "title": "نعم، أضفه!"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "decline_iced_latte_offer",
+                        "title": "لا، شكراً"
+                    }
+                }
+            ]
+        else:
+            header_text = "🎉 Special Offer!"
+            body_text = "Don't miss this amazing deal!\n\n"
+            body_text += "☕ Iced Latte at 50% off\n"
+            body_text += "Original price: 4000 IQD\n"
+            body_text += "Price after discount: 2000 IQD\n\n"
+            body_text += "Would you like to add this amazing drink to your order?"
+            footer_text = "Select from buttons below"
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "add_iced_latte_offer",
+                        "title": "Yes, add it!"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "decline_iced_latte_offer",
+                        "title": "No, thanks"
+                    }
+                }
+            ]
+        
+        # Create response with image and interactive buttons
+        return {
+            'type': 'image_with_buttons',
+            'image_url': 'Ad.jpg',  # The iced latte image
+            'header_text': header_text,
+            'body_text': body_text,
+            'footer_text': footer_text,
+            'buttons': buttons
+        }
+    
+    def _handle_structured_special_offer(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict[str, Any]:
+        """Handle special offer button clicks and text input"""
+        language = user_context.get('language', 'arabic')
+        
+        if text == 'add_iced_latte_offer':
+            # User wants to add the iced latte at 50% off
+            logger.info(f"🎯 User {phone_number} accepted iced latte special offer")
+            
+            # Add iced latte to order at discounted price (2000 instead of 4000)
+            success = self.db.add_item_to_order(
+                phone_number=phone_number,
+                item_id=7,  # Assuming iced latte has item_id 7
+                quantity=1,
+                special_price=2000  # 50% off price
+            )
+            
+            if success:
+                # Proceed to service selection
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_service', language,
+                    session.get('customer_name') if session else None
+                )
+                
+                if language == 'arabic':
+                    return self._create_response("🎉 تم إضافة آيس لاتيه بخصم 50% إلى طلبك!\n\nالآن، لننتقل إلى اختيار نوع الخدمة.")
+                else:
+                    return self._create_response("🎉 Iced Latte at 50% off has been added to your order!\n\nNow, let's proceed to service selection.")
+            else:
+                # Failed to add item
+                if language == 'arabic':
+                    return self._create_response("❌ حدث خطأ في إضافة المشروب. الرجاء المحاولة مرة أخرى.")
+                else:
+                    return self._create_response("❌ Error adding the drink. Please try again.")
+        
+        elif text == 'decline_iced_latte_offer':
+            # User declined the special offer
+            logger.info(f"🎯 User {phone_number} declined iced latte special offer")
+            
+            # Proceed to service selection
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_service', language,
+                session.get('customer_name') if session else None
+            )
+            
+            if language == 'arabic':
+                return self._create_response("حسناً، لننتقل إلى اختيار نوع الخدمة.")
+            else:
+                return self._create_response("Alright, let's proceed to service selection.")
+        
+        # Handle text input (fallback)
+        text_lower = text.lower().strip()
+        if text_lower in ['نعم', 'yes', 'y', '1']:
+            # Same logic as add_iced_latte_offer button
+            return self._handle_structured_special_offer(phone_number, 'add_iced_latte_offer', session, user_context)
+        elif text_lower in ['لا', 'no', 'n', '2']:
+            # Same logic as decline_iced_latte_offer button
+            return self._handle_structured_special_offer(phone_number, 'decline_iced_latte_offer', session, user_context)
+        
+        # Invalid input
+        if language == 'arabic':
+            return self._create_response("الرجاء اختيار أحد الخيارات:\n1. نعم، أضفه!\n2. لا، شكراً")
+        else:
+            return self._create_response("Please choose one of the options:\n1. Yes, add it!\n2. No, thanks")
