@@ -1266,18 +1266,15 @@ class EnhancedMessageHandler:
                     selected_item = next((item for item in items if item['id'] == item_id), None)
                     
                     if selected_item:
-                        if language == 'arabic':
-                            if action == "updated":
-                                message = f"تم تحديث {selected_item['item_name_ar']} إلى × {quantity}\n\nهل تريد إضافة المزيد من الأصناف؟\n\n1. نعم\n2. لا"
-                            else:
-                                message = f"تم إضافة {selected_item['item_name_ar']} × {quantity} إلى طلبك\n\nهل تريد إضافة المزيد من الأصناف؟\n\n1. نعم\n2. لا"
-                        else:
-                            if action == "updated":
-                                message = f"Updated {selected_item['item_name_en']} to × {quantity}\n\nWould you like to add more items?\n\n1. Yes\n2. No"
-                            else:
-                                message = f"Added {selected_item['item_name_en']} × {quantity} to your order\n\nWould you like to add more items?\n\n1. Yes\n2. No"
+                        # Update session to waiting for additional items
+                        self.db.create_or_update_session(
+                            phone_number, 'waiting_for_additional', language,
+                            session.get('customer_name') if session else None,
+                            order_mode=session.get('order_mode') if session else None
+                        )
                         
-                        return self._create_response(message)
+                        # Show interactive buttons for additional items selection
+                        return self._show_additional_items_selection(phone_number, language)
                 else:
                     return self._create_response("حدث خطأ في إضافة المنتج. الرجاء المحاولة مرة أخرى")
             else:
@@ -3432,24 +3429,238 @@ class EnhancedMessageHandler:
         
         return self._create_response(message)
 
-    def _show_service_selection(self, phone_number: str, language: str) -> Dict:
-        """Show service selection"""
+    def _show_additional_items_selection(self, phone_number: str, language: str) -> Dict:
+        """Show additional items selection with interactive buttons"""
         if language == 'arabic':
-            message = "هل تريد طلبك للتناول في المقهى أم للتوصيل؟\n\n"
-            message += "1. تناول في المقهى\n"
-            message += "2. توصيل"
+            header_text = "إضافة أصناف"
+            body_text = "هل تريد إضافة المزيد من الأصناف؟"
+            footer_text = "اختر من الأزرار أدناه"
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "add_more_yes",
+                        "title": "نعم"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "add_more_no",
+                        "title": "لا"
+                    }
+                }
+            ]
         else:
-            message = "Do you want your order for dine-in or delivery?\n\n"
-            message += "1. Dine-in\n"
-            message += "2. Delivery"
+            header_text = "Add More Items"
+            body_text = "Do you want to add more items?"
+            footer_text = "Select from buttons below"
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "add_more_yes",
+                        "title": "Yes"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "add_more_no",
+                        "title": "No"
+                    }
+                }
+                ]
+        
+        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
+
+    def _handle_structured_additional_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle additional items selection with button IDs or text"""
+        language = user_context.get('language', 'arabic')
+        
+        # Handle button clicks
+        if text == 'add_more_yes':
+            # Check if user is in explore mode
+            order_mode = session.get('order_mode') if session else None
+            
+            if order_mode == 'explore':
+                # Continue with explore menu - show traditional categories
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_category', language,
+                    session.get('customer_name') if session else None,
+                    order_mode='explore'  # Maintain explore mode
+                )
+                return self._show_traditional_categories(phone_number, language)
+            else:
+                # Show two-button interface for new orders
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_category', language,
+                    session.get('customer_name') if session else None
+                )
+                return self._show_main_categories(phone_number, language)
+        
+        elif text == 'add_more_no':
+            # Check if we're in edit mode and should return to confirmation
+            order_mode = session.get('order_mode') if session else None
+            
+            if order_mode in ['edit_add_quick', 'edit_add_explore']:
+                # Return to confirmation with updated order
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_confirmation', language,
+                    session.get('customer_name') if session else None,
+                    order_mode='quick'  # Restore to quick mode for confirmation
+                )
+                # Get refreshed session and user context for confirmation
+                refreshed_session = self.db.get_user_session(phone_number)
+                refreshed_user_context = self._build_user_context(phone_number, refreshed_session, 'waiting_for_confirmation', '')
+                return self._show_quick_order_confirmation(phone_number, refreshed_session, refreshed_user_context)
+            else:
+                # Normal flow: Proceed to service selection
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_service', language,
+                    session.get('customer_name') if session else None
+                )
+                return self._show_service_selection(phone_number, language)
+        
+        # Handle text input (fallback)
+        text_lower = text.lower().strip()
+        if text_lower in ['نعم', 'yes', 'y', '1']:
+            # Same logic as add_more_yes button
+            order_mode = session.get('order_mode') if session else None
+            
+            if order_mode == 'explore':
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_category', language,
+                    session.get('customer_name') if session else None,
+                    order_mode='explore'
+                )
+                return self._show_traditional_categories(phone_number, language)
+            else:
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_category', language,
+                    session.get('customer_name') if session else None
+                )
+                return self._show_main_categories(phone_number, language)
+        
+        elif text_lower in ['لا', 'no', 'n', '2']:
+            # Same logic as add_more_no button
+            order_mode = session.get('order_mode') if session else None
+            
+            if order_mode in ['edit_add_quick', 'edit_add_explore']:
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_confirmation', language,
+                    session.get('customer_name') if session else None,
+                    order_mode='quick'
+                )
+                refreshed_session = self.db.get_user_session(phone_number)
+                refreshed_user_context = self._build_user_context(phone_number, refreshed_session, 'waiting_for_confirmation', '')
+                return self._show_quick_order_confirmation(phone_number, refreshed_session, refreshed_user_context)
+            else:
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_service', language,
+                    session.get('customer_name') if session else None
+                )
+                return self._show_service_selection(phone_number, language)
+        
+        # Invalid input - show the question again
+        return self._show_additional_items_selection(phone_number, language)
+
+    def _handle_structured_service_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle service selection with button IDs or text"""
+        language = user_context.get('language', 'arabic')
+        
+        # Handle button clicks
+        if text == 'service_dine_in':
+            service_type = 'dine-in'
+        elif text == 'service_delivery':
+            service_type = 'delivery'
+        else:
+            # Handle text input (fallback)
+            text_lower = text.lower().strip()
+            if text_lower in ['1', 'تناول', 'داخل', 'في المقهى', 'dine', 'restaurant']:
+                service_type = 'dine-in'
+            elif text_lower in ['2', 'توصيل', 'delivery', 'home']:
+                service_type = 'delivery'
+            else:
+                # Invalid input - show the question again
+                return self._show_service_selection(phone_number, language)
+        
+        # Update session step
+        self.db.create_or_update_session(
+            phone_number, 'waiting_for_location', language,
+            session.get('customer_name') if session else None
+        )
+        
+        # Update order details with service type
+        self.db.update_order_details(phone_number, service_type=service_type)
+        
+        if service_type == 'dine-in':
+            if language == 'arabic':
+                message = "الرجاء تحديد رقم الطاولة (1-7):"
+            else:
+                message = "Please provide your table number (1-7):"
+        else:
+            if language == 'arabic':
+                message = "الرجاء مشاركة موقعك وأي تعليمات خاصة:"
+            else:
+                message = "Please share your location and any special instructions:"
         
         return self._create_response(message)
+
+    def _show_service_selection(self, phone_number: str, language: str) -> Dict:
+        """Show service selection with interactive buttons"""
+        if language == 'arabic':
+            header_text = "نوع الخدمة"
+            body_text = "هل تريد طلبك للتناول في المقهى أم للتوصيل؟"
+            footer_text = "اختر نوع الخدمة المطلوبة"
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "service_dine_in",
+                        "title": "تناول في المقهى"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "service_delivery",
+                        "title": "توصيل"
+                    }
+                }
+            ]
+        else:
+            header_text = "Service Type"
+            body_text = "Do you want your order for dine-in or delivery?"
+            footer_text = "Select the required service type"
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "service_dine_in",
+                        "title": "Dine-in"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "service_delivery",
+                        "title": "Delivery"
+                    }
+                }
+            ]
+        
+        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
 
     def _show_order_summary(self, phone_number: str, session: Dict, user_context: Dict, location: str) -> Dict:
         """Show order summary"""
         # Check if this is a quick order and show interactive confirmation
         if session.get('order_mode') == 'quick':
             return self._show_quick_order_confirmation(phone_number, session, user_context)
+        
+        # For explore menu orders, show interactive confirmation
+        if session.get('order_mode') == 'explore':
+            return self._show_explore_menu_confirmation(phone_number, session, user_context, location)
         
         # For regular orders, show text-based confirmation
         current_order = self.db.get_current_order(phone_number)
@@ -3596,6 +3807,96 @@ class EnhancedMessageHandler:
             body_text += f"\nService: {current_order['details'].get('service_type', 'Not specified')}"
             if current_order['details'].get('location'):
                 body_text += f"\nLocation: {current_order['details']['location']}"
+            body_text += f"\nTotal Amount: {total_amount} IQD"
+            
+            footer_text = "Select from buttons below"
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "confirm_order",
+                        "title": "Confirm Order"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "edit_order",
+                        "title": "Edit Order"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "cancel_order",
+                        "title": "Cancel Order"
+                    }
+                }
+            ]
+        
+        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
+
+    def _show_explore_menu_confirmation(self, phone_number: str, session: Dict, user_context: Dict, location: str) -> Dict:
+        """Show explore menu order confirmation with interactive buttons"""
+        language = user_context.get('language', 'arabic')
+        
+        # Get current order details
+        current_order = self.db.get_current_order(phone_number)
+        
+        if not current_order or not current_order.get('items'):
+            return self._create_response("لا توجد أصناف في الطلب. الرجاء المحاولة مرة أخرى.")
+        
+        # Calculate total
+        total_amount = current_order.get('total', 0)
+        
+        if language == 'arabic':
+            header_text = "تأكيد الطلب"
+            body_text = "إليك ملخص طلبك:\n\n"
+            body_text += "الأصناف:\n"
+            
+            for item in current_order['items']:
+                body_text += f"• {item['item_name_ar']} × {item['quantity']} - {item['subtotal']} دينار\n"
+            
+            body_text += f"\nالخدمة: {current_order['details'].get('service_type', 'غير محدد')}"
+            if location:
+                body_text += f"\nالمكان: {location}"
+            body_text += f"\nالسعر الإجمالي: {total_amount} دينار"
+            
+            footer_text = "اختر من الأزرار أدناه"
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "confirm_order",
+                        "title": "تأكيد الطلب"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "edit_order",
+                        "title": "تعديل الطلب"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "cancel_order",
+                        "title": "إلغاء الطلب"
+                    }
+                }
+            ]
+        else:
+            header_text = "Order Confirmation"
+            body_text = "Here's your order summary:\n\n"
+            body_text += "Items:\n"
+            
+            for item in current_order['items']:
+                body_text += f"• {item['item_name_en']} × {item['quantity']} - {item['subtotal']} IQD\n"
+            
+            body_text += f"\nService: {current_order['details'].get('service_type', 'Not specified')}"
+            if location:
+                body_text += f"\nLocation: {location}"
             body_text += f"\nTotal Amount: {total_amount} IQD"
             
             footer_text = "Select from buttons below"
