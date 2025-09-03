@@ -3330,7 +3330,7 @@ class EnhancedMessageHandler:
             return []
 
     def _show_sub_categories(self, phone_number: str, main_category, language: str) -> Dict:
-        """Show sub-categories for selected main category"""
+        """Show sub-categories for selected main category as numbered text list"""
         # Handle both Dict and int inputs
         if isinstance(main_category, dict):
             main_category_id = main_category['id']
@@ -3357,35 +3357,25 @@ class EnhancedMessageHandler:
         sub_categories = self.db.get_sub_categories(main_category_id)
         
         if language == 'arabic':
-            header_text = f"قائمة {category_name_ar}"
-            body_text = "الرجاء اختيار الفئة الفرعية المطلوبة"
-            footer_text = "🔙 اكتب 'رجوع' للعودة للخطوة السابقة"
+            message = f"قائمة {category_name_ar}\n"
+            message += "الرجاء اختيار الفئة الفرعية المطلوبة:\n\n"
             
-            buttons = []
             for i, sub_cat in enumerate(sub_categories, 1):
-                buttons.append({
-                    "type": "reply",
-                    "reply": {
-                        "id": f"subcategory_{sub_cat['id']}",
-                        "title": f"{i}. {sub_cat['name_ar']}"
-                    }
-                })
+                message += f"{i}. {sub_cat['name_ar']}\n"
+            
+            message += "\n🔙 اكتب 'رجوع' للعودة للخطوة السابقة\n"
+            message += "اكتب رقم الفئة الفرعية المطلوبة"
         else:
-            header_text = f"{category_name_en} Menu"
-            body_text = "Please select the required sub-category"
-            footer_text = "🔙 Type 'back' to go to previous step"
+            message = f"{category_name_en} Menu\n"
+            message += "Please select the required sub-category:\n\n"
             
-            buttons = []
             for i, sub_cat in enumerate(sub_categories, 1):
-                buttons.append({
-                    "type": "reply",
-                    "reply": {
-                        "id": f"subcategory_{sub_cat['id']}",
-                        "title": f"{i}. {sub_cat['name_en']}"
-                    }
-                })
+                message += f"{i}. {sub_cat['name_en']}\n"
+            
+            message += "\n🔙 Type 'back' to go to previous step\n"
+            message += "Type the number of the required sub-category"
         
-        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
+        return self._create_response(message)
 
 
 
@@ -3410,32 +3400,24 @@ class EnhancedMessageHandler:
         
         items = self.db.get_sub_category_items(sub_category_id)
         
-        # Create interactive buttons for items
-        buttons = []
-        for item in items:
-            if language == 'arabic':
-                button_title = f"{item['item_name_ar']} - {item['price']} دينار"
-            else:
-                button_title = f"{item['item_name_en']} - {item['price']} IQD"
-            
-            buttons.append({
-                'type': 'reply',
-                'reply': {
-                    'id': f"item_{item['id']}",
-                    'title': button_title
-                }
-            })
-        
         if language == 'arabic':
-            header_text = f"قائمة {sub_category['name_ar']}"
-            body_text = "اختر المنتج الذي تريده:"
-            footer_text = "الرجاء اختيار المنتج المطلوب"
+            message = f"قائمة {sub_category['name_ar']}\n"
+            message += "اختر المنتج الذي تريده:\n\n"
+            
+            for i, item in enumerate(items, 1):
+                message += f"{i}. {item['item_name_ar']} - {item['price']} دينار\n"
+            
+            message += "\nاكتب رقم المنتج المطلوب"
         else:
-            header_text = f"{sub_category['name_en']} Menu"
-            body_text = "Choose the item you want:"
-            footer_text = "Please select the required item"
+            message = f"{sub_category['name_en']} Menu\n"
+            message += "Choose the item you want:\n\n"
+            
+            for i, item in enumerate(items, 1):
+                message += f"{i}. {item['item_name_en']} - {item['price']} IQD\n"
+            
+            message += "\nType the number of the required item"
         
-        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
+        return self._create_response(message)
 
     def _show_quantity_selection(self, phone_number: str, selected_item: Dict, language: str) -> Dict:
         """Show quantity selection for selected item"""
