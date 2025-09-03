@@ -2718,65 +2718,7 @@ class EnhancedMessageHandler:
         
         return self._create_response("الرجاء إدخال عدد صحيح (مثال: 5 أو خمسة)")
 
-    def _handle_structured_additional_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
-        """Handle additional item selection with structured logic"""
-        language = user_context.get('language', 'arabic')
-        
-        # Check for yes/no
-        text_lower = text.lower().strip()
-        
-        if any(word in text_lower for word in ['نعم', 'yes', '1']):
-            # Keep current category context and go to sub-categories
-            main_category_id = session.get('selected_main_category')
-            if main_category_id:
-                # Go back to sub-categories of current main category
-                self.db.create_or_update_session(
-                    phone_number, 'waiting_for_sub_category', language,
-                    session.get('customer_name') if session else None,
-                    selected_main_category=main_category_id,
-                    selected_sub_category=None,
-                    selected_item=None
-                )
-                
-                # Get main category and show its sub-categories
-                main_categories = self.db.get_main_categories()
-                for cat in main_categories:
-                    if cat['id'] == main_category_id:
-                        return self._show_sub_categories(phone_number, cat, language)
-            
-            # Fallback: go to main categories if no current category
-            self.db.create_or_update_session(
-                phone_number, 'waiting_for_category', language,
-                session.get('customer_name')
-            )
-            
-            return self._show_main_categories(phone_number, language)
-            
-        elif any(word in text_lower for word in ['لا', 'no', '2']):
-            # Check if we're in edit mode and should return to confirmation
-            order_mode = session.get('order_mode') if session else None
-            
-            if order_mode in ['edit_add_quick', 'edit_add_explore']:
-                # Return to confirmation with updated order
-                self.db.create_or_update_session(
-                    phone_number, 'waiting_for_confirmation', language,
-                    session.get('customer_name') if session else None,
-                    order_mode='quick'  # Restore to quick mode for confirmation
-                )
-                # Get refreshed session and user context for confirmation
-                refreshed_session = self.db.get_user_session(phone_number)
-                refreshed_user_context = self._build_user_context(phone_number, refreshed_session, 'waiting_for_confirmation', '')
-                return self._show_quick_order_confirmation(phone_number, refreshed_session, refreshed_user_context)
-            else:
-                # Normal flow: Move to service selection
-                self.db.create_or_update_session(
-                    phone_number, 'waiting_for_service', language,
-                    session.get('customer_name') if session else None
-                )
-                
-                return self._show_service_selection(phone_number, language)
-        
-        return self._create_response("الرجاء الرد بـ '1' لإضافة المزيد أو '2' للمتابعة")
+
 
     def _handle_structured_service_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
         """Handle service selection with structured logic"""
@@ -3222,7 +3164,7 @@ class EnhancedMessageHandler:
                 button = {
                     "type": "reply",
                     "reply": {
-                        "id": f"category_{cat['id']}",
+                    "id": f"category_{cat['id']}",
                         "title": title
                     }
                 }
@@ -3248,7 +3190,7 @@ class EnhancedMessageHandler:
                 button = {
                     "type": "reply",
                     "reply": {
-                        "id": f"category_{cat['id']}",
+                    "id": f"category_{cat['id']}",
                         "title": title
                     }
                 }
@@ -3399,7 +3341,7 @@ class EnhancedMessageHandler:
             
             for i, sub_cat in enumerate(sub_categories, 1):
                 message += f"{i}. {sub_cat['name_en']}\n"
-            
+        
             message += "\n🔙 Type 'back' to go to previous step\n"
             message += "Type the number of the required sub-category"
         
