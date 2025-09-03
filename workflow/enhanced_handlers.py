@@ -2992,29 +2992,87 @@ class EnhancedMessageHandler:
             message += "ماذا تريد أن تطلب؟ أعطني اسم المنتج:\n\n"
             
             if popular_items:
-                message += "💡 المنتجات الشائعة:\n"
-                for item in popular_items[:3]:
-                    message += f"• {item['name_ar']} - {item['price']} دينار\n"
+                message += "💡 المنتجات المتاحة:\n"
+                for item in popular_items[:5]:  # Show up to 5 items
+                    message += f"• {item['item_name_ar']} - {item['price']} دينار\n"
                 message += "\n"
             
-            message += "📝 مثال: موهيتو ازرق\n"
-            message += "📝 مثال: 2 قهوة عراقية\n"
-            message += "📝 مثال: 3 شاي بالنعناع\n\n"
-            message += "اكتب اسم المنتج المطلوب الآن!"
+            if recent_orders:
+                message += "🔄 طلباتك الأخيرة:\n"
+                for order in recent_orders[:2]:  # Show up to 2 recent orders
+                    message += f"• {order}\n"
+                message += "\n"
+            
+            message += "📝 أمثلة على الطلب:\n"
+            # Use real items from the menu for examples
+            if popular_items:
+                # Example 1: Single item
+                example1 = popular_items[0]['item_name_ar']
+                message += f"• {example1}\n"
+                
+                # Example 2: With quantity
+                if len(popular_items) > 1:
+                    example2 = popular_items[1]['item_name_ar']
+                    message += f"• 2 {example2}\n"
+                
+                # Example 3: Another item
+                if len(popular_items) > 2:
+                    example3 = popular_items[2]['item_name_ar']
+                    message += f"• 3 {example3}\n"
+            else:
+                # Fallback examples if no items found
+                message += "• قهوة عراقية\n"
+                message += "• 2 شاي بالنعناع\n"
+                message += "• 3 عصير برتقال\n"
+            
+            message += "\n💡 نصائح للطلب السريع:\n"
+            message += "• اكتب اسم المنتج فقط (مثل: قهوة عراقية)\n"
+            message += "• اكتب الكمية مع الاسم (مثل: 2 قهوة عراقية)\n"
+            message += "• يمكنك طلب أكثر من صنف في رسالة واحدة\n\n"
+            message += "اكتب اسم المنتج المطلوب الآن! 🍽️"
         else:
             message = "🚀 Quick Order\n\n"
             message += "What do you want to order? Give me the item name:\n\n"
             
             if popular_items:
-                message += "💡 Popular items:\n"
-                for item in popular_items[:3]:
-                    message += f"• {item['name_en']} - {item['price']} IQD\n"
+                message += "💡 Available items:\n"
+                for item in popular_items[:5]:  # Show up to 5 items
+                    message += f"• {item['item_name_en']} - {item['price']} IQD\n"
                 message += "\n"
             
-            message += "📝 Example: blue mojito\n"
-            message += "📝 Example: 2 Iraqi coffee\n"
-            message += "📝 Example: 3 mint tea\n\n"
-            message += "Type the item name you want now!"
+            if recent_orders:
+                message += "🔄 Your recent orders:\n"
+                for order in recent_orders[:2]:  # Show up to 2 recent orders
+                    message += f"• {order}\n"
+                message += "\n"
+            
+            message += "📝 Order examples:\n"
+            # Use real items from the menu for examples
+            if popular_items:
+                # Example 1: Single item
+                example1 = popular_items[0]['item_name_en']
+                message += f"• {example1}\n"
+                
+                # Example 2: With quantity
+                if len(popular_items) > 1:
+                    example2 = popular_items[1]['item_name_en']
+                    message += f"• 2 {example2}\n"
+                
+                # Example 3: Another item
+                if len(popular_items) > 2:
+                    example3 = popular_items[2]['item_name_en']
+                    message += f"• 3 {example3}\n"
+            else:
+                # Fallback examples if no items found
+                message += "• Iraqi Coffee\n"
+                message += "• 2 Mint Tea\n"
+                message += "• 3 Orange Juice\n"
+            
+            message += "\n💡 Quick order tips:\n"
+            message += "• Just type the item name (e.g., Iraqi Coffee)\n"
+            message += "• Include quantity with name (e.g., 2 Iraqi Coffee)\n"
+            message += "• You can order multiple items in one message\n\n"
+            message += "Type the item name you want now! 🍽️"
         
         return self._create_response(message)
     
@@ -3134,8 +3192,11 @@ class EnhancedMessageHandler:
             buttons = []
             for i, cat in enumerate(categories, 1):
                 buttons.append({
-                    "id": f"category_{cat['id']}",
-                    "title": f"{i}. {cat['name_ar']}"
+                    "type": "reply",
+                    "reply": {
+                        "id": f"category_{cat['id']}",
+                        "title": f"{i}. {cat['name_ar']}"
+                    }
                 })
         else:
             header_text = "Explore Menu"
@@ -3145,33 +3206,93 @@ class EnhancedMessageHandler:
             buttons = []
             for i, cat in enumerate(categories, 1):
                 buttons.append({
-                    "id": f"category_{cat['id']}",
-                    "title": f"{i}. {cat['name_en']}"
+                    "type": "reply",
+                    "reply": {
+                        "id": f"category_{cat['id']}",
+                        "title": f"{i}. {cat['name_en']}"
+                    }
                 })
         
         return self._create_interactive_response(header_text, body_text, footer_text, buttons)
 
     def _get_popular_items(self) -> List[Dict]:
-        """Get popular items for quick order suggestions"""
-        # This would typically come from analytics/order history
-        # For now, return some hardcoded popular items
-        return [
-            {'name_ar': 'موهيتو ازرق', 'name_en': 'Blue Mojito', 'price': 5000},
-            {'name_ar': 'فرابتشينو شوكولاتة', 'name_en': 'Chocolate Frappuccino', 'price': 5000},
-            {'name_ar': 'لاتيه فانيلا', 'name_en': 'Vanilla Latte', 'price': 4000},
-            {'name_ar': 'ايس كوفي', 'name_en': 'Iced Coffee', 'price': 3000},
-            {'name_ar': 'موهيتو خوخ', 'name_en': 'Peach Mojito', 'price': 5000}
-        ]
+        """Get popular items for quick order suggestions from database"""
+        try:
+            # Get items from all categories to show variety
+            all_items = []
+            
+            # Get main categories
+            main_categories = self.db.get_main_categories()
+            for main_cat in main_categories:
+                sub_categories = self.db.get_sub_categories(main_cat['id'])
+                for sub_cat in sub_categories:
+                    items = self.db.get_sub_category_items(sub_cat['id'])
+                    all_items.extend(items)
+            
+            # Sort by price and take top 5-8 items for variety
+            all_items.sort(key=lambda x: x.get('price', 0))
+            
+            # Return a mix of items from different categories
+            popular_items = []
+            if all_items:
+                # Take first 2-3 items from each price range for variety
+                price_ranges = [(0, 3000), (3000, 5000), (5000, 10000)]
+                for min_price, max_price in price_ranges:
+                    range_items = [item for item in all_items if min_price <= item.get('price', 0) <= max_price]
+                    popular_items.extend(range_items[:2])  # Take max 2 from each range
+            
+            # If we don't have enough items, just return what we have
+            if not popular_items and all_items:
+                popular_items = all_items[:5]
+            
+            return popular_items
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Error getting popular items from database: {e}")
+            # Fallback to some basic items if database fails
+            return [
+                {'item_name_ar': 'قهوة عراقية', 'item_name_en': 'Iraqi Coffee', 'price': 2000},
+                {'item_name_ar': 'شاي بالنعناع', 'item_name_en': 'Mint Tea', 'price': 1500},
+                {'item_name_ar': 'عصير برتقال', 'item_name_en': 'Orange Juice', 'price': 3000}
+            ]
 
     def _get_recent_orders(self, phone_number: str) -> List[str]:
-        """Get recent orders for quick reorder suggestions"""
-        # This would typically come from order history
-        # For now, return some example orders
-        return [
-            "2 موهيتو ازرق",
-            "1 فرابتشينو شوكولاتة",
-            "3 ايس كوفي"
-        ]
+        """Get recent orders for quick reorder suggestions from database"""
+        try:
+            # Get recent orders from database using order history
+            recent_orders = self.db.get_order_history(phone_number, limit=3)
+            
+            if recent_orders:
+                formatted_orders = []
+                for order in recent_orders:
+                    try:
+                        # Parse items from the order
+                        items_json = order.get('items_json', '[]')
+                        if isinstance(items_json, str):
+                            import json
+                            items_data = json.loads(items_json)
+                        else:
+                            items_data = items_json
+                        
+                        # Get the first item from the order for display
+                        if items_data and len(items_data) > 0:
+                            first_item = items_data[0]
+                            quantity = first_item.get('quantity', 1)
+                            item_name = first_item.get('item_name_ar', first_item.get('item_name_en', 'Unknown'))
+                            formatted_orders.append(f"{quantity} {item_name}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Error parsing order item: {e}")
+                        continue
+                
+                return formatted_orders
+            
+            # If no recent orders, return empty list
+            return []
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Error getting recent orders from database: {e}")
+            # Return empty list if database fails
+            return []
 
     def _show_sub_categories(self, phone_number: str, main_category, language: str) -> Dict:
         """Show sub-categories for selected main category"""
@@ -3208,8 +3329,11 @@ class EnhancedMessageHandler:
             buttons = []
             for i, sub_cat in enumerate(sub_categories, 1):
                 buttons.append({
-                    "id": f"subcategory_{sub_cat['id']}",
-                    "title": f"{i}. {sub_cat['name_ar']}"
+                    "type": "reply",
+                    "reply": {
+                        "id": f"subcategory_{sub_cat['id']}",
+                        "title": f"{i}. {sub_cat['name_ar']}"
+                    }
                 })
         else:
             header_text = f"{category_name_en} Menu"
@@ -3219,8 +3343,11 @@ class EnhancedMessageHandler:
             buttons = []
             for i, sub_cat in enumerate(sub_categories, 1):
                 buttons.append({
-                    "id": f"subcategory_{sub_cat['id']}",
-                    "title": f"{i}. {sub_cat['name_en']}"
+                    "type": "reply",
+                    "reply": {
+                        "id": f"subcategory_{sub_cat['id']}",
+                        "title": f"{i}. {sub_cat['name_en']}"
+                    }
                 })
         
         return self._create_interactive_response(header_text, body_text, footer_text, buttons)
@@ -3257,8 +3384,11 @@ class EnhancedMessageHandler:
                 button_title = f"{item['item_name_en']} - {item['price']} IQD"
             
             buttons.append({
-                'id': f"item_{item['id']}",
-                'title': button_title
+                'type': 'reply',
+                'reply': {
+                    'id': f"item_{item['id']}",
+                    'title': button_title
+                }
             })
         
         if language == 'arabic':

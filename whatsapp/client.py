@@ -59,20 +59,17 @@ class WhatsAppClient:
             # Log request details
             logger.debug(f"📡 {method} {url} - Status: {response.status_code}")
             
-            # Handle specific error cases
+            # Log response status
             if response.status_code == 401:
                 logger.error("❌ Authentication failed - check WhatsApp token")
-                return None
             elif response.status_code == 403:
                 logger.error("❌ Permission denied - check API permissions")
-                return None
             elif response.status_code == 429:
                 logger.warning("⚠️ Rate limit exceeded - request will be retried")
-                return None
             elif response.status_code >= 500:
                 logger.warning(f"⚠️ Server error {response.status_code} - request will be retried")
-                return None
             
+            # Always return the response, let the retry logic handle it
             return response
             
         except requests.exceptions.ConnectionError as e:

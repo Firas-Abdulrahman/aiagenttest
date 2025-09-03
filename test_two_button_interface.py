@@ -64,7 +64,8 @@ def test_two_button_interface():
     # Test quick order interface
     response = handler._show_quick_order_interface(phone_number, "arabic")
     print("Quick Order Interface (Arabic):")
-    print(response.get('message', ''))
+    print(f"Type: {response.get('type', 'unknown')}")
+    print(f"Content: {response.get('content', '')}")
     
     print("\n3. Testing Traditional Categories (Explore Mode)")
     print("-" * 40)
@@ -72,7 +73,13 @@ def test_two_button_interface():
     # Test traditional categories
     response = handler._show_traditional_categories(phone_number, "arabic")
     print("Traditional Categories (Arabic):")
-    print(response.get('message', ''))
+    print(f"Type: {response.get('type', 'unknown')}")
+    print(f"Header: {response.get('header_text', '')}")
+    print(f"Body: {response.get('body_text', '')}")
+    print(f"Footer: {response.get('footer_text', '')}")
+    print("Buttons:")
+    for button in response.get('buttons', []):
+        print(f"  - {button.get('reply', {}).get('title', '')} (ID: {button.get('reply', {}).get('id', '')})")
     
     print("\n4. Testing Popular Items")
     print("-" * 40)
@@ -81,7 +88,7 @@ def test_two_button_interface():
     popular_items = handler._get_popular_items()
     print("Popular Items:")
     for item in popular_items:
-        print(f"  • {item['name_ar']} - {item['price']} دينار")
+        print(f"  • {item['item_name_ar']} - {item['price']} دينار")
     
     print("\n5. Testing Recent Orders")
     print("-" * 40)
