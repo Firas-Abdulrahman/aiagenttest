@@ -3181,13 +3181,25 @@ class EnhancedMessageHandler:
             
             buttons = []
             for i, cat in enumerate(categories, 1):
-                buttons.append({
+                # Shorten category names to fit WhatsApp's 20 character limit
+                if i == 1:
+                    title = "1. المشروبات الباردة"
+                elif i == 2:
+                    title = "2. المشروبات الحارة"
+                elif i == 3:
+                    title = "3. الحلويات"
+                else:
+                    title = f"{i}. {cat['name_ar'][:15]}"  # Fallback shortening
+                
+                button = {
                     "type": "reply",
                     "reply": {
                         "id": f"category_{cat['id']}",
-                        "title": f"{i}. {cat['name_ar']}"
+                        "title": title
                     }
-                })
+                }
+                buttons.append(button)
+                logger.debug(f"🔍 Created button {i}: {button}")
         else:
             header_text = "Explore Menu"
             body_text = "Select the category:"
@@ -3195,15 +3207,52 @@ class EnhancedMessageHandler:
             
             buttons = []
             for i, cat in enumerate(categories, 1):
-                buttons.append({
+                # Shorten category names to fit WhatsApp's 20 character limit
+                if i == 1:
+                    title = "1. Cold Drinks"
+                elif i == 2:
+                    title = "2. Hot Drinks"
+                elif i == 3:
+                    title = "3. Pastries"
+                else:
+                    title = f"{i}. {cat['name_en'][:15]}"  # Fallback shortening
+                
+                button = {
                     "type": "reply",
                     "reply": {
                         "id": f"category_{cat['id']}",
-                        "title": f"{i}. {cat['name_en']}"
+                        "title": title
                     }
-                })
+                }
+                buttons.append(button)
+                logger.debug(f"🔍 Created button {i}: {button}")
         
-        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
+        logger.info(f"🔍 Created {len(buttons)} buttons for traditional categories")
+        
+        # Validate buttons for WhatsApp requirements
+        if len(buttons) > 3:
+            logger.warning(f"⚠️ Too many buttons ({len(buttons)}), WhatsApp only allows 3")
+            buttons = buttons[:3]
+        
+        # Validate each button structure
+        for i, button in enumerate(buttons):
+            if 'type' not in button or button['type'] != 'reply':
+                logger.error(f"❌ Invalid button {i}: missing or wrong type")
+            if 'reply' not in button:
+                logger.error(f"❌ Invalid button {i}: missing reply wrapper")
+            if 'id' not in button.get('reply', {}):
+                logger.error(f"❌ Invalid button {i}: missing id")
+            if 'title' not in button.get('reply', {}):
+                logger.error(f"❌ Invalid button {i}: missing title")
+            
+            # Check button title length (WhatsApp limit is 20 characters)
+            title = button.get('reply', {}).get('title', '')
+            if len(title) > 20:
+                logger.warning(f"⚠️ Button {i} title too long ({len(title)} chars): {title}")
+        
+        response = self._create_interactive_response(header_text, body_text, footer_text, buttons)
+        logger.debug(f"🔍 Interactive response: {response}")
+        return response
 
     def _get_popular_items(self) -> List[Dict]:
         """Get popular items for quick order suggestions from database"""

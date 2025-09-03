@@ -54,6 +54,9 @@ class WhatsAppClient:
     def _make_request(self, method: str, url: str, **kwargs) -> Optional[requests.Response]:
         """Make HTTP request with retry logic and proper error handling"""
         try:
+            logger.debug(f"📡 Making {method} request to {url}")
+            logger.debug(f"🔍 Request kwargs: {kwargs}")
+            
             response = self.session.request(method, url, **kwargs)
             
             # Log request details
@@ -83,6 +86,7 @@ class WhatsAppClient:
             return None
         except Exception as e:
             logger.error(f"❌ Unexpected error: {e}")
+            logger.exception("Full exception details:")
             return None
 
     def send_text_message(self, to: str, message: str) -> bool:
@@ -241,6 +245,7 @@ class WhatsAppClient:
             }
 
             logger.info(f"📤 Sending interactive message to {to}")
+            logger.debug(f"🔍 Interactive payload: {json.dumps(payload, indent=2, ensure_ascii=False)}")
 
             response = self._make_request('POST', url, headers=self.headers, json=payload)
 
@@ -251,6 +256,9 @@ class WhatsAppClient:
                 logger.error(f"❌ Failed to send interactive message: {response.status_code if response else 'No response'}")
                 if response:
                     logger.error(f"Response: {response.text}")
+                    logger.error(f"Response headers: {dict(response.headers)}")
+                else:
+                    logger.error("❌ No response object returned from _make_request")
                 return False
 
         except Exception as e:
