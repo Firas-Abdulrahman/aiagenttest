@@ -174,6 +174,46 @@ class WhatsAppClient:
             logger.error(f"❌ Error sending voice message: {e}")
             return False
 
+    def send_image_message(self, to: str, image_path: str, caption: str = None) -> bool:
+        """Send an image message to WhatsApp user"""
+        try:
+            # First upload the image
+            with open(image_path, 'rb') as image_file:
+                image_bytes = image_file.read()
+            
+            # Upload image and get media_id
+            media_id = self.upload_media(image_bytes, 'image/jpeg')
+            if not media_id:
+                logger.error("❌ Failed to upload image")
+                return False
+            
+            # Send image message
+            url = f"{self.base_url}/{self.phone_number_id}/messages"
+            payload = {
+                'messaging_product': 'whatsapp',
+                'to': to,
+                'type': 'image',
+                'image': {
+                    'id': media_id
+                }
+            }
+            
+            if caption:
+                payload['image']['caption'] = caption
+            
+            response = self._make_request('POST', url, headers=self.headers, json=payload)
+            if response and response.status_code == 200:
+                logger.info("✅ Image message sent successfully")
+                return True
+            else:
+                logger.error(f"❌ Failed to send image message: {response.status_code if response else 'No response'}")
+                if response:
+                    logger.error(f"Response: {response.text}")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Error sending image message: {e}")
+            return False
+
     def send_template_message(self, to: str, template_name: str, language_code: str = 'en',
                               parameters: List[str] = None) -> bool:
         """Send a template message to WhatsApp user with enhanced reliability"""
@@ -442,6 +482,35 @@ class WhatsAppClient:
                 footer_text = response_data.get('footer_text', '')
                 buttons = response_data.get('buttons', [])
                 return self.send_interactive_message(phone_number, header_text, body_text, footer_text, buttons)
+            elif message_type == 'image':
+                image_path = response_data.get('image_path', '')
+                caption = response_data.get('caption', '')
+                return self.send_image_message(phone_number, image_path, caption)
+            elif message_type == 'image_with_buttons':
+                # Send image first, then interactive buttons
+                image_path = response_data.get('image_url', '')  # Note: using image_url for compatibility
+                if not image_path:
+                    image_path = response_data.get('image_path', '')
+                
+                # Send image with caption
+                caption = response_data.get('body_text', '')
+                image_success = self.send_image_message(phone_number, image_path, caption)
+                
+                if image_success:
+                    # Send interactive buttons as a follow-up message
+                    header_text = response_data.get('header_text', '')
+                    footer_text = response_data.get('footer_text', '')
+                    buttons = response_data.get('buttons', [])
+                    # Use a simple text for body since image already contains the main message
+                    button_body = "اختر من الخيارات أدناه:" if 'نعم' in str(buttons) else "Choose from the options below:"
+                    return self.send_interactive_message(phone_number, header_text, button_body, footer_text, buttons)
+                else:
+                    # If image failed, send as interactive buttons only
+                    header_text = response_data.get('header_text', '')
+                    body_text = response_data.get('body_text', '')
+                    footer_text = response_data.get('footer_text', '')
+                    buttons = response_data.get('buttons', [])
+                    return self.send_interactive_message(phone_number, header_text, body_text, footer_text, buttons)
             else:
                 logger.warning(f"Unsupported message type: {message_type}")
                 return False
