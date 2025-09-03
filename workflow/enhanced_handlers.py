@@ -3487,35 +3487,13 @@ class EnhancedMessageHandler:
                 refreshed_session = self.db.get_user_session(phone_number)
                 refreshed_user_context = self._build_user_context(phone_number, refreshed_session, 'waiting_for_confirmation', '')
                 return self._show_quick_order_confirmation(phone_number, refreshed_session, refreshed_user_context)
-            elif order_mode == 'explore':
-                # Check if we have an existing order with service type and location
-                current_order = self.db.get_current_order(phone_number)
-                if current_order and current_order.get('details', {}).get('service_type') and current_order.get('details', {}).get('location'):
-                    # We have existing service info, go directly to confirmation
-                    logger.info(f"🔄 Explore menu: Existing service info found, skipping service selection")
-                    self.db.create_or_update_session(
-                        phone_number, 'waiting_for_confirmation', language,
-                        session.get('customer_name') if session else None,
-                        order_mode='explore'
-                    )
-                    # Get refreshed session and user context for confirmation
-                    refreshed_session = self.db.get_user_session(phone_number)
-                    refreshed_user_context = self._build_user_context(phone_number, refreshed_session, 'waiting_for_confirmation', '')
-                    return self._show_explore_menu_confirmation(phone_number, refreshed_session, refreshed_user_context, current_order['details']['location'])
-                else:
-                    # No existing service info, proceed to service selection
-                    self.db.create_or_update_session(
-                        phone_number, 'waiting_for_service', language,
-                        session.get('customer_name') if session else None,
-                        order_mode='explore'
-                    )
-                    return self._show_service_selection(phone_number, language)
             else:
                 # Show special offer for iced latte before proceeding to service selection
                 logger.info(f"🎯 Showing special iced latte offer to {phone_number}")
                 self.db.create_or_update_session(
                     phone_number, 'waiting_for_special_offer', language,
-                    session.get('customer_name') if session else None
+                    session.get('customer_name') if session else None,
+                    order_mode=order_mode  # Preserve the current order mode
                 )
                 return self._show_special_iced_latte_offer(phone_number, language)
         
@@ -4992,16 +4970,57 @@ class EnhancedMessageHandler:
             )
             
             if success:
-                # Proceed to service selection
-                self.db.create_or_update_session(
-                    phone_number, 'waiting_for_service', language,
-                    session.get('customer_name') if session else None
-                )
+                # Check if we're in explore mode and have existing service info
+                order_mode = session.get('order_mode') if session else None
                 
-                if language == 'arabic':
-                    return self._create_response("🎉 تم إضافة آيس لاتيه بخصم 50% إلى طلبك!\n\nالآن، لننتقل إلى اختيار نوع الخدمة.")
+                if order_mode == 'explore':
+                    # Check if we have existing service info
+                    current_order = self.db.get_current_order(phone_number)
+                    if current_order and current_order.get('details', {}).get('service_type') and current_order.get('details', {}).get('location'):
+                        # We have existing service info, go directly to confirmation
+                        logger.info(f"🔄 Explore menu with special offer: Existing service info found, skipping service selection")
+                        self.db.create_or_update_session(
+                            phone_number, 'waiting_for_confirmation', language,
+                            session.get('customer_name') if session else None,
+                            order_mode='explore'
+                        )
+                        # Get refreshed session and user context for confirmation
+                        refreshed_session = self.db.get_user_session(phone_number)
+                        refreshed_user_context = self._build_user_context(phone_number, refreshed_session, 'waiting_for_confirmation', '')
+                        
+                        if language == 'arabic':
+                            success_msg = "🎉 تم إضافة آيس لاتيه بخصم 50% إلى طلبك!\n\n"
+                        else:
+                            success_msg = "🎉 Iced Latte at 50% off has been added to your order!\n\n"
+                        
+                        # Show confirmation directly
+                        confirmation_response = self._show_explore_menu_confirmation(phone_number, refreshed_session, refreshed_user_context, current_order['details']['location'])
+                        # Prepend success message to the confirmation
+                        if 'content' in confirmation_response:
+                            confirmation_response['content'] = success_msg + confirmation_response['content']
+                        elif 'body_text' in confirmation_response:
+                            confirmation_response['body_text'] = success_msg + confirmation_response['body_text']
+                        
+                        return confirmation_response
+                    else:
+                        # No existing service info, proceed to service selection
+                        self.db.create_or_update_session(
+                            phone_number, 'waiting_for_service', language,
+                            session.get('customer_name') if session else None,
+                            order_mode='explore'
+                        )
+                        return self._show_service_selection(phone_number, language)
                 else:
-                    return self._create_response("🎉 Iced Latte at 50% off has been added to your order!\n\nNow, let's proceed to service selection.")
+                    # Regular order mode, proceed to service selection
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_service', language,
+                        session.get('customer_name') if session else None
+                    )
+                    
+                    if language == 'arabic':
+                        return self._create_response("🎉 تم إضافة آيس لاتيه بخصم 50% إلى طلبك!\n\nالآن، لننتقل إلى اختيار نوع الخدمة.")
+                    else:
+                        return self._create_response("🎉 Iced Latte at 50% off has been added to your order!\n\nNow, let's proceed to service selection.")
             else:
                 # Failed to add item
                 if language == 'arabic':
@@ -5013,16 +5032,43 @@ class EnhancedMessageHandler:
             # User declined the special offer
             logger.info(f"🎯 User {phone_number} declined iced latte special offer")
             
-            # Proceed to service selection
-            self.db.create_or_update_session(
-                phone_number, 'waiting_for_service', language,
-                session.get('customer_name') if session else None
-            )
+            # Check if we're in explore mode and have existing service info
+            order_mode = session.get('order_mode') if session else None
             
-            if language == 'arabic':
-                return self._create_response("حسناً، لننتقل إلى اختيار نوع الخدمة.")
+            if order_mode == 'explore':
+                # Check if we have existing service info
+                current_order = self.db.get_current_order(phone_number)
+                if current_order and current_order.get('details', {}).get('service_type') and current_order.get('details', {}).get('location'):
+                    # We have existing service info, go directly to confirmation
+                    logger.info(f"🔄 Explore menu declined special offer: Existing service info found, skipping service selection")
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_confirmation', language,
+                        session.get('customer_name') if session else None,
+                        order_mode='explore'
+                    )
+                    # Get refreshed session and user context for confirmation
+                    refreshed_session = self.db.get_user_session(phone_number)
+                    refreshed_user_context = self._build_user_context(phone_number, refreshed_session, 'waiting_for_confirmation', '')
+                    return self._show_explore_menu_confirmation(phone_number, refreshed_session, refreshed_user_context, current_order['details']['location'])
+                else:
+                    # No existing service info, proceed to service selection
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_service', language,
+                        session.get('customer_name') if session else None,
+                        order_mode='explore'
+                    )
+                    return self._show_service_selection(phone_number, language)
             else:
-                return self._create_response("Alright, let's proceed to service selection.")
+                # Regular order mode, proceed to service selection
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_service', language,
+                    session.get('customer_name') if session else None
+                )
+                
+                if language == 'arabic':
+                    return self._create_response("حسناً، لننتقل إلى اختيار نوع الخدمة.")
+                else:
+                    return self._create_response("Alright, let's proceed to service selection.")
         
         # Handle text input (fallback)
         text_lower = text.lower().strip()
