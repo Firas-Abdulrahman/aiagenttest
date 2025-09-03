@@ -355,6 +355,10 @@ class EnhancedMessageHandler:
             if current_step == 'waiting_for_new_quantity':
                 # User is editing quantity of existing item
                 return self._handle_new_quantity_input(phone_number, str(extracted_data.get('quantity', '')), session, user_context)
+            elif current_step == 'waiting_for_quantity_item_selection':
+                # Force this to be item selection for editing quantity
+                logger.info(f"🔄 Forcing quantity_selection to item_selection for edit quantity flow")
+                return self._handle_quantity_item_selection(phone_number, str(extracted_data.get('quantity', '')), session, user_context)
             elif session.get('order_mode') == 'quick':
                 # Handle quick order quantity selection (only if not editing existing quantity)
                 return self._handle_quick_order_quantity(phone_number, extracted_data, session, user_context)
