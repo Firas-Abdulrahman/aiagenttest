@@ -1787,6 +1787,18 @@ class EnhancedMessageHandler:
         
         # Handle different steps with structured logic
         if current_step == 'waiting_for_language':
+            # Check for direct explore menu request to bypass language selection
+            text_lower = text.lower().strip()
+            if text_lower in ['explore_menu', 'استكشاف القائمة', 'explore menu', 'explore']:
+                logger.info(f"🚀 Direct explore menu request detected at language step, bypassing language selection")
+                # Set language to Arabic by default and go directly to explore menu
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_category', 'arabic',
+                    session.get('customer_name') if session else None,
+                    order_mode='explore'
+                )
+                return self._show_traditional_categories(phone_number, 'arabic')
+            
             return self._handle_structured_language_selection(phone_number, text, session, user_context.get('customer_name'))
             
         elif current_step == 'waiting_for_category':
@@ -3173,7 +3185,7 @@ class EnhancedMessageHandler:
                     "type": "reply",
                     "reply": {
                         "id": f"category_{cat['id']}",
-                        "title": f"{i}. {cat['name_ar'][:15]}"  # Limit title length
+                        "title": f"{i}. {cat['name_ar']}"
                     }
                 })
         else:
@@ -3187,7 +3199,7 @@ class EnhancedMessageHandler:
                     "type": "reply",
                     "reply": {
                         "id": f"category_{cat['id']}",
-                        "title": f"{i}. {cat['name_en'][:15]}"  # Limit title length
+                        "title": f"{i}. {cat['name_en']}"
                     }
                 })
         
