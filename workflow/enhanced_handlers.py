@@ -335,8 +335,15 @@ class EnhancedMessageHandler:
                 user_context['direct_order'] = True
             return self._handle_quick_order_selection(phone_number, extracted_data, session, user_context)
         elif action == 'explore_menu_selection':
-            # Handle explore menu mode selection
-            return self._handle_explore_menu_selection(phone_number, extracted_data, session, user_context)
+            # Check if we're adding a new item to existing order
+            current_step = user_context.get('current_step', '')
+            if current_step == 'waiting_for_add_item_choice':
+                # User wants to explore menu to add new item - preserve order context
+                logger.info(f"🔄 Explore menu for adding item to existing order - preserving context")
+                return self._handle_explore_menu_selection(phone_number, extracted_data, session, user_context)
+            else:
+                # Handle regular explore menu mode selection
+                return self._handle_explore_menu_selection(phone_number, extracted_data, session, user_context)
         elif action == 'item_selection':
             # Check if we're selecting an item for editing quantity
             current_step = user_context.get('current_step', '')
@@ -3534,6 +3541,29 @@ class EnhancedMessageHandler:
                 refreshed_session = self.db.get_user_session(phone_number)
                 refreshed_user_context = self._build_user_context(phone_number, refreshed_session, 'waiting_for_confirmation', '')
                 return self._show_quick_order_confirmation(phone_number, refreshed_session, refreshed_user_context)
+            elif order_mode == 'explore':
+                # Check if we have an existing order with service type and location
+                current_order = self.db.get_current_order(phone_number)
+                if current_order and current_order.get('details', {}).get('service_type') and current_order.get('details', {}).get('location'):
+                    # We have existing service info, go directly to confirmation
+                    logger.info(f"🔄 Explore menu: Existing service info found, skipping service selection")
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_confirmation', language,
+                        session.get('customer_name') if session else None,
+                        order_mode='explore'
+                    )
+                    # Get refreshed session and user context for confirmation
+                    refreshed_session = self.db.get_user_session(phone_number)
+                    refreshed_user_context = self._build_user_context(phone_number, refreshed_session, 'waiting_for_confirmation', '')
+                    return self._show_explore_menu_confirmation(phone_number, refreshed_session, refreshed_user_context, current_order['details']['location'])
+                else:
+                    # No existing service info, proceed to service selection
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_service', language,
+                        session.get('customer_name') if session else None,
+                        order_mode='explore'
+                    )
+                    return self._show_service_selection(phone_number, language)
             else:
                 # Normal flow: Proceed to service selection
                 self.db.create_or_update_session(
@@ -4277,7 +4307,8 @@ class EnhancedMessageHandler:
                 session.get('customer_name') if session else None,
                 order_mode='edit_add_explore'  # Special mode to return to confirmation after adding
             )
-            return self._show_main_categories(phone_number, language)
+            # Show explore menu categories directly instead of two-button interface
+            return self._show_traditional_categories(phone_number, language)
         
         # Handle text input (1, 2)
         text_lower = text.lower().strip()
