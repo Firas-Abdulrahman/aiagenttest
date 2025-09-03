@@ -4211,30 +4211,8 @@ class EnhancedMessageHandler:
                 order_mode='edit_add_quick'  # Special mode to return to confirmation after adding
             )
             
-            if language == 'arabic':
-                response = "🚀 الطلب السريع - إضافة صنف\n\n"
-                response += "ماذا تريد أن تضيف؟ أعطني اسم المنتج:\n\n"
-                response += "💡 المنتجات الشائعة:\n"
-                response += "• موهيتو ازرق - 5000 دينار\n"
-                response += "• فرابتشينو شوكولاتة - 5000 دينار\n"
-                response += "• لاتيه فانيلا - 4000 دينار\n\n"
-                response += "📝 مثال: موهيتو ازرق\n"
-                response += "📝 مثال: 2 قهوة عراقية\n"
-                response += "📝 مثال: 3 شاي بالنعناع\n\n"
-                response += "اكتب اسم المنتج المطلوب الآن!"
-            else:
-                response = "🚀 Quick Order - Add Item\n\n"
-                response += "What would you like to add? Give me the product name:\n\n"
-                response += "💡 Popular products:\n"
-                response += "• Blue Mojito - 5000 IQD\n"
-                response += "• Chocolate Frappuccino - 5000 IQD\n"
-                response += "• Vanilla Latte - 4000 IQD\n\n"
-                response += "📝 Example: Blue Mojito\n"
-                response += "📝 Example: 2 Iraqi coffee\n"
-                response += "📝 Example: 3 mint tea\n\n"
-                response += "Type the product name now!"
-            
-            return self._create_response(response)
+            # Use the same quick order interface for consistency
+            return self._show_quick_order_interface(phone_number, language)
             
         elif text == 'explore_menu_add':
             # Set session to explore mode for adding items
