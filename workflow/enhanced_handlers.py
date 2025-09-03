@@ -4138,6 +4138,24 @@ class EnhancedMessageHandler:
             order_mode=session.get('order_mode') if session else None
         )
         
+        # Check if we have more than 3 items - if so, use text list instead of buttons
+        if len(current_order['items']) > 3:
+            if language == 'arabic':
+                message = "أي صنف تريد تعديل كميته؟\n\n"
+                message += "الأصناف المتاحة:\n"
+                for i, item in enumerate(current_order['items'], 1):
+                    message += f"{i}. {item['item_name_ar']} × {item['quantity']} - {item['subtotal']} دينار\n"
+                message += "\nاكتب رقم الصنف أو اسم الصنف المطلوب"
+            else:
+                message = "Which item would you like to edit the quantity for?\n\n"
+                message += "Available items:\n"
+                for i, item in enumerate(current_order['items'], 1):
+                    message += f"{i}. {item['item_name_en']} × {item['quantity']} - {item['subtotal']} IQD\n"
+                message += "\nType the item number or item name"
+            
+            return self._create_response(message)
+        
+        # If 3 or fewer items, use interactive buttons
         if language == 'arabic':
             header_text = "تعديل الكمية"
             body_text = "أي صنف تريد تعديل كميته؟"
@@ -4178,6 +4196,24 @@ class EnhancedMessageHandler:
             order_mode=session.get('order_mode') if session else None
         )
         
+        # Check if we have more than 3 items - if so, use text list instead of buttons
+        if len(current_order['items']) > 3:
+            if language == 'arabic':
+                message = "أي صنف تريد حذفه؟\n\n"
+                message += "الأصناف المتاحة:\n"
+                for i, item in enumerate(current_order['items'], 1):
+                    message += f"{i}. {item['item_name_ar']} × {item['quantity']} - {item['subtotal']} دينار\n"
+                message += "\nاكتب رقم الصنف أو اسم الصنف المطلوب"
+            else:
+                message = "Which item would you like to remove?\n\n"
+                message += "Available items:\n"
+                for i, item in enumerate(current_order['items'], 1):
+                    message += f"{i}. {item['item_name_en']} × {item['quantity']} - {item['subtotal']} IQD\n"
+                message += "\nType the item number or item name"
+            
+            return self._create_response(message)
+        
+        # If 3 or fewer items, use interactive buttons
         if language == 'arabic':
             header_text = "حذف صنف"
             body_text = "أي صنف تريد حذفه؟"
@@ -4277,6 +4313,81 @@ class EnhancedMessageHandler:
             
             return self._create_response(response)
         
+        # Handle numeric input (when there are more than 3 items)
+        try:
+            item_num = int(text.strip())
+            current_order = self.db.get_current_order(phone_number)
+            
+            if 1 <= item_num <= len(current_order.get('items', [])):
+                selected_item = current_order['items'][item_num - 1]
+                
+                # Store selected item in session and ask for new quantity
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_new_quantity', language,
+                    session.get('customer_name') if session else None,
+                    order_mode=session.get('order_mode') if session else None,
+                    selected_item=selected_item['menu_item_id']
+                )
+                
+                if language == 'arabic':
+                    response = f"كم تريد من {selected_item['item_name_ar']}؟\n\n"
+                    response += f"الكمية الحالية: {selected_item['quantity']}\n"
+                    response += "أدخل الكمية الجديدة:"
+                else:
+                    response = f"How many {selected_item['item_name_en']} do you want?\n\n"
+                    response += f"Current quantity: {selected_item['quantity']}\n"
+                    response += "Enter new quantity:"
+                
+                return self._create_response(response)
+            else:
+                if language == 'arabic':
+                    return self._create_response(f"الرقم {item_num} غير صحيح. الرجاء اختيار رقم من 1 إلى {len(current_order.get('items', []))}")
+                else:
+                    return self._create_response(f"Number {item_num} is invalid. Please choose a number from 1 to {len(current_order.get('items', []))}")
+        except ValueError:
+            # Try to match by item name
+            current_order = self.db.get_current_order(phone_number)
+            if not current_order or not current_order.get('items'):
+                if language == 'arabic':
+                    return self._create_response("لا توجد أصناف في الطلب.")
+                else:
+                    return self._create_response("No items in the order.")
+            
+            # Find item by name
+            text_lower = text.lower().strip()
+            selected_item = None
+            
+            for item in current_order['items']:
+                if (text_lower in item['item_name_ar'].lower() or 
+                    text_lower in item['item_name_en'].lower()):
+                    selected_item = item
+                    break
+            
+            if selected_item:
+                # Store selected item in session and ask for new quantity
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_new_quantity', language,
+                    session.get('customer_name') if session else None,
+                    order_mode=session.get('order_mode') if session else None,
+                    selected_item=selected_item['menu_item_id']
+                )
+                
+                if language == 'arabic':
+                    response = f"كم تريد من {selected_item['item_name_ar']}؟\n\n"
+                    response += f"الكمية الحالية: {selected_item['quantity']}\n"
+                    response += "أدخل الكمية الجديدة:"
+                else:
+                    response = f"How many {selected_item['item_name_en']} do you want?\n\n"
+                    response += f"Current quantity: {selected_item['quantity']}\n"
+                    response += "Enter new quantity:"
+                
+                return self._create_response(response)
+            else:
+                if language == 'arabic':
+                    return self._create_response("لم يتم العثور على الصنف المطلوب. الرجاء كتابة اسم الصنف أو رقمه.")
+                else:
+                    return self._create_response("Item not found. Please type the item name or number.")
+        
         # Invalid input
         if language == 'arabic':
             return self._create_response("الرجاء اختيار أحد الأصناف من القائمة أعلاه.")
@@ -4332,6 +4443,99 @@ class EnhancedMessageHandler:
                     return self._create_response("فشل في حذف الصنف. الرجاء المحاولة مرة أخرى.")
                 else:
                     return self._create_response("Failed to remove item. Please try again.")
+        
+        # Handle numeric input (when there are more than 3 items)
+        try:
+            item_num = int(text.strip())
+            current_order = self.db.get_current_order(phone_number)
+            
+            if 1 <= item_num <= len(current_order.get('items', [])):
+                selected_item = current_order['items'][item_num - 1]
+                
+                # Remove the item from order
+                success = self.db.remove_item_from_order(phone_number, selected_item['menu_item_id'])
+                
+                if success:
+                    if language == 'arabic':
+                        message = f"تم حذف {selected_item['item_name_ar']} من طلبك.\n\n"
+                        message += "سيتم عرض الطلب المحدث:"
+                    else:
+                        message = f"{selected_item['item_name_en']} has been removed from your order.\n\n"
+                        message += "Updated order will be displayed:"
+                    
+                    # Return to confirmation with updated order
+                    order_mode = session.get('order_mode') if session else None
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_confirmation', language,
+                        session.get('customer_name') if session else None,
+                        order_mode=order_mode
+                    )
+                    
+                    # Send removal confirmation and then show updated confirmation
+                    self._create_response(message)
+                    return self._show_quick_order_confirmation(phone_number, session, user_context)
+                else:
+                    if language == 'arabic':
+                        return self._create_response("فشل في حذف الصنف. الرجاء المحاولة مرة أخرى.")
+                    else:
+                        return self._create_response("Failed to remove item. Please try again.")
+            else:
+                if language == 'arabic':
+                    return self._create_response(f"الرقم {item_num} غير صحيح. الرجاء اختيار رقم من 1 إلى {len(current_order.get('items', []))}")
+                else:
+                    return self._create_response(f"Number {item_num} is invalid. Please choose a number from 1 to {len(current_order.get('items', []))}")
+        except ValueError:
+            # Try to match by item name
+            current_order = self.db.get_current_order(phone_number)
+            if not current_order or not current_order.get('items'):
+                if language == 'arabic':
+                    return self._create_response("لا توجد أصناف في الطلب.")
+                else:
+                    return self._create_response("No items in the order.")
+            
+            # Find item by name
+            text_lower = text.lower().strip()
+            selected_item = None
+            
+            for item in current_order.get('items', []):
+                if (text_lower in item['item_name_ar'].lower() or 
+                    text_lower in item['item_name_en'].lower()):
+                    selected_item = item
+                    break
+            
+            if selected_item:
+                # Remove the item from order
+                success = self.db.remove_item_from_order(phone_number, selected_item['menu_item_id'])
+                
+                if success:
+                    if language == 'arabic':
+                        message = f"تم حذف {selected_item['item_name_ar']} من طلبك.\n\n"
+                        message += "سيتم عرض الطلب المحدث:"
+                    else:
+                        message = f"{selected_item['item_name_en']} has been removed from your order.\n\n"
+                        message += "Updated order will be displayed:"
+                    
+                    # Return to confirmation with updated order
+                    order_mode = session.get('order_mode') if session else None
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_confirmation', language,
+                        session.get('customer_name') if session else None,
+                        order_mode=order_mode
+                    )
+                    
+                    # Send removal confirmation and then show updated confirmation
+                    self._create_response(message)
+                    return self._show_quick_order_confirmation(phone_number, session, user_context)
+                else:
+                    if language == 'arabic':
+                        return self._create_response("فشل في حذف الصنف. الرجاء المحاولة مرة أخرى.")
+                    else:
+                        return self._create_response("Failed to remove item. Please try again.")
+            else:
+                if language == 'arabic':
+                    return self._create_response("لم يتم العثور على الصنف المطلوب. الرجاء كتابة اسم الصنف أو رقمه.")
+                else:
+                    return self._create_response("Item not found. Please type the item name or number.")
         
         # Invalid input
         if language == 'arabic':
