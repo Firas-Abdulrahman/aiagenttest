@@ -337,6 +337,18 @@ class EnhancedMessageHandler:
         elif action == 'explore_menu_selection':
             # Handle explore menu mode selection
             return self._handle_explore_menu_selection(phone_number, extracted_data, session, user_context)
+        elif action == 'item_selection':
+            # Check if we're selecting an item for editing quantity
+            current_step = user_context.get('current_step', '')
+            if current_step == 'waiting_for_quantity_item_selection':
+                # User is selecting an item to edit quantity
+                return self._handle_quantity_item_selection(phone_number, str(extracted_data.get('item_name', '')), session, user_context)
+            elif current_step == 'waiting_for_remove_item_selection':
+                # User is selecting an item to remove
+                return self._handle_remove_item_selection(phone_number, str(extracted_data.get('item_name', '')), session, user_context)
+            else:
+                # Handle regular item selection
+                return self._handle_ai_item_selection(phone_number, extracted_data, session, user_context)
         elif action == 'quantity_selection':
             # Check if we're editing an existing item quantity first
             current_step = user_context.get('current_step', '')
