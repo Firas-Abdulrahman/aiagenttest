@@ -66,7 +66,8 @@ class EnhancedMessageHandler:
             button_clicks = [
                 'confirm_order', 'cancel_order', 'edit_order',
                 'add_item_to_order', 'edit_item_quantity', 'remove_item_from_order',
-                'quick_order_add', 'explore_menu_add', 'dine_in', 'delivery'
+                'quick_order_add', 'explore_menu_add', 'dine_in', 'delivery',
+                'add_more_yes', 'add_more_no'
             ]
             
             # Check for edit/remove/quantity button patterns
