@@ -4666,7 +4666,8 @@ class EnhancedMessageHandler:
         return None
 
     def _match_item_by_name(self, text: str, items: list, language: str) -> Optional[Dict]:
-        """AI-driven item matching with flexible scoring mechanism."""
+        """AI-driven item matching with flexible scoring mechanism.
+        Script-aware: tries Arabic and English names to avoid language-mismatch misses."""
         import re
 
         def normalize_ar(s: str) -> str:
@@ -4695,53 +4696,62 @@ class EnhancedMessageHandler:
         text_lower = normalize_ar(cleaned_text.lower().strip())
         
         logger.info(f"🔍 AI-driven matching '{text}' (cleaned: '{cleaned_text}') against {len(items)} items")
-        
-        # AI-driven scoring mechanism - let the AI handle the complex understanding
-        best_match = None
-        best_score = 0
-        
-        for item in items:
-            if language == 'arabic':
-                item_name_lower = normalize_ar(item['item_name_ar'].lower())
-            else:
-                item_name_lower = normalize_ar(item['item_name_en'].lower())
-            
-            score = 0
-            
+
+        # Helper to score a single item name against text_lower
+        def score_against(item_name_lower: str) -> float:
+            score = 0.0
             # 1. Exact substring match (highest priority)
             if text_lower in item_name_lower:
                 score += 100
                 logger.info(f"  ✅ Exact substring match: '{text_lower}' in '{item_name_lower}' (score: {score})")
-            
             # 2. Item name contains all user words (very high priority)
             user_words = set(text_lower.split())
             item_words = set(item_name_lower.split())
-            common_words = user_words & item_words
-            
-            if len(common_words) == len(user_words) and len(user_words) > 0:
+            common = user_words & item_words
+            if len(common) == len(user_words) and len(user_words) > 0:
                 score += 80
                 logger.info(f"  ✅ All user words found: {user_words} in '{item_name_lower}' (score: {score})")
-            elif len(common_words) > 0:
-                # 3. Partial word match (medium priority)
-                score += 20 + (len(common_words) * 10)
-                logger.info(f"  📊 Partial word match: {common_words} in '{item_name_lower}' (score: {score})")
-            
+            elif len(common) > 0:
+                score += 20 + (len(common) * 10)
+                logger.info(f"  📊 Partial word match: {common} in '{item_name_lower}' (score: {score})")
             # 4. Bonus for longer matches (prefer more specific items)
             if len(item_name_lower) > len(text_lower):
                 score += 5
-            
-            # 5. Character-level similarity for misspellings (lower priority)
-            if len(text_lower) > 2:  # Only for meaningful words
-                char_similarity = len(set(text_lower) & set(item_name_lower)) / len(set(text_lower) | set(item_name_lower))
-                if char_similarity > 0.7:  # 70% character similarity
-                    score += char_similarity * 10
-                    logger.info(f"  🔤 Character similarity: {char_similarity:.2f} for '{item_name_lower}' (score: {score})")
-            
-            # Update best match if this score is higher
+            # 5. Character similarity
+            if len(text_lower) > 2:
+                union = set(text_lower) | set(item_name_lower)
+                if union:
+                    char_similarity = len(set(text_lower) & set(item_name_lower)) / len(union)
+                    if char_similarity > 0.7:
+                        score += char_similarity * 10
+                        logger.info(f"  🔤 Character similarity: {char_similarity:.2f} for '{item_name_lower}' (score: {score})")
+            return score
+
+        # Determine if the user text contains Arabic script
+        has_arabic_chars = bool(re.search(r'[\u0600-\u06FF]', text))
+
+        best_match = None
+        best_score = 0.0
+
+        for item in items:
+            name_ar = normalize_ar(item['item_name_ar'].lower())
+            name_en = normalize_ar(item['item_name_en'].lower())
+
+            # Primary: prefer script-aligned field; Secondary: try the other as fallback
+            scores = []
+            if has_arabic_chars:
+                scores.append(('ar', score_against(name_ar), name_ar))
+                scores.append(('en', score_against(name_en), name_en))
+            else:
+                scores.append(('en', score_against(name_en), name_en))
+                scores.append(('ar', score_against(name_ar), name_ar))
+
+            # Choose the higher score for this item
+            field, score, name_used = max(scores, key=lambda x: x[1])
             if score > best_score:
                 best_score = score
                 best_match = item
-                logger.info(f"  🏆 New best match: '{item_name_lower}' with score {score}")
+                logger.info(f"  🏆 New best match: '{name_used}' (field={field}) with score {score}")
         
         if best_match and best_score > 10:  # Minimum threshold to avoid false matches
             logger.info(f"✅ AI-driven final match: '{best_match['item_name_ar' if language == 'arabic' else 'item_name_en']}' with score {best_score}")
