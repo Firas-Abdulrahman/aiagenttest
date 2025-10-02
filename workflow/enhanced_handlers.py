@@ -2202,6 +2202,28 @@ class EnhancedMessageHandler:
             
             return self._create_response(response)
         
+        # Guard: ignore greetings or control keywords so we don't try to match them as items
+        greeting_keywords = ['hello', 'hi', 'hey', 'مرحبا', 'هلو', 'اهلا', 'السلام عليكم']
+        control_keywords = ['cancel_order', 'cancel order', 'الغاء', 'الغاء الطلب', 'إلغاء الطلب']
+        if text_lower in greeting_keywords:
+            if language == 'arabic':
+                response = "ممتاز! ما الذي تود طلبه اليوم؟\n\n"
+                response += "اكتب اسم المنتج المطلوب:\n"
+                response += "مثال: موهيتو ازرق"
+            else:
+                response = "Great! What would you like to order today?\n\n"
+                response += "Type the item name you want:\n"
+                response += "Example: blue mojito"
+            return self._create_response(response)
+        if text_lower in control_keywords:
+            if session and session.get('current_step') == 'waiting_for_confirmation':
+                return self._cancel_order(phone_number, session, user_context)
+            else:
+                if language == 'arabic':
+                    return self._create_response("لا يوجد طلب قيد التأكيد لإلغائه. اكتب اسم المنتج للطلب.")
+                else:
+                    return self._create_response("There is no order at confirmation to cancel. Please type an item name to order.")
+
         # Parse the input for quantity, item name, service type, and optional table number
         # Example: "2 موهيتو ازرق للطاولة 5" or "٣ قهوة توصيل" or "٢ موهيتو ازرق في المقهى"
         text = text.strip()
