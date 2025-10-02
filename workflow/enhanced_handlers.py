@@ -73,6 +73,8 @@ class EnhancedMessageHandler:
                 if self._looks_like_direct_or_multi_order(text):
                     # Detect language from script if not set
                     language = user_context.get('language') or ('arabic' if self._contains_arabic(text) else 'english')
+                    logger.info(f"🌐 First message quick order detected, language: {language}")
+                    
                     # Enter quick order mode immediately
                     self.db.create_or_update_session(
                         phone_number, 'waiting_for_quick_order', language,
@@ -82,8 +84,14 @@ class EnhancedMessageHandler:
                     session = self.db.get_user_session(phone_number) or {}
                     session['order_mode'] = 'quick'
                     session['current_step'] = 'waiting_for_quick_order'
+                    
+                    # Update user context with detected language
+                    user_context['language'] = language
+                    user_context['language_preference'] = language
 
                     multi_items = self._safe_extract_multi_items(text)
+                    logger.info(f"🔍 Extracted multi items: {multi_items}")
+                    
                     if multi_items and len(multi_items) > 1:
                         extracted_data = { 'multi_items': multi_items }
                         return self._handle_multi_item_selection(phone_number, extracted_data, session, user_context)
@@ -230,33 +238,74 @@ class EnhancedMessageHandler:
         return any(hint in lowered for hint in item_hints)
 
     def _safe_extract_multi_items(self, text: str) -> List[Dict]:
-        """Lightweight multi-item extractor: splits on 'and/و' and commas, pulls leading numbers/words."""
+        """Enhanced multi-item extractor for Arabic patterns like 'واحد جاي عراقي واثنين موهيتو'."""
         try:
             import re
             normalized = text.strip()
             # Normalize Arabic numerals to English digits for parsing
             normalized = self._convert_arabic_numerals(normalized)
-            # Split on conjunctions and commas
-            parts = re.split(r"\s+(?:و|and)\s+|,|،", normalized)
+            
+            # Remove leading verbs first
+            normalized = re.sub(r'^(?:مرحبا\s+)?(?:اريد|أريد|بدي|ابي|ابغى|عايز|حاب|ارغب|i\s*w(?:ant|anna)|give\s*me)\s+', '', normalized, flags=re.IGNORECASE).strip()
+            
+            # Enhanced splitting: split on conjunctions AND on quantity word boundaries
+            # Pattern: واحد X واثنين Y -> ["واحد X", "واثنين Y"]
+            parts = []
+            
+            # First try splitting on explicit conjunctions
+            conjunction_parts = re.split(r'\s+(?:و|and)\s+|,|،', normalized)
+            
+            if len(conjunction_parts) > 1:
+                # Multiple parts found via conjunctions
+                parts = conjunction_parts
+            else:
+                # Single part - check if it contains multiple quantity words
+                qty_pattern = r'(واحد|واحدة|اثنين|اتنين|ثلاث|ثلاثة|أربع|أربعة|خمس|خمسة|one|two|three|four|five|\d+)'
+                
+                # Find all quantity word positions
+                matches = list(re.finditer(qty_pattern, normalized, flags=re.IGNORECASE))
+                
+                if len(matches) > 1:
+                    # Multiple quantities found - split at each quantity word (except the first)
+                    parts = []
+                    start = 0
+                    for i, match in enumerate(matches):
+                        if i == 0:
+                            continue  # Skip first match
+                        # Extract from previous position to current match start
+                        part = normalized[start:match.start()].strip()
+                        if part:
+                            parts.append(part)
+                        start = match.start()
+                    # Add the last part
+                    last_part = normalized[start:].strip()
+                    if last_part:
+                        parts.append(last_part)
+                else:
+                    # Single item
+                    parts = [normalized]
+            
             items: List[Dict] = []
             for part in parts:
                 token = part.strip()
                 if not token:
                     continue
-                # Remove leading verbs
-                token = re.sub(r'^(?:أ?ريد|بدي|ابي|ابغى|عايز|حاب|ارغب|i\s*w(?:ant|anna)|give\s*me)\s+', '', token, flags=re.IGNORECASE).strip()
+                
                 # Quantity defaults to 1
                 quantity = 1
+                
                 # Leading numeric quantity
                 m = re.match(r"^(\d+)\s+(.+)$", token)
                 if m:
                     quantity = int(m.group(1))
                     name = m.group(2).strip()
                 else:
-                    # Leading quantity words (basic)
+                    # Leading quantity words (enhanced)
                     qty_words = {
-                        'one': 1, 'two': 2, 'three': 3,
-                        'واحد': 1, 'واحدة': 1, 'اثنين': 2, 'اتنين': 2, 'ثلاث': 3, 'ثلاثة': 3
+                        'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+                        'واحد': 1, 'واحدة': 1, 'اثنين': 2, 'اتنين': 2, 'ثنين': 2,
+                        'ثلاث': 3, 'ثلاثة': 3, 'أربع': 4, 'أربعة': 4, 'اربع': 4, 'اربعة': 4,
+                        'خمس': 5, 'خمسة': 5
                     }
                     w = re.match(r"^([A-Za-z\u0600-\u06FF]+)\s+(.+)$", token)
                     if w and w.group(1) in qty_words:
@@ -264,12 +313,16 @@ class EnhancedMessageHandler:
                         name = w.group(2).strip()
                     else:
                         name = token
-                # Clean trivial fillers
+                
+                # Clean trivial fillers and trailing conjunctions
                 name = re.sub(r"^(?:of\s+)", '', name, flags=re.IGNORECASE).strip()
+                name = re.sub(r'\s+و\s*$', '', name).strip()  # Remove trailing "و" (and)
                 if name:
                     items.append({'item_name': name, 'quantity': quantity})
+            
             return items
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error in _safe_extract_multi_items: {e}")
             return []
 
     def _contains_arabic(self, text: str) -> bool:
