@@ -1162,7 +1162,12 @@ Response: {{
     def _validate_quick_order_quantity_step(self, result: Dict, extracted_data: Dict, user_message: str, user_context: Dict = None) -> bool:
         """Validate quick order quantity step"""
         action = result.get('action')
-        valid_actions = ['quantity_selection', 'conversational_response']
+        valid_actions = ['quantity_selection', 'conversational_response', 'multi_item_selection']
+        
+        # Allow multi_item_selection if user is providing additional items
+        if action == 'multi_item_selection':
+            logger.info("🔄 User providing multi-item order at quantity step - allowing")
+            return True
         
         # If user is typing an item name instead of quantity, guide them
         if action == 'item_selection':

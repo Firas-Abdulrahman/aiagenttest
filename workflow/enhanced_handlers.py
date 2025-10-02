@@ -260,7 +260,7 @@ class EnhancedMessageHandler:
                 parts = conjunction_parts
             else:
                 # Single part - check if it contains multiple quantity words
-                qty_pattern = r'(واحد|واحدة|اثنين|اتنين|ثلاث|ثلاثة|أربع|أربعة|خمس|خمسة|one|two|three|four|five|\d+)'
+                qty_pattern = r'(واحد|واحدة|اثنين|اتنين|ثنين|ثلاث|ثلاثة|أربع|أربعة|خمس|خمسة|one|two|three|four|five|\d+)'
                 
                 # Find all quantity word positions
                 matches = list(re.finditer(qty_pattern, normalized, flags=re.IGNORECASE))
@@ -1955,6 +1955,11 @@ class EnhancedMessageHandler:
     def _handle_structured_message(self, phone_number: str, text: str, current_step: str, session: Dict, user_context: Dict) -> Dict:
         """Fallback to structured message processing when AI is not available"""
         logger.info(f"🔄 Using structured processing for: '{text}' at step '{current_step}'")
+        
+        # Defensive programming: ensure session is a dict
+        if session is not None and not isinstance(session, dict):
+            logger.error(f"❌ Session is not a dictionary in _handle_structured_message: {type(session)} = {session}")
+            session = None
         
         language = user_context.get('language', 'arabic')
         
