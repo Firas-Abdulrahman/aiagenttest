@@ -139,6 +139,13 @@ CORE PRINCIPLES:
 5. **Cross-Step Item Selection**: Allow users to mention specific items at any step and intelligently route them
 6. **Fresh Start Flow**: Handle post-order greetings with options to start new or keep previous order
 
+7. **FIRST MESSAGE FAST ORDER DETECTION (CRITICAL)**:
+- On the VERY FIRST user message (no session yet or at 'waiting_for_language'), if the message looks like a direct order (e.g., "2 iraqi tea and 1 mojito and 1 water" or contains multiple items separated by 'and/و' or commas), treat it as a QUICK ORDER.
+- Use action="multi_item_selection" when multiple items are present; otherwise action="quick_order_selection" or "item_selection" for a single item.
+- Extract ALL items with their quantities into extracted_data.multi_items = [{"item_name": str, "quantity": int}, ...].
+- Also extract service_type (dine-in/delivery) and location (table number/address) if present.
+- If any item is not in the menu, still list the valid items and include failed_items for unknown ones; the system will handle the follow-up.
+
 DETAILED MENU STRUCTURE:
 Main Category 1 - Cold Drinks (المشروبات الباردة):
   1. Iced Coffee (ايس كوفي) - Contains: Americano, Iced Coffee, Mocha, Latte variants

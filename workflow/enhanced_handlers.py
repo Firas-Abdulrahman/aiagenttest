@@ -4,6 +4,7 @@ Enhanced Message Handlers with Deep AI Integration
 Provides natural language understanding while maintaining structured workflow
 """
 
+import os
 import logging
 import time
 from typing import Dict, Any, Optional, List
@@ -61,6 +62,34 @@ class EnhancedMessageHandler:
                 user_context['customer_name'] = customer_name
             else:
                 logger.info(f"📋 Session check for {phone_number}: should_reset={should_reset}, current_step={session.get('current_step') if session else 'None'}")
+
+            # One-shot quick order pre-check on first message (feature-flagged)
+            try:
+                first_message_quick_flag = os.getenv('FIRST_MESSAGE_QUICK_ORDER_ENABLED', 'true').lower() == 'true'
+            except Exception:
+                first_message_quick_flag = True
+
+            if first_message_quick_flag and (session is None or current_step == 'waiting_for_language'):
+                if self._looks_like_direct_or_multi_order(text):
+                    language = user_context.get('language', 'arabic')
+                    # Enter quick order mode immediately
+                    self.db.create_or_update_session(
+                        phone_number, 'waiting_for_quick_order', language,
+                        user_context.get('customer_name'),
+                        order_mode='quick'
+                    )
+                    session = self.db.get_user_session(phone_number) or {}
+                    session['order_mode'] = 'quick'
+                    session['current_step'] = 'waiting_for_quick_order'
+
+                    multi_items = self._safe_extract_multi_items(text)
+                    if multi_items and len(multi_items) > 1:
+                        extracted_data = { 'multi_items': multi_items }
+                        return self._handle_multi_item_selection(phone_number, extracted_data, session, user_context)
+                    # Fallback to structured quick order (handles single item + service/location parsing)
+                    return self._handle_structured_quick_order(phone_number, text, session, user_context)
+
+            # Proceed with normal enhanced handling
 
             # Check for button clicks first - these should always use structured handling
             button_clicks = [
@@ -176,6 +205,71 @@ class EnhancedMessageHandler:
         # If AI insights aren't useful, fall back to structured processing
         logger.info(f"🔄 AI insights not useful for hybrid processing, using structured fallback")
         return self._handle_structured_message(phone_number, text, current_step, session, user_context)
+
+    def _looks_like_direct_or_multi_order(self, text: str) -> bool:
+        """Heuristic to detect if a first message is a direct/multi-item order."""
+        if not text:
+            return False
+        lowered = text.lower().strip()
+        # Common verbs indicating intent to order
+        intent_markers = [
+            'اريد', 'بدي', 'ابي', 'ابغى', 'عايز', 'حاب', 'ارغب',
+            'i want', 'i wanna', 'want', 'give me', 'order'
+        ]
+        # Quantity indicators or conjunctions for multiple items
+        quantity_or_multi = [
+            ' و ', ' and ', ',', '،', 'واحد', 'اثنين', 'ثلاث', 'two', 'three', '1 ', '2 ', '3 ', '٤', '٥', '٦'
+        ]
+        if any(marker in lowered for marker in intent_markers):
+            return True
+        if any(token in lowered for token in quantity_or_multi):
+            return True
+        # Simple item keywords commonly in menu domain
+        item_hints = ['موهيتو', 'mojito', 'شاي', 'tea', 'لاتيه', 'latte', 'قهوة', 'coffee', 'cake', 'كيك', 'ماء', 'water']
+        return any(hint in lowered for hint in item_hints)
+
+    def _safe_extract_multi_items(self, text: str) -> List[Dict]:
+        """Lightweight multi-item extractor: splits on 'and/و' and commas, pulls leading numbers/words."""
+        try:
+            import re
+            normalized = text.strip()
+            # Normalize Arabic numerals to English digits for parsing
+            normalized = self._convert_arabic_numerals(normalized)
+            # Split on conjunctions and commas
+            parts = re.split(r"\s+(?:و|and)\s+|,|،", normalized)
+            items: List[Dict] = []
+            for part in parts:
+                token = part.strip()
+                if not token:
+                    continue
+                # Remove leading verbs
+                token = re.sub(r'^(?:أ?ريد|بدي|ابي|ابغى|عايز|حاب|ارغب|i\s*w(?:ant|anna)|give\s*me)\s+', '', token, flags=re.IGNORECASE).strip()
+                # Quantity defaults to 1
+                quantity = 1
+                # Leading numeric quantity
+                m = re.match(r"^(\d+)\s+(.+)$", token)
+                if m:
+                    quantity = int(m.group(1))
+                    name = m.group(2).strip()
+                else:
+                    # Leading quantity words (basic)
+                    qty_words = {
+                        'one': 1, 'two': 2, 'three': 3,
+                        'واحد': 1, 'واحدة': 1, 'اثنين': 2, 'اتنين': 2, 'ثلاث': 3, 'ثلاثة': 3
+                    }
+                    w = re.match(r"^([A-Za-z\u0600-\u06FF]+)\s+(.+)$", token)
+                    if w and w.group(1) in qty_words:
+                        quantity = qty_words[w.group(1)]
+                        name = w.group(2).strip()
+                    else:
+                        name = token
+                # Clean trivial fillers
+                name = re.sub(r"^(?:of\s+)", '', name, flags=re.IGNORECASE).strip()
+                if name:
+                    items.append({'item_name': name, 'quantity': quantity})
+            return items
+        except Exception:
+            return []
 
     def _build_user_context(self, phone_number: str, session: Dict, current_step: str, original_message: str = '') -> Dict:
         """Build comprehensive user context for AI understanding"""

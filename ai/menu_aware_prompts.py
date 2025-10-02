@@ -211,6 +211,13 @@ INTELLIGENT RESPONSE RULES:
    - waiting_for_location: Table number or address
    - waiting_for_confirmation: Final order confirmation
 
+5. FIRST MESSAGE FAST ORDER DETECTION (CRITICAL):
+   - If the user is at 'waiting_for_language' or has no session, and their message looks like a direct/multi-item order (e.g., contains items with quantities, uses 'and/و' or commas), you MUST treat this as a quick order.
+   - Use action "multi_item_selection" when multiple items are present; otherwise "quick_order_selection" or "item_selection" for a single item.
+   - Extract multi_items array with each {"item_name": string, "quantity": number}.
+   - Also extract service_type ("dine-in" or "delivery") and location (table/address) when present.
+   - If some items are not on the menu, include them in a failed_items list while listing the valid items.
+
 5. STEP-SPECIFIC RULES:
    - At waiting_for_category: If user says "1" or "١", use action "category_selection" with suggested_main_category=1
    - At waiting_for_category: If user says "2" or "٢", use action "category_selection" with suggested_main_category=2  
