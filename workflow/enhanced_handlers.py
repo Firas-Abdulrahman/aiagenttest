@@ -71,7 +71,8 @@ class EnhancedMessageHandler:
 
             if first_message_quick_flag and (session is None or current_step == 'waiting_for_language'):
                 if self._looks_like_direct_or_multi_order(text):
-                    language = user_context.get('language', 'arabic')
+                    # Detect language from script if not set
+                    language = user_context.get('language') or ('arabic' if self._contains_arabic(text) else 'english')
                     # Enter quick order mode immediately
                     self.db.create_or_update_session(
                         phone_number, 'waiting_for_quick_order', language,
@@ -270,6 +271,12 @@ class EnhancedMessageHandler:
             return items
         except Exception:
             return []
+
+    def _contains_arabic(self, text: str) -> bool:
+        try:
+            return any('\u0600' <= ch <= '\u06FF' for ch in text)
+        except Exception:
+            return False
 
     def _build_user_context(self, phone_number: str, session: Dict, current_step: str, original_message: str = '') -> Dict:
         """Build comprehensive user context for AI understanding"""
@@ -2081,7 +2088,13 @@ class EnhancedMessageHandler:
         text_lower = text.lower().strip()
         confirmations = ['نعم', 'اي', 'yes', 'ok', 'حسنا', 'تمام']
         
-        if any(confirmation in text_lower for confirmation in confirmations):
+        def _whole_word_present(term: str, text_value: str) -> bool:
+            import re
+            # Arabic/English word boundary aware
+            pattern = r'(?:^|\s)' + re.escape(term) + r'(?:$|\s|[.,!؟,،])'
+            return re.search(pattern, text_value, flags=re.IGNORECASE) is not None
+
+        if any(_whole_word_present(c, text_lower) for c in confirmations):
             # User is confirming - show quick order interface again
             if language == 'arabic':
                 response = "ممتاز! ما الذي تود طلبه اليوم؟\n\n"
