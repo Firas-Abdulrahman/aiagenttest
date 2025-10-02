@@ -104,7 +104,7 @@ class EnhancedMessageHandler:
             button_clicks = [
                 'confirm_order', 'cancel_order', 'edit_order',
                 'add_item_to_order', 'edit_item_quantity', 'remove_item_from_order',
-                'quick_order_add', 'explore_menu_add', 'dine_in', 'delivery',
+                'quick_order', 'quick_order_add', 'explore_menu', 'explore_menu_add', 'dine_in', 'delivery',
                 'add_more_yes', 'add_more_no', 'add_iced_latte_offer', 'decline_iced_latte_offer'
             ]
             
@@ -125,6 +125,11 @@ class EnhancedMessageHandler:
             ai_result = None
             
             if self.ai and self.ai.is_available():
+                # CRITICAL FIX: Handle button clicks before AI processing
+                if text in ['quick_order', 'explore_menu']:
+                    logger.info(f"🔘 Button click intercepted before AI: '{text}' - using structured handling")
+                    return self._handle_structured_message(phone_number, text, current_step, session, user_context)
+                
                 logger.info(f"🧠 Using enhanced AI for message: '{text}' at step '{current_step}'")
                 # Determine language safely
                 language = 'arabic'  # Default
@@ -2098,6 +2103,31 @@ class EnhancedMessageHandler:
     def _handle_structured_category_selection(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
         """Handle category selection with structured logic"""
         language = user_context.get('language', 'arabic')
+        
+        # Handle button clicks first
+        if text == 'quick_order':
+            logger.info(f"🚀 Quick order button clicked at category step")
+            # Switch to quick order mode
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_quick_order', language,
+                session.get('customer_name') if session else None,
+                order_mode='quick'
+            )
+            # Show quick order interface
+            if language == 'arabic':
+                response = "ممتاز! ما الذي تود طلبه اليوم؟\n\n"
+                response += "اكتب اسم المنتج المطلوب:\n"
+                response += "مثال: موهيتو ازرق"
+            else:
+                response = "Great! What would you like to order today?\n\n"
+                response += "Type the item name you want:\n"
+                response += "Example: blue mojito"
+            return self._create_response(response)
+        
+        elif text == 'explore_menu':
+            logger.info(f"🔍 Explore menu button clicked at category step")
+            # Stay in explore mode and show categories
+            return self._show_traditional_categories(phone_number, language)
         
         # Convert Arabic numerals to English first
         converted_text = self._convert_arabic_numerals(text.strip())
