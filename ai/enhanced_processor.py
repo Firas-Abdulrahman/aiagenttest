@@ -139,13 +139,6 @@ CORE PRINCIPLES:
 5. **Cross-Step Item Selection**: Allow users to mention specific items at any step and intelligently route them
 6. **Fresh Start Flow**: Handle post-order greetings with options to start new or keep previous order
 
-7. **FIRST MESSAGE FAST ORDER DETECTION (CRITICAL)**:
-- On the VERY FIRST user message (no session yet or at 'waiting_for_language'), if the message looks like a direct order (e.g., "2 iraqi tea and 1 mojito and 1 water" or contains multiple items separated by 'and/و' or commas), treat it as a QUICK ORDER.
-- Use action="multi_item_selection" when multiple items are present; otherwise action="quick_order_selection" or "item_selection" for a single item.
-- Extract ALL items with their quantities into extracted_data.multi_items = [{"item_name": str, "quantity": int}, ...].
-- Also extract service_type (dine-in/delivery) and location (table number/address) if present.
-- If any item is not in the menu, still list the valid items and include failed_items for unknown ones; the system will handle the follow-up.
-
 DETAILED MENU STRUCTURE:
 Main Category 1 - Cold Drinks (المشروبات الباردة):
   1. Iced Coffee (ايس كوفي) - Contains: Americano, Iced Coffee, Mocha, Latte variants
@@ -1162,12 +1155,7 @@ Response: {{
     def _validate_quick_order_quantity_step(self, result: Dict, extracted_data: Dict, user_message: str, user_context: Dict = None) -> bool:
         """Validate quick order quantity step"""
         action = result.get('action')
-        valid_actions = ['quantity_selection', 'conversational_response', 'multi_item_selection']
-        
-        # Allow multi_item_selection if user is providing additional items
-        if action == 'multi_item_selection':
-            logger.info("🔄 User providing multi-item order at quantity step - allowing")
-            return True
+        valid_actions = ['quantity_selection', 'conversational_response']
         
         # If user is typing an item name instead of quantity, guide them
         if action == 'item_selection':
@@ -1195,6 +1183,23 @@ Response: {{
         action = result.get('action')
         logger.debug(f"DEBUG: _validate_language_step - action: {action}, extracted_data: {extracted_data}")
         
+        # Allow direct one-shot order at language step by routing to quick order
+        if action in ['item_selection', 'multi_item_selection']:
+            logger.info("🔄 Direct order detected at language step – routing to quick_order_selection")
+            # Ensure language is set for downstream messages
+            language = extracted_data.get('language')
+            if language not in ['arabic', 'english']:
+                detected_language = self._detect_language_fallback(user_message)
+                if detected_language:
+                    extracted_data['language'] = detected_language
+                    logger.info(f"🔧 Auto-detected language for direct order: {detected_language}")
+            # Convert to quick order selection and mark as direct order
+            result['action'] = 'quick_order_selection'
+            result['understood_intent'] = f"User wants to place a direct order: {user_message}"
+            result['extracted_data'] = extracted_data
+            result['direct_order'] = True
+            return True
+
         if action not in ['language_selection', 'intelligent_suggestion']:
             logger.debug(f"DEBUG: _validate_language_step - Invalid action: {action}")
             return False

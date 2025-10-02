@@ -4,7 +4,6 @@ Enhanced Message Handlers with Deep AI Integration
 Provides natural language understanding while maintaining structured workflow
 """
 
-import os
 import logging
 import time
 from typing import Dict, Any, Optional, List
@@ -63,55 +62,11 @@ class EnhancedMessageHandler:
             else:
                 logger.info(f"📋 Session check for {phone_number}: should_reset={should_reset}, current_step={session.get('current_step') if session else 'None'}")
 
-            # One-shot quick order pre-check on first message (feature-flagged)
-            try:
-                first_message_quick_flag = os.getenv('FIRST_MESSAGE_QUICK_ORDER_ENABLED', 'true').lower() == 'true'
-            except Exception:
-                first_message_quick_flag = True
-
-            if first_message_quick_flag and (session is None or current_step == 'waiting_for_language'):
-                if self._looks_like_direct_or_multi_order(text):
-                    # Detect language from script if not set
-                    language = user_context.get('language') or ('arabic' if self._contains_arabic(text) else 'english')
-                    logger.info(f"🌐 First message quick order detected, language: {language}")
-                    
-                    # Enter quick order mode immediately
-                    self.db.create_or_update_session(
-                        phone_number, 'waiting_for_quick_order', language,
-                        user_context.get('customer_name'),
-                        order_mode='quick'
-                    )
-                    session = self.db.get_user_session(phone_number) or {}
-                    session['order_mode'] = 'quick'
-                    session['current_step'] = 'waiting_for_quick_order'
-                    
-                    # Update user context with detected language
-                    user_context['language'] = language
-                    user_context['language_preference'] = language
-
-                    multi_items = self._safe_extract_multi_items(text)
-                    logger.info(f"🔍 Extracted multi items: {multi_items}")
-                    
-                    if multi_items and len(multi_items) > 1:
-                        extracted_data = { 'multi_items': multi_items }
-                        return self._handle_multi_item_selection(phone_number, extracted_data, session, user_context)
-                    # Fallback to structured quick order (handles single item + service/location parsing)
-                    return self._handle_structured_quick_order(phone_number, text, session, user_context)
-
-            # Proceed with normal enhanced handling
-
-            # Normalize common free-text commands to button IDs before any handling
-            lowered_text = text.strip().lower()
-            if lowered_text in ['quick order', 'quickorder', 'fast order']:
-                text = 'quick_order'
-            elif lowered_text in ['explore menu', 'explore', 'show menu', 'show the menu']:
-                text = 'explore_menu'
-
             # Check for button clicks first - these should always use structured handling
             button_clicks = [
                 'confirm_order', 'cancel_order', 'edit_order',
                 'add_item_to_order', 'edit_item_quantity', 'remove_item_from_order',
-                'quick_order', 'quick_order_add', 'explore_menu', 'explore_menu_add', 'dine_in', 'delivery',
+                'quick_order_add', 'explore_menu_add', 'dine_in', 'delivery',
                 'add_more_yes', 'add_more_no', 'add_iced_latte_offer', 'decline_iced_latte_offer'
             ]
             
@@ -132,11 +87,6 @@ class EnhancedMessageHandler:
             ai_result = None
             
             if self.ai and self.ai.is_available():
-                # CRITICAL FIX: Handle button clicks before AI processing
-                if text in ['quick_order', 'explore_menu']:
-                    logger.info(f"🔘 Button click intercepted before AI: '{text}' - using structured handling")
-                    return self._handle_structured_message(phone_number, text, current_step, session, user_context)
-                
                 logger.info(f"🧠 Using enhanced AI for message: '{text}' at step '{current_step}'")
                 # Determine language safely
                 language = 'arabic'  # Default
@@ -226,122 +176,6 @@ class EnhancedMessageHandler:
         # If AI insights aren't useful, fall back to structured processing
         logger.info(f"🔄 AI insights not useful for hybrid processing, using structured fallback")
         return self._handle_structured_message(phone_number, text, current_step, session, user_context)
-
-    def _looks_like_direct_or_multi_order(self, text: str) -> bool:
-        """Heuristic to detect if a first message is a direct/multi-item order."""
-        if not text:
-            return False
-        lowered = text.lower().strip()
-        # Common verbs indicating intent to order
-        intent_markers = [
-            'اريد', 'بدي', 'ابي', 'ابغى', 'عايز', 'حاب', 'ارغب',
-            'i want', 'i wanna', 'want', 'give me', 'order'
-        ]
-        # Quantity indicators or conjunctions for multiple items
-        quantity_or_multi = [
-            ' و ', ' and ', ',', '،', 'واحد', 'اثنين', 'ثلاث', 'two', 'three', '1 ', '2 ', '3 ', '٤', '٥', '٦'
-        ]
-        if any(marker in lowered for marker in intent_markers):
-            return True
-        if any(token in lowered for token in quantity_or_multi):
-            return True
-        # Simple item keywords commonly in menu domain
-        item_hints = ['موهيتو', 'mojito', 'شاي', 'tea', 'لاتيه', 'latte', 'قهوة', 'coffee', 'cake', 'كيك', 'ماء', 'water']
-        return any(hint in lowered for hint in item_hints)
-
-    def _safe_extract_multi_items(self, text: str) -> List[Dict]:
-        """Enhanced multi-item extractor for Arabic patterns like 'واحد جاي عراقي واثنين موهيتو'."""
-        try:
-            import re
-            normalized = text.strip()
-            # Normalize Arabic numerals to English digits for parsing
-            normalized = self._convert_arabic_numerals(normalized)
-            
-            # Remove leading verbs first
-            normalized = re.sub(r'^(?:مرحبا\s+)?(?:اريد|أريد|بدي|ابي|ابغى|عايز|حاب|ارغب|i\s*w(?:ant|anna)|give\s*me)\s+', '', normalized, flags=re.IGNORECASE).strip()
-            
-            # Enhanced splitting: split on conjunctions AND on quantity word boundaries
-            # Pattern: واحد X واثنين Y -> ["واحد X", "واثنين Y"]
-            parts = []
-            
-            # First try splitting on explicit conjunctions
-            conjunction_parts = re.split(r'\s+(?:و|and)\s+|,|،', normalized)
-            
-            if len(conjunction_parts) > 1:
-                # Multiple parts found via conjunctions
-                parts = conjunction_parts
-            else:
-                # Single part - check if it contains multiple quantity words
-                qty_pattern = r'(واحد|واحدة|اثنين|اتنين|ثنين|ثلاث|ثلاثة|أربع|أربعة|خمس|خمسة|one|two|three|four|five|\d+)'
-                
-                # Find all quantity word positions
-                matches = list(re.finditer(qty_pattern, normalized, flags=re.IGNORECASE))
-                
-                if len(matches) > 1:
-                    # Multiple quantities found - split at each quantity word (except the first)
-                    parts = []
-                    start = 0
-                    for i, match in enumerate(matches):
-                        if i == 0:
-                            continue  # Skip first match
-                        # Extract from previous position to current match start
-                        part = normalized[start:match.start()].strip()
-                        if part:
-                            parts.append(part)
-                        start = match.start()
-                    # Add the last part
-                    last_part = normalized[start:].strip()
-                    if last_part:
-                        parts.append(last_part)
-                else:
-                    # Single item
-                    parts = [normalized]
-            
-            items: List[Dict] = []
-            for part in parts:
-                token = part.strip()
-                if not token:
-                    continue
-                
-                # Quantity defaults to 1
-                quantity = 1
-                
-                # Leading numeric quantity
-                m = re.match(r"^(\d+)\s+(.+)$", token)
-                if m:
-                    quantity = int(m.group(1))
-                    name = m.group(2).strip()
-                else:
-                    # Leading quantity words (enhanced)
-                    qty_words = {
-                        'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
-                        'واحد': 1, 'واحدة': 1, 'اثنين': 2, 'اتنين': 2, 'ثنين': 2,
-                        'ثلاث': 3, 'ثلاثة': 3, 'أربع': 4, 'أربعة': 4, 'اربع': 4, 'اربعة': 4,
-                        'خمس': 5, 'خمسة': 5
-                    }
-                    w = re.match(r"^([A-Za-z\u0600-\u06FF]+)\s+(.+)$", token)
-                    if w and w.group(1) in qty_words:
-                        quantity = qty_words[w.group(1)]
-                        name = w.group(2).strip()
-                    else:
-                        name = token
-                
-                # Clean trivial fillers and trailing conjunctions
-                name = re.sub(r"^(?:of\s+)", '', name, flags=re.IGNORECASE).strip()
-                name = re.sub(r'\s+و\s*$', '', name).strip()  # Remove trailing "و" (and)
-                if name:
-                    items.append({'item_name': name, 'quantity': quantity})
-            
-            return items
-        except Exception as e:
-            logger.error(f"Error in _safe_extract_multi_items: {e}")
-            return []
-
-    def _contains_arabic(self, text: str) -> bool:
-        try:
-            return any('\u0600' <= ch <= '\u06FF' for ch in text)
-        except Exception:
-            return False
 
     def _build_user_context(self, phone_number: str, session: Dict, current_step: str, original_message: str = '') -> Dict:
         """Build comprehensive user context for AI understanding"""
@@ -729,18 +563,20 @@ class EnhancedMessageHandler:
                 response += f"• {item['item_name']} × {item['quantity']} - {item['price']} دينار\n"
             
             if failed_items:
-                response += f"\n⚠️ لم أتمكن من العثور على: {', '.join(failed_items)}"
-            
-            response += "\nهل تريد إضافة المزيد من الأصناف؟\n\n1. نعم\n2. لا"
+                response += f"\n⚠️ لم أتمكن من العثور على: {', '.join(failed_items)}\nهذه العناصر غير متاحة في قائمتنا ولن تُضاف إلى الطلب."
+                response += "\nهل تريد المتابعة بهذه العناصر فقط أم إضافة عنصر بديل؟\n\n1. المتابعة\n2. إضافة عنصر بديل"
+            else:
+                response += "\nهل تريد إضافة المزيد من الأصناف؟\n\n1. نعم\n2. لا"
         else:
             response = "Added the following items to your order:\n\n"
             for item in processed_items:
                 response += f"• {item['item_name']} × {item['quantity']} - {item['price']} IQD\n"
             
             if failed_items:
-                response += f"\n⚠️ Could not find: {', '.join(failed_items)}"
-            
-            response += "\nDo you want to add more items?\n\n1. Yes\n2. No"
+                response += f"\n⚠️ Could not find: {', '.join(failed_items)}\nThese items are not in the menu and will not be added."
+                response += "\nDo you want to continue with the available items only or add a replacement?\n\n1. Continue\n2. Add a replacement"
+            else:
+                response += "\nDo you want to add more items?\n\n1. Yes\n2. No"
         
         # Update session to waiting for additional items
         self.db.create_or_update_session(
@@ -1968,11 +1804,6 @@ class EnhancedMessageHandler:
         """Fallback to structured message processing when AI is not available"""
         logger.info(f"🔄 Using structured processing for: '{text}' at step '{current_step}'")
         
-        # Defensive programming: ensure session is a dict
-        if session is not None and not isinstance(session, dict):
-            logger.error(f"❌ Session is not a dictionary in _handle_structured_message: {type(session)} = {session}")
-            session = None
-        
         language = user_context.get('language', 'arabic')
         
         # Check for back navigation keywords first
@@ -2111,31 +1942,6 @@ class EnhancedMessageHandler:
         """Handle category selection with structured logic"""
         language = user_context.get('language', 'arabic')
         
-        # Handle button clicks first
-        if text == 'quick_order':
-            logger.info(f"🚀 Quick order button clicked at category step")
-            # Switch to quick order mode
-            self.db.create_or_update_session(
-                phone_number, 'waiting_for_quick_order', language,
-                session.get('customer_name') if session else None,
-                order_mode='quick'
-            )
-            # Show quick order interface
-            if language == 'arabic':
-                response = "ممتاز! ما الذي تود طلبه اليوم؟\n\n"
-                response += "اكتب اسم المنتج المطلوب:\n"
-                response += "مثال: موهيتو ازرق"
-            else:
-                response = "Great! What would you like to order today?\n\n"
-                response += "Type the item name you want:\n"
-                response += "Example: blue mojito"
-            return self._create_response(response)
-        
-        elif text == 'explore_menu':
-            logger.info(f"🔍 Explore menu button clicked at category step")
-            # Stay in explore mode and show categories
-            return self._show_traditional_categories(phone_number, language)
-        
         # Convert Arabic numerals to English first
         converted_text = self._convert_arabic_numerals(text.strip())
         
@@ -2183,13 +1989,7 @@ class EnhancedMessageHandler:
         text_lower = text.lower().strip()
         confirmations = ['نعم', 'اي', 'yes', 'ok', 'حسنا', 'تمام']
         
-        def _whole_word_present(term: str, text_value: str) -> bool:
-            import re
-            # Arabic/English word boundary aware
-            pattern = r'(?:^|\s)' + re.escape(term) + r'(?:$|\s|[.,!؟,،])'
-            return re.search(pattern, text_value, flags=re.IGNORECASE) is not None
-
-        if any(_whole_word_present(c, text_lower) for c in confirmations):
+        if any(confirmation in text_lower for confirmation in confirmations):
             # User is confirming - show quick order interface again
             if language == 'arabic':
                 response = "ممتاز! ما الذي تود طلبه اليوم؟\n\n"
@@ -2202,28 +2002,6 @@ class EnhancedMessageHandler:
             
             return self._create_response(response)
         
-        # Guard: ignore greetings or control keywords so we don't try to match them as items
-        greeting_keywords = ['hello', 'hi', 'hey', 'مرحبا', 'هلو', 'اهلا', 'السلام عليكم']
-        control_keywords = ['cancel_order', 'cancel order', 'الغاء', 'الغاء الطلب', 'إلغاء الطلب']
-        if text_lower in greeting_keywords:
-            if language == 'arabic':
-                response = "ممتاز! ما الذي تود طلبه اليوم؟\n\n"
-                response += "اكتب اسم المنتج المطلوب:\n"
-                response += "مثال: موهيتو ازرق"
-            else:
-                response = "Great! What would you like to order today?\n\n"
-                response += "Type the item name you want:\n"
-                response += "Example: blue mojito"
-            return self._create_response(response)
-        if text_lower in control_keywords:
-            if session and session.get('current_step') == 'waiting_for_confirmation':
-                return self._cancel_order(phone_number, session, user_context)
-            else:
-                if language == 'arabic':
-                    return self._create_response("لا يوجد طلب قيد التأكيد لإلغائه. اكتب اسم المنتج للطلب.")
-                else:
-                    return self._create_response("There is no order at confirmation to cancel. Please type an item name to order.")
-
         # Parse the input for quantity, item name, service type, and optional table number
         # Example: "2 موهيتو ازرق للطاولة 5" or "٣ قهوة توصيل" or "٢ موهيتو ازرق في المقهى"
         text = text.strip()
@@ -2422,11 +2200,13 @@ class EnhancedMessageHandler:
                 response += "المنتجات المتاحة:\n"
                 for item in all_items[:5]:  # Show first 5 items as suggestions
                     response += f"• {item['item_name_ar']} - {item['price']} دينار\n"
+                response += "\nأو اختر 'استكشاف القائمة' للتصفح الكامل."
             else:
                 response = f"Could not find '{item_name}' in our menu.\n\n"
                 response += "Available items:\n"
                 for item in all_items[:5]:  # Show first 5 items as suggestions
                     response += f"• {item['item_name_en']} - {item['price']} IQD\n"
+                response += "\nOr choose 'Explore Menu' for full browsing."
             
             return self._create_response(response)
     
@@ -2630,11 +2410,13 @@ class EnhancedMessageHandler:
                 response += "المنتجات المتاحة:\n"
                 for item in all_items[:5]:  # Show first 5 items as suggestions
                     response += f"• {item['item_name_ar']} - {item['price']} دينار\n"
+                response += "\nأو اختر 'استكشاف القائمة' للتصفح الكامل."
             else:
                 response = f"Could not find '{item_name}' in our menu.\n\n"
                 response += "Available items:\n"
                 for item in all_items[:5]:  # Show first 5 items as suggestions
                     response += f"• {item['item_name_en']} - {item['price']} IQD\n"
+                response += "\nOr choose 'Explore Menu' for full browsing."
             
             return self._create_response(response)
 
@@ -4889,24 +4671,6 @@ class EnhancedMessageHandler:
 
         # Clean the input - remove numbers and extra spaces
         cleaned_text = re.sub(r'\d+', '', text).strip()
-
-        # English→Arabic alias mapping for common items so matching works even if user types English
-        english_to_arabic_aliases = {
-            'blue mojito': 'موهيتو ازرق',
-            'mojito blue': 'موهيتو ازرق',
-            'spanish latte': 'لاتيه اسباني',
-            'iced americano': 'ايس امريكانو',
-            'iced coffee': 'ايس كوفي',
-            'iced mocha': 'ايس موكا',
-            'hazelnut iced latte': 'لاتيه مثلج بندق',
-        }
-
-        text_lower_en = text.lower().strip()
-        if language != 'arabic' and text_lower_en in english_to_arabic_aliases:
-            # Replace with Arabic alias but keep original for logs
-            logger.info(f"🔄 Alias map: '{text}' → '{english_to_arabic_aliases[text_lower_en]}' for matching")
-            text = english_to_arabic_aliases[text_lower_en]
-            cleaned_text = english_to_arabic_aliases[text_lower_en]
 
         # Tokenize, remove common stop-words, and strip attached prefixes
         common_words = ['اريد', 'عايز', 'بغيت', 'بدي', 'ممكن', 'لو', 'سمحت', 'من', 'فى', 'في', 'على', 'الى', 'إلى', 'و', 'او', 'أو', 'هذا', 'هذه', 'هذا', 'ال', 'واحد', 'اثنين', 'ثلاثة', 'اربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة', 'عشرة']
