@@ -100,6 +100,13 @@ class EnhancedMessageHandler:
 
             # Proceed with normal enhanced handling
 
+            # Normalize common free-text commands to button IDs before any handling
+            lowered_text = text.strip().lower()
+            if lowered_text in ['quick order', 'quickorder', 'fast order']:
+                text = 'quick_order'
+            elif lowered_text in ['explore menu', 'explore', 'show menu', 'show the menu']:
+                text = 'explore_menu'
+
             # Check for button clicks first - these should always use structured handling
             button_clicks = [
                 'confirm_order', 'cancel_order', 'edit_order',
@@ -2393,13 +2400,11 @@ class EnhancedMessageHandler:
                 response += "المنتجات المتاحة:\n"
                 for item in all_items[:5]:  # Show first 5 items as suggestions
                     response += f"• {item['item_name_ar']} - {item['price']} دينار\n"
-                response += "\nأو اختر 'استكشاف القائمة' للتصفح الكامل."
             else:
                 response = f"Could not find '{item_name}' in our menu.\n\n"
                 response += "Available items:\n"
                 for item in all_items[:5]:  # Show first 5 items as suggestions
                     response += f"• {item['item_name_en']} - {item['price']} IQD\n"
-                response += "\nOr choose 'Explore Menu' for full browsing."
             
             return self._create_response(response)
     
@@ -2603,13 +2608,11 @@ class EnhancedMessageHandler:
                 response += "المنتجات المتاحة:\n"
                 for item in all_items[:5]:  # Show first 5 items as suggestions
                     response += f"• {item['item_name_ar']} - {item['price']} دينار\n"
-                response += "\nأو اختر 'استكشاف القائمة' للتصفح الكامل."
             else:
                 response = f"Could not find '{item_name}' in our menu.\n\n"
                 response += "Available items:\n"
                 for item in all_items[:5]:  # Show first 5 items as suggestions
                     response += f"• {item['item_name_en']} - {item['price']} IQD\n"
-                response += "\nOr choose 'Explore Menu' for full browsing."
             
             return self._create_response(response)
 
@@ -4864,6 +4867,24 @@ class EnhancedMessageHandler:
 
         # Clean the input - remove numbers and extra spaces
         cleaned_text = re.sub(r'\d+', '', text).strip()
+
+        # English→Arabic alias mapping for common items so matching works even if user types English
+        english_to_arabic_aliases = {
+            'blue mojito': 'موهيتو ازرق',
+            'mojito blue': 'موهيتو ازرق',
+            'spanish latte': 'لاتيه اسباني',
+            'iced americano': 'ايس امريكانو',
+            'iced coffee': 'ايس كوفي',
+            'iced mocha': 'ايس موكا',
+            'hazelnut iced latte': 'لاتيه مثلج بندق',
+        }
+
+        text_lower_en = text.lower().strip()
+        if language != 'arabic' and text_lower_en in english_to_arabic_aliases:
+            # Replace with Arabic alias but keep original for logs
+            logger.info(f"🔄 Alias map: '{text}' → '{english_to_arabic_aliases[text_lower_en]}' for matching")
+            text = english_to_arabic_aliases[text_lower_en]
+            cleaned_text = english_to_arabic_aliases[text_lower_en]
 
         # Tokenize, remove common stop-words, and strip attached prefixes
         common_words = ['اريد', 'عايز', 'بغيت', 'بدي', 'ممكن', 'لو', 'سمحت', 'من', 'فى', 'في', 'على', 'الى', 'إلى', 'و', 'او', 'أو', 'هذا', 'هذه', 'هذا', 'ال', 'واحد', 'اثنين', 'ثلاثة', 'اربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة', 'عشرة']
