@@ -1677,10 +1677,16 @@ Response: {{
         """Validate location input step with enhanced table number validation"""
         action = result.get('action')
         
-        # CRITICAL FIX: Allow more flexible actions for location step
-        valid_actions = ['location_input', 'conversational_response', 'intelligent_suggestion']
+        # Allow multi-item input at location step if it carries location/service_type context
+        valid_actions = ['location_input', 'conversational_response', 'intelligent_suggestion', 'multi_item_selection']
         if action not in valid_actions:
             return False
+        
+        # If we received multi_item_selection here, accept if a location or service_type was extracted
+        if action == 'multi_item_selection':
+            if extracted_data.get('location') or extracted_data.get('service_type'):
+                return True
+            # Otherwise, fall through to normal checks
         
         if action == 'location_input':
             location = extracted_data.get('location')

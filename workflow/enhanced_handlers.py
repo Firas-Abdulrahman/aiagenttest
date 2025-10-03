@@ -4687,6 +4687,14 @@ class EnhancedMessageHandler:
 
         # Clean the input - remove numbers and extra spaces
         cleaned_text = re.sub(r'\d+', '', text).strip()
+        
+        # Dialect synonyms normalization (Iraqi/Levantine)
+        dialect_map = {
+            'جاي': 'شاي',  # Iraqi colloquial for tea
+            'مي': 'ماء',    # Iraqi colloquial for water
+        }
+        for colloq, standard in dialect_map.items():
+            cleaned_text = cleaned_text.replace(colloq, standard)
 
         # Tokenize, remove common stop-words, and strip attached prefixes
         common_words = ['اريد', 'عايز', 'بغيت', 'بدي', 'ممكن', 'لو', 'سمحت', 'من', 'فى', 'في', 'على', 'الى', 'إلى', 'و', 'او', 'أو', 'هذا', 'هذه', 'هذا', 'ال', 'واحد', 'اثنين', 'ثلاثة', 'اربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة', 'عشرة']
