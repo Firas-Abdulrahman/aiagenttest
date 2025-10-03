@@ -597,6 +597,40 @@ class EnhancedMessageHandler:
         # If AI already extracted multiple items, process them directly
         multi_items = extracted_data.get('multi_items')
         if isinstance(multi_items, list) and len(multi_items) > 0:
+            # Best-effort extraction of service/location if missing
+            if not extracted_data.get('service_type') or not extracted_data.get('location'):
+                try:
+                    import re
+                    msg = original_user_message or ''
+                    # Convert Arabic numerals to English for regex
+                    msg = self._convert_arabic_numerals(msg)
+                    detected_service = extracted_data.get('service_type')
+                    detected_location = extracted_data.get('location')
+                    # Table number implies dine-in
+                    table_match = None
+                    for pattern in [r'طاولة\s*رقم\s*(\d+)', r'للطاولة\s+(\d+)', r'طاولة\s+(\d+)', r'table\s*number\s*(\d+)', r'table\s*(\d+)']:
+                        table_match = re.search(pattern, msg, re.IGNORECASE)
+                        if table_match:
+                            detected_service = detected_service or 'dine-in'
+                            detected_location = detected_location or f"Table {table_match.group(1)}"
+                            break
+                    # Delivery keywords
+                    if not detected_service:
+                        if re.search(r'\b(delivery|deliver|وصل|وصلي|وصله|توصيل)\b', msg, re.IGNORECASE):
+                            detected_service = 'delivery'
+                    # Location phrase after إلى/الى or general free-text if delivery
+                    if not detected_location:
+                        loc_match = re.search(r'(?:إ?لى|الى)\s+([^\n]+)$', msg)
+                        if loc_match:
+                            detected_location = loc_match.group(1).strip()
+                    # Persist back into extracted_data for downstream handler
+                    if detected_service:
+                        extracted_data['service_type'] = detected_service
+                    if detected_location:
+                        extracted_data['location'] = detected_location
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to derive service/location from message: {e}")
+
             # Set quick order mode in session
             self.db.create_or_update_session(
                 phone_number, 'waiting_for_quick_order', language,
