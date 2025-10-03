@@ -544,17 +544,26 @@ class EnhancedMessageHandler:
                     else:
                         return self._create_response("Select table number (1-7):")
                 
-                # Handle delivery (ask for address)
+                # Handle delivery: if we already have a location, go straight to confirmation; otherwise ask
                 elif detected_service_type == 'delivery':
-                    self.db.create_or_update_session(
-                        phone_number, 'waiting_for_location', language,
-                        session.get('customer_name'),
-                        order_mode='quick'
-                    )
-                    if language == 'arabic':
-                        return self._create_response("الرجاء مشاركة عنوانك أو موقعك للتوصيل:")
+                    if detected_location:
+                        self.db.update_order_details(phone_number, location=detected_location)
+                        self.db.create_or_update_session(
+                            phone_number, 'waiting_for_confirmation', language,
+                            session.get('customer_name'),
+                            order_mode='quick'
+                        )
+                        return self._show_quick_order_confirmation(phone_number, session, user_context)
                     else:
-                        return self._create_response("Please share your address or location for delivery:")
+                        self.db.create_or_update_session(
+                            phone_number, 'waiting_for_location', language,
+                            session.get('customer_name'),
+                            order_mode='quick'
+                        )
+                        if language == 'arabic':
+                            return self._create_response("الرجاء مشاركة عنوانك أو موقعك للتوصيل:")
+                        else:
+                            return self._create_response("Please share your address or location for delivery:")
         
         # Regular flow: Build response message and ask for additional items
         if language == 'arabic':
