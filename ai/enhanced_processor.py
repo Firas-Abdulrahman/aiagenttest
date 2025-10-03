@@ -124,7 +124,9 @@ class EnhancedAIProcessor:
                 return self._generate_enhanced_fallback(user_message, current_step, user_context, language)
 
         except Exception as e:
+            logger.error(f"[AI ERROR] Exception in understand_natural_language: {e}", exc_info=True)
             self._handle_ai_failure(e)
+            # Always return a fallback, never raise or exit
             return self._generate_enhanced_fallback(user_message, current_step, user_context, language)
 
     def _get_enhanced_system_prompt(self) -> str:
