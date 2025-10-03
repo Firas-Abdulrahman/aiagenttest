@@ -40,9 +40,27 @@ class EnhancedMessageHandler:
             # Build initial user context (may be updated after session reset)
             current_step = session.get('current_step') if session else 'waiting_for_language'
             user_context = self._build_user_context(phone_number, session, current_step, text)
-            
             # Update user context with extracted customer name
             user_context['customer_name'] = customer_name
+
+            # --- LANGUAGE FIX: Detect and persist language from first message if not set ---
+            # If language is not set in session, try to detect from message and persist
+            if not session or not session.get('language_preference'):
+                detected_language = None
+                # Simple detection: Arabic letters or common Arabic words
+                if any(c in text for c in 'ابتثجحخدذرزسشصضطظعغفقكلمنهويءآأإؤئىة') or any(word in text for word in ['مرحبا', 'طلب', 'توصيل', 'عربي', 'جاي', 'موهيتو']):
+                    detected_language = 'arabic'
+                elif any(word in text.lower() for word in ['hello', 'order', 'delivery', 'english', 'tea', 'mojito']):
+                    detected_language = 'english'
+                # Fallback: if message is mostly Arabic letters
+                if not detected_language and sum(1 for c in text if c >= '\u0600' and c <= '\u06FF') > len(text) // 3:
+                    detected_language = 'arabic'
+                if detected_language:
+                    user_context['language'] = detected_language
+                    if session:
+                        session['language_preference'] = detected_language
+                        self.db.create_or_update_session(phone_number, current_step, detected_language, session.get('customer_name'), order_mode=session.get('order_mode'))
+                    logger.info(f"🌐 Detected and set language: {detected_language} for {phone_number}")
             
             # Check for session reset (fresh start intent or timeout)
             should_reset = self._should_reset_session(session, text)
