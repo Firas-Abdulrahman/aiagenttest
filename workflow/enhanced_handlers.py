@@ -5114,7 +5114,7 @@ class EnhancedMessageHandler:
                     )
                     
                     if language == 'arabic':
-                        return self._create_response("🎉 تم إضافة آيس لاتيه بخصم 50% إلى طلبك!\n\nالآن، لننتقل إلى اختيار نوع الخدمة.")
+                        return self._create_response("🎉 تم إضافة آيس لاتيه بخصم 50% إلى طلبك!\n\nالآن، لننتقل إلى اختيار نوع الخدمة \n توصيل \n داخل المطعم.")
                     else:
                         return self._create_response("🎉 Iced Latte at 50% off has been added to your order!\n\nNow, let's proceed to service selection.")
             else:
