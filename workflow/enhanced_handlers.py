@@ -5162,9 +5162,9 @@ class EnhancedMessageHandler:
                 )
                 
                 if language == 'arabic':
-                    return self._create_response("حسناً، لننتقل إلى اختيار نوع الخدمة.")
+                    return self._create_response("حسناً، لننتقل إلى اختيار نوع الخدمة  \n توصيل \n في المطعم .")
                 else:
-                    return self._create_response("Alright, let's proceed to service selection.")
+                    return self._create_response(f"Alright, let's proceed to service selection. \n Delivery \n Dine in")
         
         # Handle text input (fallback)
         text_lower = text.lower().strip()
