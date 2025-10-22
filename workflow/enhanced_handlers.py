@@ -3103,7 +3103,7 @@ class EnhancedMessageHandler:
                 session.get('customer_name'),
                 order_mode=session.get('order_mode')
             )
-            return self._show_main_categories(phone_number, language)
+            return self._show_replacement_categories(phone_number, language)
         # Fallback: repeat replacement choice without summary
         if language == 'arabic':
             return self._create_interactive_response(
@@ -3125,6 +3125,41 @@ class EnhancedMessageHandler:
                     {"type": "reply", "reply": {"id": "replacement_add", "title": "Add Replacement"}},
                 ]
             )
+
+    def _show_replacement_categories(self, phone_number: str, language: str) -> Dict:
+        """Show category selection for replacement items with contextual message"""
+        if language == 'arabic':
+            header_text = "إضافة بديل"
+            body_text = "اختر طريقة إضافة البديل:"
+            footer_text = "اختر الطريقة المناسبة لك"
+            
+            buttons = [
+                {
+                    "id": "quick_order",
+                    "title": "1. الطلب السريع"
+                },
+                {
+                    "id": "explore_menu",
+                    "title": "2. استكشاف القائمة"
+                }
+            ]
+        else:
+            header_text = "Add Replacement"
+            body_text = "Choose how to add replacement:"
+            footer_text = "Choose the method that suits you"
+            
+            buttons = [
+                {
+                    "id": "quick_order",
+                    "title": "1. Quick Order"
+                },
+                {
+                    "id": "explore_menu",
+                    "title": "2. Explore Menu"
+                }
+            ]
+        
+        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
 
     def _show_quick_order_interface(self, phone_number: str, language: str) -> Dict:
         """Show quick order interface"""
