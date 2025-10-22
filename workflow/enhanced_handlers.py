@@ -2027,12 +2027,6 @@ class EnhancedMessageHandler:
         """Handle category selection with structured logic"""
         language = user_context.get('language', 'arabic')
         
-        # Detect price intent and guide user to choose a category first
-        text_lower = text.lower().strip()
-        if self._is_price_intent(text_lower):
-            logger.info("💬 Price intent detected at category step; showing guidance.")
-            return self._show_category_guidance_for_prices(phone_number, language)
-        
         # Convert Arabic numerals to English first
         converted_text = self._convert_arabic_numerals(text.strip())
         
@@ -2531,12 +2525,6 @@ class EnhancedMessageHandler:
         
         if not main_category_id:
             return self._create_response("خطأ في النظام. الرجاء المحاولة مرة أخرى.")
-        
-        # Detect price intent and guide user to choose a sub-category first
-        text_lower = text.lower().strip()
-        if self._is_price_intent(text_lower):
-            logger.info("💬 Price intent detected at sub-category step; showing guidance.")
-            return self._show_subcategory_guidance_for_prices(phone_number, main_category_id, language)
         
         # Try to extract number from mixed input (e.g., "4 iced tea" -> "4")
         import re
@@ -3420,104 +3408,6 @@ class EnhancedMessageHandler:
                 logger.debug(f"🔍 Created button {i}: {button}")
         
         logger.info(f"🔍 Created {len(buttons)} buttons for traditional categories")
-
-    def _show_category_guidance_for_prices(self, phone_number: str, language: str) -> Dict:
-        """Show guidance message and category buttons when user asks for prices at category step"""
-        categories = self.db.get_main_categories()
-        if language == 'arabic':
-            header_text = "الأسعار"
-            body_text = (
-                "فهمت أنك تريد الأسعار.\n"
-                "يرجى اختيار الفئة لرؤية الأسعار لكل منتج.\n\n"
-                "إليك خياراتنا المتاحة:\n"
-            )
-            footer_text = "اختر رقم الفئة التي تفضلها"
-            buttons = []
-            for i, cat in enumerate(categories, 1):
-                if i == 1:
-                    title = "1. المشروبات الباردة"
-                elif i == 2:
-                    title = "2. المشروبات الحارة"
-                elif i == 3:
-                    title = "3. الحلويات"
-                else:
-                    title = f"{i}. {cat['name_ar'][:15]}"
-                buttons.append({
-                    "type": "reply",
-                    "reply": {"id": f"category_{cat['id']}", "title": title}
-                })
-                body_text += f"{title}\n"
-        else:
-            header_text = "Prices"
-            body_text = (
-                "I understand you want prices.\n"
-                "Please choose a category to see item prices.\n\n"
-                "Here are our options:\n"
-            )
-            footer_text = "Choose the category number you prefer"
-            buttons = []
-            for i, cat in enumerate(categories, 1):
-                if i == 1:
-                    title = "1. Cold Drinks"
-                elif i == 2:
-                    title = "2. Hot Drinks"
-                elif i == 3:
-                    title = "3. Pastries"
-                else:
-                    title = f"{i}. {cat['name_en'][:15]}"
-                buttons.append({
-                    "type": "reply",
-                    "reply": {"id": f"category_{cat['id']}", "title": title}
-                })
-                body_text += f"{title}\n"
-        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
-
-    def _show_subcategory_guidance_for_prices(self, phone_number: str, main_category_id: Any, language: str) -> Dict:
-        """Show guidance message and sub-category list when user asks for prices at sub-category step"""
-        # Normalize main_category_id and fetch category info
-        if isinstance(main_category_id, dict):
-            main_category_id = main_category_id.get('id', main_category_id)
-        elif not isinstance(main_category_id, int):
-            try:
-                main_category_id = int(main_category_id)
-            except (ValueError, TypeError):
-                return self._create_response("خطأ في النظام. الرجاء المحاولة مرة أخرى")
-        
-        main_categories = self.db.get_main_categories()
-        selected_category = next((c for c in main_categories if c['id'] == main_category_id), None)
-        category_name_ar = selected_category['name_ar'] if selected_category else "فئة غير معروفة"
-        category_name_en = selected_category['name_en'] if selected_category else "Unknown Category"
-        
-        sub_categories = self.db.get_sub_categories(main_category_id)
-        if language == 'arabic':
-            message = (
-                "فهمت أنك تريد الأسعار.\n"
-                f"يرجى اختيار الفئة الفرعية ضمن {category_name_ar} لرؤية الأسعار لكل منتج.\n\n"
-                "الفئات الفرعية المتاحة:\n"
-            )
-            for i, sub_cat in enumerate(sub_categories, 1):
-                message += f"{i}. {sub_cat['name_ar']}\n"
-            message += "\nاكتب رقم الفئة الفرعية التي تفضلها"
-        else:
-            message = (
-                "I understand you want prices.\n"
-                f"Please choose a sub-category under {category_name_en} to see item prices.\n\n"
-                "Available sub-categories:\n"
-            )
-            for i, sub_cat in enumerate(sub_categories, 1):
-                message += f"{i}. {sub_cat['name_en']}\n"
-            message += "\nType the number of the sub-category you prefer"
-        return self._create_response(message)
-
-    def _is_price_intent(self, text_lower: str) -> bool:
-        """Lightweight detection of price intent keywords in Arabic/English"""
-        price_keywords = [
-            # Arabic
-            "سعر", "اسعار", "الاسعار", "الأسعار", "كم السعر", "كم الاسعار",
-            # English
-            "price", "prices", "cost", "costs"
-        ]
-        return any(k in text_lower for k in price_keywords)
         
         # Validate buttons for WhatsApp requirements
         if len(buttons) > 3:

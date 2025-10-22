@@ -309,19 +309,6 @@ def create_flask_app():
         logger.info("✅ Configuration loaded and validated successfully")
     except Exception as e:
         logger.error(f"❌ Configuration error: {e}")
-        logger.warning("⚠️ Falling back to minimal dev config for local testing")
-        config = {
-            'whatsapp_token': os.environ.get('WHATSAPP_TOKEN', ''),
-            'phone_number_id': os.environ.get('PHONE_NUMBER_ID', '000000'),
-            'waba_id': os.environ.get('WHATSAPP_BUSINESS_ACCOUNT_ID', ''),
-            'verify_token': os.environ.get('VERIFY_TOKEN', 'dev'),
-            'db_path': os.environ.get('DB_PATH', 'hef_cafe.db'),
-            'openai_api_key': os.environ.get('OPENAI_API_KEY', None),
-            'port': os.environ.get('PORT', '5000'),
-            'ai_disable_on_quota': os.environ.get('AI_DISABLE_ON_QUOTA', 'true'),
-            'ai_fallback_enabled': os.environ.get('AI_FALLBACK_ENABLED', 'true'),
-            'ai_quota_cache_duration': os.environ.get('AI_QUOTA_CACHE_DURATION', '300')
-        }
         return None
 
     # Initialize thread-safe workflow
