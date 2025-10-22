@@ -85,7 +85,8 @@ class EnhancedMessageHandler:
                 'confirm_order', 'cancel_order', 'edit_order',
                 'add_item_to_order', 'edit_item_quantity', 'remove_item_from_order',
                 'quick_order_add', 'explore_menu_add', 'dine_in', 'delivery',
-                'add_more_yes', 'add_more_no', 'add_iced_latte_offer', 'decline_iced_latte_offer'
+                'add_more_yes', 'add_more_no', 'add_iced_latte_offer', 'decline_iced_latte_offer',
+                'replacement_continue', 'replacement_add'
             ]
             
             # Check for edit/remove/quantity button patterns
@@ -1434,6 +1435,15 @@ class EnhancedMessageHandler:
                     return self._create_response("ممتاز! اختر من القائمة الرئيسية:\n\n1. المشروبات الباردة\n2. المشروبات الحارة\n3. الحلويات والمعجنات\n\nالرجاء اختيار الفئة المطلوبة")
                 else:
                     return self._create_response("Great! Choose from the main menu:\n\n1. Cold Drinks\n2. Hot Drinks\n3. Pastries & Sweets\n\nPlease select the required category")
+            
+            elif current_step == 'waiting_for_replacement_choice':
+                # User confirmed adding a replacement
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_category', language,
+                    session.get('customer_name') if session else None,
+                    order_mode=session.get('order_mode') if session else None
+                )
+                return self._show_main_categories(phone_number, language)
 
         elif yes_no == 'no':
             if current_step == 'waiting_for_additional':
@@ -1472,6 +1482,15 @@ class EnhancedMessageHandler:
                 )
                 
                 return self._show_main_categories(phone_number, language)
+            
+            elif current_step == 'waiting_for_replacement_choice':
+                # User declined adding a replacement, proceed to service selection
+                self.db.create_or_update_session(
+                    phone_number, 'waiting_for_service', language,
+                    session.get('customer_name') if session else None,
+                    order_mode=session.get('order_mode') if session else None
+                )
+                return self._show_service_type_buttons(phone_number, language)
 
         return self._create_response(self._get_fallback_message(current_step, language))
 
