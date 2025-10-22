@@ -3135,12 +3135,18 @@ class EnhancedMessageHandler:
             
             buttons = [
                 {
-                    "id": "quick_order",
-                    "title": "1. الطلب السريع"
+                    "type": "reply",
+                    "reply": {
+                        "id": "quick_order",
+                        "title": "1. الطلب السريع"
+                    }
                 },
                 {
-                    "id": "explore_menu",
-                    "title": "2. استكشاف القائمة"
+                    "type": "reply",
+                    "reply": {
+                        "id": "explore_menu",
+                        "title": "2. استكشاف القائمة"
+                    }
                 }
             ]
         else:
@@ -3150,12 +3156,18 @@ class EnhancedMessageHandler:
             
             buttons = [
                 {
-                    "id": "quick_order",
-                    "title": "1. Quick Order"
+                    "type": "reply",
+                    "reply": {
+                        "id": "quick_order",
+                        "title": "1. Quick Order"
+                    }
                 },
                 {
-                    "id": "explore_menu",
-                    "title": "2. Explore Menu"
+                    "type": "reply",
+                    "reply": {
+                        "id": "explore_menu",
+                        "title": "2. Explore Menu"
+                    }
                 }
             ]
         
