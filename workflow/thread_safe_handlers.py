@@ -64,7 +64,23 @@ class ThreadSafeMessageHandler:
         # Extract basic message info
         phone_number = message_data.get('from')
         message_id = message_data.get('id', f"msg_{time.time()}")
-        text = message_data.get('text', {}).get('body', '').strip()
+        # Robust text extraction: handle text, interactive buttons, and list replies
+        text_container = message_data.get('text') or {}
+        text = (text_container.get('body') or '').strip()
+        if not text:
+            interactive = message_data.get('interactive') or {}
+            button_reply = interactive.get('button_reply') or {}
+            list_reply = interactive.get('list_reply') or {}
+            text = (
+                button_reply.get('id') or
+                button_reply.get('title') or
+                list_reply.get('id') or
+                list_reply.get('title') or
+                ''
+            ).strip()
+        if not text:
+            button = message_data.get('button') or {}
+            text = (button.get('text') or '').strip()
 
         if not phone_number:
             return self._create_error_response("Invalid phone number")
