@@ -583,37 +583,25 @@ class EnhancedMessageHandler:
                         else:
                             return self._create_response("Please share your address or location for delivery:")
         
-        # Regular flow: Build response message and ask for additional items
-        if language == 'arabic':
-            response = "تم إضافة العناصر التالية إلى طلبك:\n\n"
-            for item in processed_items:
-                response += f"• {item['item_name']} × {item['quantity']} - {item['price']} دينار\n"
-            
-            if failed_items:
-                response += f"\n⚠️ لم أتمكن من العثور على: {', '.join(failed_items)}\nهذه العناصر غير متاحة في قائمتنا ولن تُضاف إلى الطلب."
-                response += "\nهل تريد المتابعة بهذه العناصر فقط أم إضافة عنصر بديل؟\n\n1. المتابعة\n2. إضافة عنصر بديل"
-            else:
-                response += "\nهل تريد إضافة المزيد من الأصناف؟\n\n1. نعم\n2. لا"
+        # Regular flow: show appropriate next-step selection
+        if failed_items:
+            # When some items failed, ask for replacement or continue
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_replacement_choice', language,
+                session.get('customer_name'),
+                selected_main_category=session.get('selected_main_category'),
+                selected_sub_category=session.get('selected_sub_category')
+            )
+            return self._show_replacement_choice(phone_number, processed_items, failed_items, language)
         else:
-            response = "Added the following items to your order:\n\n"
-            for item in processed_items:
-                response += f"• {item['item_name']} × {item['quantity']} - {item['price']} IQD\n"
-            
-            if failed_items:
-                response += f"\n⚠️ Could not find: {', '.join(failed_items)}\nThese items are not in the menu and will not be added."
-                response += "\nDo you want to continue with the available items only or add a replacement?\n\n1. Continue\n2. Add a replacement"
-            else:
-                response += "\nDo you want to add more items?\n\n1. Yes\n2. No"
-        
-        # Update session to waiting for additional items
-        self.db.create_or_update_session(
-            phone_number, 'waiting_for_additional', language,
-            session.get('customer_name'),
-            selected_main_category=session.get('selected_main_category'),
-            selected_sub_category=session.get('selected_sub_category')
-        )
-        
-        return self._create_response(response)
+            # No failures: ask if user wants to add more items
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_additional', language,
+                session.get('customer_name'),
+                selected_main_category=session.get('selected_main_category'),
+                selected_sub_category=session.get('selected_sub_category')
+            )
+            return self._show_additional_items_selection(phone_number, language)
 
     def _handle_quick_order_selection(self, phone_number: str, extracted_data: Dict, session: Dict, user_context: Dict) -> Dict:
         """Handle quick order mode selection"""
@@ -1946,6 +1934,8 @@ class EnhancedMessageHandler:
         elif current_step == 'waiting_for_quantity':
             return self._handle_structured_quantity_selection(phone_number, text, session, user_context)
             
+        elif current_step == 'waiting_for_replacement_choice':
+            return self._handle_structured_replacement_choice(phone_number, text, session, user_context)
         elif current_step == 'waiting_for_additional':
             return self._handle_structured_additional_selection(phone_number, text, session, user_context)
             
@@ -3040,6 +3030,82 @@ class EnhancedMessageHandler:
             ]
         
         return self._create_interactive_response(header_text, body_text, footer_text, buttons)
+
+    def _show_replacement_choice(self, phone_number: str, processed_items: List[Dict], failed_items: List[str], language: str) -> Dict:
+        """Show replacement choice when some items were not found"""
+        # Build a concise summary of processed and failed items
+        processed_summary = "\n".join([f"• {item['item_name']} × {item['quantity']}" for item in processed_items[:5]])
+        failed_summary = ", ".join(failed_items[:5])
+        if language == 'arabic':
+            header_text = "عناصر غير متوفرة"
+            body_text = "تم إضافة العناصر المتوفرة إلى طلبك.\n"
+            if processed_summary:
+                body_text += f"\nالعناصر المضافة:\n{processed_summary}\n"
+            body_text += f"\n⚠️ لم أتمكن من العثور على: {failed_summary}\n"
+            body_text += "هل تريد المتابعة بهذه العناصر فقط أم إضافة عنصر بديل؟"
+            footer_text = "اختر من الأزرار أدناه"
+            buttons = [
+                {"type": "reply", "reply": {"id": "replacement_continue", "title": "المتابعة"}},
+                {"type": "reply", "reply": {"id": "replacement_add", "title": "إضافة بديل"}},
+            ]
+        else:
+            header_text = "Some Items Not Available"
+            body_text = "Added available items to your order.\n"
+            if processed_summary:
+                body_text += f"\nItems added:\n{processed_summary}\n"
+            body_text += f"\n⚠️ Could not find: {failed_summary}\n"
+            body_text += "Do you want to continue or add a replacement?"
+            footer_text = "Select from buttons below"
+            buttons = [
+                {"type": "reply", "reply": {"id": "replacement_continue", "title": "Continue"}},
+                {"type": "reply", "reply": {"id": "replacement_add", "title": "Add Replacement"}},
+            ]
+        return self._create_interactive_response(header_text, body_text, footer_text, buttons)
+
+    def _handle_structured_replacement_choice(self, phone_number: str, text: str, session: Dict, user_context: Dict) -> Dict:
+        """Handle replacement choice selection (continue or add replacement)"""
+        language = user_context.get('language', 'arabic')
+        choice = text.strip().lower()
+        # Map numeric and textual inputs
+        continue_inputs = {"1", "continue", "تابع", "المتابعة", "اكمل", "كمل", "استمرار", "replacement_continue"}
+        add_inputs = {"2", "add", "add replacement", "إضافة", "إضافة بديل", "بديل", "replacement_add"}
+        if choice in continue_inputs:
+            # Proceed to service type selection
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_service', language,
+                session.get('customer_name'),
+                order_mode=session.get('order_mode')
+            )
+            return self._show_service_type_buttons(phone_number, language)
+        elif choice in add_inputs:
+            # Let user choose how to add a replacement (Quick Order or Explore Menu)
+            self.db.create_or_update_session(
+                phone_number, 'waiting_for_category', language,
+                session.get('customer_name'),
+                order_mode=session.get('order_mode')
+            )
+            return self._show_main_categories(phone_number, language)
+        # Fallback: repeat replacement choice without summary
+        if language == 'arabic':
+            return self._create_interactive_response(
+                "عناصر غير متوفرة",
+                "هل تريد المتابعة بهذه العناصر فقط أم إضافة عنصر بديل؟",
+                "اختر من الأزرار أدناه",
+                [
+                    {"type": "reply", "reply": {"id": "replacement_continue", "title": "المتابعة"}},
+                    {"type": "reply", "reply": {"id": "replacement_add", "title": "إضافة بديل"}},
+                ]
+            )
+        else:
+            return self._create_interactive_response(
+                "Some Items Not Available",
+                "Do you want to continue or add a replacement?",
+                "Select from buttons below",
+                [
+                    {"type": "reply", "reply": {"id": "replacement_continue", "title": "Continue"}},
+                    {"type": "reply", "reply": {"id": "replacement_add", "title": "Add Replacement"}},
+                ]
+            )
 
     def _show_quick_order_interface(self, phone_number: str, language: str) -> Dict:
         """Show quick order interface"""
